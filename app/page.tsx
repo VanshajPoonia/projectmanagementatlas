@@ -207,7 +207,18 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t bg-white/50 backdrop-blur-sm py-8">
         <div className="container mx-auto px-4 text-center text-muted-foreground">
-          <p>&copy; 2024 TaskFlow. All rights reserved.</p>
+          <p>&copy; 2026 TaskFlow. All rights reserved.</p>
+          <p className="mt-2">
+            Made by{' '}
+            <a 
+              href="https://kreativvantage.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-700 font-medium hover:underline transition-colors"
+            >
+              KreativVantage
+            </a>
+          </p>
         </div>
       </footer>
     </div>
