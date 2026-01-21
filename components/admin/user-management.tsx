@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { UserPlus, Mail, Calendar } from 'lucide-react'
+import { UserPlus, Mail, Calendar, Users } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
@@ -24,7 +24,36 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [creatingTeam, setCreatingTeam] = useState(false)
   const supabase = createClient()
+
+  const handleCreateTeamUsers = async () => {
+    setCreatingTeam(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const response = await fetch('/api/create-team-users', {
+        method: 'POST',
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create team users')
+      }
+
+      setSuccess(`Successfully created ${data.users.length} team members: ${data.users.map((u: any) => u.full_name).join(', ')}`)
+      
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
+    } catch (err: any) {
+      setError(err.message || 'Failed to create team users')
+    } finally {
+      setCreatingTeam(false)
+    }
+  }
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -72,12 +101,35 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
 
   return (
     <div className="space-y-6">
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {success && (
+        <Alert className="bg-green-50 text-green-900 border-green-200">
+          <AlertDescription>{success}</AlertDescription>
+        </Alert>
+      )}
+      
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">User Management</h2>
           <p className="text-muted-foreground">Manage team members and their access</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <div className="flex gap-2">
+          {users.length === 1 && (
+            <Button 
+              onClick={handleCreateTeamUsers} 
+              variant="outline"
+              className="gap-2 bg-transparent"
+              disabled={creatingTeam}
+            >
+              <Users className="w-4 h-4" />
+              {creatingTeam ? 'Creating Team...' : 'Create Team Users'}
+            </Button>
+          )}
+          <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2">
               <UserPlus className="w-4 h-4" />
@@ -135,6 +187,7 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
