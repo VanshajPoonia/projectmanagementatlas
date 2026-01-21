@@ -55,7 +55,7 @@ export default function ChatPanel({ currentUserId, isAdmin }: ChatPanelProps) {
     if (isAdmin) {
       const { data } = await supabase
         .from('profiles')
-        .select('id, full_name, email, is_admin')
+        .select('id, full_name, email, role')
         .neq('id', currentUserId)
         .order('full_name')
       
@@ -64,7 +64,7 @@ export default function ChatPanel({ currentUserId, isAdmin }: ChatPanelProps) {
       const { data } = await supabase
         .from('profiles')
         .select('id, full_name, email')
-        .eq('is_admin', true)
+        .eq('role', 'admin')
       
       if (data) {
         setUsers(data)
@@ -82,9 +82,9 @@ export default function ChatPanel({ currentUserId, isAdmin }: ChatPanelProps) {
       .order('created_at', { ascending: true })
 
     if (isAdmin && selectedUser) {
-      query = query.or(`sender_id.eq.${selectedUser},receiver_id.eq.${selectedUser}`)
+      query = query.or(`sender_id.eq.${selectedUser},recipient_id.eq.${selectedUser}`)
     } else if (!isAdmin) {
-      query = query.or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
+      query = query.or(`sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId}`)
     }
 
     const { data } = await query
@@ -104,7 +104,7 @@ export default function ChatPanel({ currentUserId, isAdmin }: ChatPanelProps) {
 
     await supabase.from('chat_messages').insert({
       sender_id: currentUserId,
-      receiver_id: receiverId,
+      recipient_id: receiverId,
       message: newMessage,
     })
 
@@ -137,9 +137,9 @@ export default function ChatPanel({ currentUserId, isAdmin }: ChatPanelProps) {
 
       await supabase.from('chat_messages').insert({
         sender_id: currentUserId,
-        receiver_id: receiverId,
+        recipient_id: receiverId,
         message: file.type.startsWith('image/') ? '📷 Image' : '📎 File',
-        attachment_url: publicUrl,
+        image_url: publicUrl,
       })
     } catch (error) {
       console.error('Error uploading file:', error)

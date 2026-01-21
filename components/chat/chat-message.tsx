@@ -10,7 +10,7 @@ interface ChatMessageProps {
 }
 
 export default function ChatMessage({ message, isOwn }: ChatMessageProps) {
-  const isImage = message.attachment_url && message.message === '📷 Image'
+  const isImage = message.image_url && message.message === '📷 Image'
   
   return (
     <div className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : 'flex-row'} animate-in slide-in-from-bottom-2 duration-300`}>
@@ -25,19 +25,19 @@ export default function ChatMessage({ message, isOwn }: ChatMessageProps) {
         
         <Card className={`p-3 ${isOwn ? 'bg-blue-600 text-white' : 'bg-white'} shadow-sm`}>
           {isImage ? (
-            <a href={message.attachment_url} target="_blank" rel="noopener noreferrer" className="block">
+            <a href={message.image_url} target="_blank" rel="noopener noreferrer" className="block">
               <div className="relative w-48 h-48 rounded-lg overflow-hidden">
                 <Image 
-                  src={message.attachment_url || "/placeholder.svg"} 
+                  src={message.image_url || "/placeholder.svg"} 
                   alt="Attachment" 
                   fill
                   className="object-cover hover:scale-105 transition-transform"
                 />
               </div>
             </a>
-          ) : message.attachment_url ? (
+          ) : message.image_url ? (
             <a 
-              href={message.attachment_url} 
+              href={message.image_url} 
               target="_blank" 
               rel="noopener noreferrer"
               className={`flex items-center gap-2 ${isOwn ? 'text-white hover:underline' : 'text-blue-600 hover:underline'}`}

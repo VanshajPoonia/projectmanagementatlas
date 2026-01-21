@@ -39,7 +39,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           // Refresh tasks
           const { data: updatedColumns } = await supabase
             .from('columns')
-            .select('*, tasks(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
+            .select('*, tasks(*, assigned_to:profiles(full_name, email), task_tags(tag:tags(*)))')
             .eq('board_id', board.id)
             .order('position')
           
@@ -171,7 +171,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                     onUpdate={async () => {
                                       const { data: updatedColumns } = await supabase
                                         .from('columns')
-                                        .select('*, tasks(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
+                                        .select('*, tasks(*, assigned_to:profiles(full_name, email), task_tags(tag:tags(*)))')
                                         .eq('board_id', board.id)
                                         .order('position')
                                       if (updatedColumns) setColumns(updatedColumns)

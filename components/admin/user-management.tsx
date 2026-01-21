@@ -154,7 +154,7 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
                     </CardDescription>
                   </div>
                 </div>
-                {user.is_admin && (
+                {user.role === 'admin' && (
                   <Badge variant="default" className="bg-blue-600">Admin</Badge>
                 )}
               </div>
