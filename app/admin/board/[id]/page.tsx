@@ -29,10 +29,10 @@ export default async function BoardPage({ params }: { params: Promise<{ id: stri
   }
 
   const [
-    { data: columns },
+    { data: columns, error: columnsError },
     { data: users },
   ] = await Promise.all([
-    supabase.from('columns').select('*, tasks(*, assigned_to:profiles(full_name, email), task_tags(tag:tags(*)))').eq('board_id', id).order('position'),
+    supabase.from('columns').select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))').eq('board_id', id).order('position'),
     supabase.from('profiles').select('id, full_name, email'),
   ])
 

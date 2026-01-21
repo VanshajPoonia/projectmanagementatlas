@@ -38,10 +38,15 @@ export default function TaskCard({ task, isAdmin, users, isDragging, onUpdate }:
     low: 'border-blue-500 text-blue-500 bg-blue-50',
   }
 
+  // Check if task is overdue
+  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done'
+
   return (
     <>
       <Card 
-        className={`p-4 cursor-pointer hover:shadow-lg transition-all hover:border-primary/50 ${isDragging ? 'shadow-xl rotate-2 opacity-70' : ''}`}
+        className={`group p-4 cursor-grab active:cursor-grabbing hover:shadow-lg transition-all hover:scale-[1.02] ${
+          isDragging ? 'shadow-xl rotate-2 opacity-70 cursor-grabbing' : ''
+        } ${isOverdue ? 'border-2 border-red-400 bg-red-50/30' : 'hover:border-primary/50'}`}
         onClick={() => setDetailOpen(true)}
       >
         <div className="space-y-3">

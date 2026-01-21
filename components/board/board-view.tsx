@@ -1,14 +1,30 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import TaskCard from './task-card'
 import CreateTaskDialog from './create-task-dialog'
+import { Input } from '@/components/ui/input'
+import { gsap } from 'gsap'
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 
 interface BoardViewProps {
   board: any
@@ -22,7 +38,54 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [columns, setColumns] = useState(initialColumns)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [selectedColumn, setSelectedColumn] = useState<any>(null)
+  const [newColumnDialogOpen, setNewColumnDialogOpen] = useState(false)
+  const [newColumnTitle, setNewColumnTitle] = useState('')
+  const [editingBoardTitle, setEditingBoardTitle] = useState(false)
+  const [boardTitle, setBoardTitle] = useState(board.title)
+  const [boardDescription, setBoardDescription] = useState(board.description || '')
+  const [colorPickerColumn, setColorPickerColumn] = useState<string | null>(null)
+  const columnsRef = useRef<(HTMLDivElement | null)[]>([])
+  const headerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
+
+  const columnColors = [
+    '#3b82f6', // blue
+    '#10b981', // green
+    '#f59e0b', // amber
+    '#ef4444', // red
+    '#8b5cf6', // violet
+    '#ec4899', // pink
+    '#06b6d4', // cyan
+    '#84cc16', // lime
+  ]
+
+  // GSAP animations on mount
+  useEffect(() => {
+    if (headerRef.current) {
+      gsap.fromTo(
+        headerRef.current,
+        { y: -100, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.8, ease: 'power3.out' }
+      )
+    }
+
+    columnsRef.current.forEach((col, index) => {
+      if (col) {
+        gsap.fromTo(
+          col,
+          { y: 50, opacity: 0, scale: 0.9 },
+          { 
+            y: 0, 
+            opacity: 1, 
+            scale: 1,
+            duration: 0.6, 
+            delay: index * 0.1,
+            ease: 'back.out(1.2)'
+          }
+        )
+      }
+    })
+  }, [columns.length])
 
   useEffect(() => {
     // Subscribe to real-time updates
@@ -39,7 +102,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           // Refresh tasks
           const { data: updatedColumns } = await supabase
             .from('columns')
-            .select('*, tasks(*, assigned_to:profiles(full_name, email), task_tags(tag:tags(*)))')
+            .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
             .eq('board_id', board.id)
             .order('position')
           
@@ -108,21 +171,110 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     setCreateDialogOpen(true)
   }
 
+  const handleAddColumn = async () => {
+    if (!newColumnTitle.trim()) return
+    
+    const { data, error } = await supabase
+      .from('columns')
+      .insert({
+        title: newColumnTitle,
+        board_id: board.id,
+        position: columns.length
+      })
+      .select()
+      .single()
+
+    if (data && !error) {
+      setColumns([...columns, { ...data, tasks: [] }])
+      setNewColumnTitle('')
+      setNewColumnDialogOpen(false)
+    }
+  }
+
+  const handleDeleteColumn = async (columnId: string) => {
+    if (!confirm('Are you sure? This will delete all tasks in this column.')) return
+    
+    await supabase.from('columns').delete().eq('id', columnId)
+    setColumns(columns.filter(col => col.id !== columnId))
+  }
+
+  const handleUpdateBoardTitle = async () => {
+    if (!boardTitle.trim()) return
+    
+    await supabase
+      .from('boards')
+      .update({ title: boardTitle, description: boardDescription })
+      .eq('id', board.id)
+    
+    setEditingBoardTitle(false)
+  }
+
+  const handleUpdateColumnColor = async (columnId: string, color: string) => {
+    await supabase
+      .from('columns')
+      .update({ color })
+      .eq('id', columnId)
+    
+    setColumns(columns.map(col => col.id === columnId ? { ...col, color } : col))
+    setColorPickerColumn(null)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+      <header ref={headerRef} className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
-            <Link href={isAdmin ? '/admin' : '/dashboard'}>
-              <Button variant="outline" size="sm">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">{board.title}</h1>
-              <p className="text-sm text-muted-foreground">{board.description || 'No description'}</p>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4 flex-1">
+              <Link href={isAdmin ? '/admin' : '/dashboard'}>
+                <Button variant="outline" size="sm">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back
+                </Button>
+              </Link>
+              {editingBoardTitle && isAdmin ? (
+                <div className="flex-1 max-w-xl space-y-2">
+                  <Input
+                    value={boardTitle}
+                    onChange={(e) => setBoardTitle(e.target.value)}
+                    onBlur={handleUpdateBoardTitle}
+                    onKeyDown={(e) => e.key === 'Enter' && handleUpdateBoardTitle()}
+                    className="font-bold text-lg"
+                    autoFocus
+                  />
+                  <Input
+                    value={boardDescription}
+                    onChange={(e) => setBoardDescription(e.target.value)}
+                    onBlur={handleUpdateBoardTitle}
+                    placeholder="Add description..."
+                    className="text-sm"
+                  />
+                </div>
+              ) : (
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-xl font-bold tracking-tight">{boardTitle}</h1>
+                    {isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditingBoardTitle(true)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <Edit className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground">{boardDescription || 'No description'}</p>
+                </div>
+              )}
             </div>
+            
+            {isAdmin && (
+              <Button onClick={() => setNewColumnDialogOpen(true)} size="sm" className="gap-2">
+                <Plus className="w-4 h-4" />
+                Add Column
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -130,19 +282,57 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       <main className="container mx-auto px-4 py-8">
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {columns.map((column) => (
-              <div key={column.id} className="flex-shrink-0 w-80">
-                <Card className="h-full">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                    <CardTitle className="text-lg">{column.title}</CardTitle>
+            {columns.map((column, index) => (
+              <div 
+                key={column.id} 
+                ref={el => columnsRef.current[index] = el}
+                className="flex-shrink-0 w-80"
+              >
+                <Card 
+                  className="h-full bg-white/60 backdrop-blur-sm shadow-sm hover:shadow-lg transition-all hover:scale-[1.01] border-t-4"
+                  style={{ borderTopColor: column.color || '#3b82f6' }}
+                >
+                  <CardHeader 
+                    className="flex flex-row items-center justify-between space-y-0 pb-3 rounded-t-lg transition-colors"
+                    style={{ backgroundColor: column.color ? `${column.color}10` : undefined }}
+                  >
+                    <div className="flex items-center gap-2">
+                      {column.color && (
+                        <div 
+                          className="w-3 h-3 rounded-full animate-pulse" 
+                          style={{ backgroundColor: column.color }}
+                        />
+                      )}
+                      <CardTitle className="text-lg font-semibold">{column.title}</CardTitle>
+                    </div>
                     {isAdmin && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleOpenCreateDialog(column)}
-                      >
-                        <Plus className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleOpenCreateDialog(column)}
+                          className="h-8 w-8 p-0 hover:scale-110 transition-transform"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:scale-110 transition-transform">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem onClick={() => setColorPickerColumn(column.id)}>
+                              <Palette className="w-4 h-4 mr-2" />
+                              Change Color
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDeleteColumn(column.id)} className="text-red-600">
+                              <Trash className="w-4 h-4 mr-2" />
+                              Delete Column
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     )}
                   </CardHeader>
                   <CardContent>
@@ -151,8 +341,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                         <div
                           ref={provided.innerRef}
                           {...provided.droppableProps}
-                          className={`space-y-2 min-h-[200px] rounded-lg p-2 transition-colors ${
-                            snapshot.isDraggingOver ? 'bg-accent/50' : ''
+                          className={`space-y-3 min-h-[200px] rounded-lg p-3 transition-all duration-300 ${
+                            snapshot.isDraggingOver 
+                              ? 'bg-gradient-to-b from-primary/10 to-primary/5 ring-2 ring-primary/30 scale-[1.02]' 
+                              : 'bg-transparent'
                           }`}
                         >
                           {column.tasks?.sort((a: any, b: any) => a.position - b.position).map((task: any, index: number) => (
@@ -171,7 +363,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                     onUpdate={async () => {
                                       const { data: updatedColumns } = await supabase
                                         .from('columns')
-                                        .select('*, tasks(*, assigned_to:profiles(full_name, email), task_tags(tag:tags(*)))')
+                                        .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
                                         .eq('board_id', board.id)
                                         .order('position')
                                       if (updatedColumns) setColumns(updatedColumns)
@@ -194,13 +386,69 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       </main>
 
       {isAdmin && (
-        <CreateTaskDialog
-          open={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          column={selectedColumn}
-          users={users}
-          boardId={board.id}
-        />
+        <>
+          <CreateTaskDialog
+            open={createDialogOpen}
+            onOpenChange={setCreateDialogOpen}
+            column={selectedColumn}
+            users={users}
+            boardId={board.id}
+            onTaskCreated={async () => {
+              const { data: updatedColumns } = await supabase
+                .from('columns')
+                .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
+                .eq('board_id', board.id)
+                .order('position')
+              if (updatedColumns) setColumns(updatedColumns)
+            }}
+          />
+          
+          <Dialog open={newColumnDialogOpen} onOpenChange={setNewColumnDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Column</DialogTitle>
+                <DialogDescription>
+                  Create a new column to organize your tasks
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <Input
+                  placeholder="Column title (e.g., Review, Testing)"
+                  value={newColumnTitle}
+                  onChange={(e) => setNewColumnTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
+                />
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setNewColumnDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleAddColumn}>Add Column</Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={colorPickerColumn !== null} onOpenChange={() => setColorPickerColumn(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Choose Column Color</DialogTitle>
+                <DialogDescription>
+                  Select a color to personalize your column
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-4 gap-4 py-4">
+                {columnColors.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => colorPickerColumn && handleUpdateColumnColor(colorPickerColumn, color)}
+                    className="w-full aspect-square rounded-lg border-2 border-transparent hover:border-primary hover:scale-110 transition-all cursor-pointer"
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </>
       )}
     </div>
   )

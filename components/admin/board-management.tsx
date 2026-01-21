@@ -32,9 +32,17 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
     setError(null)
 
     try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('User not authenticated')
+
       const { data: board, error: boardError } = await supabase
         .from('boards')
-        .insert({ title, description })
+        .insert({ 
+          title, 
+          description,
+          created_by: user.id 
+        })
         .select()
         .single()
 

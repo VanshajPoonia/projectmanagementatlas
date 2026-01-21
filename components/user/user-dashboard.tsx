@@ -117,56 +117,62 @@ export default function UserDashboard({ user, tasks, boards }: UserDashboardProp
               <CardContent>
                 <div className="space-y-4">
                   {tasks.map((task) => (
-                    <div key={task.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium">{task.title}</h4>
+                    <Link 
+                      key={task.id} 
+                      href={task.column?.board_id ? `/dashboard/board/${task.column.board_id}` : '#'}
+                      className="block"
+                    >
+                      <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-all cursor-pointer hover:shadow-md hover:border-green-500">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium">{task.title}</h4>
+                            <Badge 
+                              variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}
+                              className={
+                                task.status === 'done' 
+                                  ? 'bg-green-600' 
+                                  : task.status === 'in_progress' 
+                                  ? 'bg-yellow-600' 
+                                  : ''
+                              }
+                            >
+                              {task.column?.title || task.status}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground line-clamp-1 mt-1">
+                            {task.description || 'No description'}
+                          </p>
+                          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                            {task.column?.board && (
+                              <span className="flex items-center gap-1">
+                                <Kanban className="w-3 h-3" />
+                                {task.column.board.title}
+                              </span>
+                            )}
+                            {task.due_date && (
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {new Date(task.due_date).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {task.priority && (
                           <Badge 
-                            variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}
+                            variant="outline" 
                             className={
-                              task.status === 'done' 
-                                ? 'bg-green-600' 
-                                : task.status === 'in_progress' 
-                                ? 'bg-yellow-600' 
-                                : ''
+                              task.priority === 'high' 
+                                ? 'border-red-500 text-red-500' 
+                                : task.priority === 'medium' 
+                                ? 'border-orange-500 text-orange-500' 
+                                : 'border-blue-500 text-blue-500'
                             }
                           >
-                            {task.column?.title || task.status}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground line-clamp-1 mt-1">
-                          {task.description || 'No description'}
-                        </p>
-                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                          {task.column?.board && (
-                            <span className="flex items-center gap-1">
-                              <Kanban className="w-3 h-3" />
-                              {task.column.board.title}
-                            </span>
-                          )}
-                          {task.due_date && (
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {new Date(task.due_date).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {task.priority && (
-                        <Badge 
-                          variant="outline" 
-                          className={
-                            task.priority === 'high' 
-                              ? 'border-red-500 text-red-500' 
-                              : task.priority === 'medium' 
-                              ? 'border-orange-500 text-orange-500' 
-                              : 'border-blue-500 text-blue-500'
-                          }
-                        >
-                          {task.priority}
+                            {task.priority}
                         </Badge>
                       )}
-                    </div>
+                      </div>
+                    </Link>
                   ))}
                   {tasks.length === 0 && (
                     <div className="text-center py-8 text-muted-foreground">

@@ -1,13 +1,66 @@
+'use client'
+
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowRight, CheckCircle, Users, Kanban, MessageSquare, Bell } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { gsap } from 'gsap'
 
 export default function HomePage() {
+  const headerRef = useRef<HTMLDivElement>(null)
+  const heroRef = useRef<HTMLDivElement>(null)
+  const featureRefs = useRef<(HTMLDivElement | null)[]>([])
+
+  useEffect(() => {
+    // Header animation
+    if (headerRef.current) {
+      gsap.fromTo(
+        headerRef.current,
+        { y: -100, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.8, ease: 'power3.out' }
+      )
+    }
+
+    // Hero section animation
+    if (heroRef.current) {
+      gsap.fromTo(
+        heroRef.current.children,
+        { y: 50, opacity: 0 },
+        { 
+          y: 0, 
+          opacity: 1, 
+          duration: 1, 
+          stagger: 0.2,
+          ease: 'power3.out',
+          delay: 0.3
+        }
+      )
+    }
+
+    // Feature cards animation
+    featureRefs.current.forEach((card, index) => {
+      if (card) {
+        gsap.fromTo(
+          card,
+          { y: 60, opacity: 0, scale: 0.9 },
+          { 
+            y: 0, 
+            opacity: 1, 
+            scale: 1,
+            duration: 0.6, 
+            delay: 0.8 + (index * 0.1),
+            ease: 'back.out(1.4)'
+          }
+        )
+      }
+    })
+  }, [])
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+      <header ref={headerRef} className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
@@ -28,7 +81,7 @@ export default function HomePage() {
 
       {/* Hero Section */}
       <section className="container mx-auto px-4 py-20 text-center">
-        <div className="max-w-3xl mx-auto space-y-6">
+        <div ref={heroRef} className="max-w-3xl mx-auto space-y-6">
           <h2 className="text-5xl font-bold tracking-tight text-balance">
             Project Management Made Simple
           </h2>
@@ -59,7 +112,7 @@ export default function HomePage() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 max-w-6xl mx-auto">
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card ref={el => featureRefs.current[0] = el} className="hover:shadow-lg transition-all hover:scale-105 cursor-pointer">
             <CardHeader>
               <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center mb-4">
                 <Kanban className="w-6 h-6 text-white" />
@@ -71,7 +124,7 @@ export default function HomePage() {
             </CardHeader>
           </Card>
 
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card ref={el => featureRefs.current[1] = el} className="hover:shadow-lg transition-all hover:scale-105 cursor-pointer">
             <CardHeader>
               <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center mb-4">
                 <Users className="w-6 h-6 text-white" />
@@ -83,7 +136,7 @@ export default function HomePage() {
             </CardHeader>
           </Card>
 
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card ref={el => featureRefs.current[2] = el} className="hover:shadow-lg transition-all hover:scale-105 cursor-pointer">
             <CardHeader>
               <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center mb-4">
                 <MessageSquare className="w-6 h-6 text-white" />
@@ -95,7 +148,7 @@ export default function HomePage() {
             </CardHeader>
           </Card>
 
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card ref={el => featureRefs.current[3] = el} className="hover:shadow-lg transition-all hover:scale-105 cursor-pointer">
             <CardHeader>
               <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg flex items-center justify-center mb-4">
                 <Bell className="w-6 h-6 text-white" />
@@ -107,7 +160,7 @@ export default function HomePage() {
             </CardHeader>
           </Card>
 
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card ref={el => featureRefs.current[4] = el} className="hover:shadow-lg transition-all hover:scale-105 cursor-pointer">
             <CardHeader>
               <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center mb-4">
                 <CheckCircle className="w-6 h-6 text-white" />
@@ -119,7 +172,7 @@ export default function HomePage() {
             </CardHeader>
           </Card>
 
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card ref={el => featureRefs.current[5] = el} className="hover:shadow-lg transition-all hover:scale-105 cursor-pointer">
             <CardHeader>
               <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center mb-4">
                 <Users className="w-6 h-6 text-white" />

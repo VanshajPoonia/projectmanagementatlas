@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   // Fetch user's assigned tasks
   const { data: tasks } = await supabase
     .from('tasks')
-    .select('*, column:columns(title, board:boards(title))')
+    .select('*, column:columns(title, board_id, board:boards(id, title))')
     .eq('assigned_to', user.id)
     .order('created_at', { ascending: false })
 

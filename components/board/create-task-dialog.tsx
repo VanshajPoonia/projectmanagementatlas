@@ -17,9 +17,10 @@ interface CreateTaskDialogProps {
   column: any
   users: any[]
   boardId: string
+  onTaskCreated?: () => void
 }
 
-export default function CreateTaskDialog({ open, onOpenChange, column, users, boardId }: CreateTaskDialogProps) {
+export default function CreateTaskDialog({ open, onOpenChange, column, users, boardId, onTaskCreated }: CreateTaskDialogProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [assignedTo, setAssignedTo] = useState<string>('unassigned')
@@ -35,21 +36,28 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
     setError(null)
 
     try {
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError) throw userError
+      if (!user) throw new Error('User not authenticated')
+
       const status = column.title.toLowerCase().replace(' ', '_')
+      
+      const taskData = {
+        title,
+        description,
+        column_id: column.id,
+        assigned_to: assignedTo === 'unassigned' ? null : assignedTo,
+        created_by: user.id,
+        priority,
+        due_date: dueDate || null,
+        status,
+        position: column.tasks?.length || 0,
+      }
       
       const { data: task, error: taskError } = await supabase
         .from('tasks')
-        .insert({
-          title,
-          description,
-          column_id: column.id,
-          board_id: boardId,
-          assigned_to: assignedTo === 'unassigned' ? null : assignedTo,
-          priority,
-          due_date: dueDate || null,
-          status,
-          position: column.tasks?.length || 0,
-        })
+        .insert(taskData)
         .select()
         .single()
 
@@ -79,8 +87,13 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
       setPriority('medium')
       setDueDate('')
       onOpenChange(false)
-    } catch (err) {
-      setError('Failed to create task. Please try again.')
+      
+      // Trigger callback to refresh board data
+      if (onTaskCreated) {
+        onTaskCreated()
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to create task. Please try again.')
     } finally {
       setLoading(false)
     }
