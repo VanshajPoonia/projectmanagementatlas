@@ -18,17 +18,21 @@ interface TaskCardProps {
   task: any
   isAdmin: boolean
   users: any[]
+  board?: any
   isDragging?: boolean
   onUpdate?: () => void
 }
 
-export default function TaskCard({ task, isAdmin, users, isDragging, onUpdate }: TaskCardProps) {
+export default function TaskCard({ task, isAdmin, users, board, isDragging, onUpdate }: TaskCardProps) {
   const [detailOpen, setDetailOpen] = useState(false)
   const supabase = createClient()
 
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this task?')) {
-      await supabase.from('tasks').delete().eq('id', task.id)
+      const { error } = await supabase.from('tasks').delete().eq('id', task.id)
+      if (!error) {
+        onUpdate?.()
+      }
     }
   }
 
@@ -128,6 +132,7 @@ export default function TaskCard({ task, isAdmin, users, isDragging, onUpdate }:
           setDetailOpen(false)
           onUpdate?.()
         }}
+        board={board}
         isAdmin={isAdmin}
       />
     </>

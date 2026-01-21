@@ -1,8 +1,21 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
 export async function POST() {
   const supabase = await createClient()
+  
+  // Create admin client with service role key for user creation
+  const supabaseAdmin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
+  )
 
   // Check if requester is admin
   const { data: { user } } = await supabase.auth.getUser()
@@ -32,8 +45,8 @@ export async function POST() {
 
   for (const member of teamMembers) {
     try {
-      // Create auth user using admin API
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      // Create auth user using admin API with service role
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: member.email,
         password: member.password,
         email_confirm: true,
@@ -48,8 +61,8 @@ export async function POST() {
         continue
       }
 
-      // Update profile with full name and role
-      const { error: profileError } = await supabase
+      // Update profile with full name and role using admin client
+      const { error: profileError } = await supabaseAdmin
         .from('profiles')
         .update({
           full_name: member.full_name,
@@ -70,5 +83,10 @@ export async function POST() {
     }
   }
 
-  return NextResponse.json({ results })
+  const successfulUsers = results.filter(r => r.success)
+  
+  return NextResponse.json({ 
+    users: successfulUsers.map(u => ({ email: u.email, full_name: teamMembers.find(m => m.email === u.email)?.full_name })),
+    results 
+  })
 }

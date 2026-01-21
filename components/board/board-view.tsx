@@ -359,6 +359,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                     task={task} 
                                     isAdmin={isAdmin}
                                     users={users}
+                                    board={board}
                                     isDragging={snapshot.isDragging}
                                     onUpdate={async () => {
                                       const { data: updatedColumns } = await supabase
