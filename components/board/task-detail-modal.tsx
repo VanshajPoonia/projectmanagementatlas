@@ -13,8 +13,10 @@ import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { X, Calendar as CalendarIcon, Tag, User, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
+import { sendTaskAssignmentEmail } from '@/lib/email'
 
 interface TaskDetailModalProps {
+  board?: any
   taskId: string
   open: boolean
   onClose: () => void
@@ -22,7 +24,7 @@ interface TaskDetailModalProps {
   isAdmin?: boolean
 }
 
-export function TaskDetailModal({ taskId, open, onClose, onUpdate, isAdmin = false }: TaskDetailModalProps) {
+export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false }: TaskDetailModalProps) {
   const supabase = createClient()
   const [task, setTask] = useState<any>(null)
   const [tags, setTags] = useState<any[]>([])
@@ -87,6 +89,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, isAdmin = fal
     if (!title.trim()) return
 
     setLoading(true)
+    
+    // Check if assigned user changed
+    const previousAssignedTo = task?.assigned_to
+    const assignmentChanged = previousAssignedTo !== (assignedTo || null)
+    
     const { error } = await supabase
       .from('tasks')
       .update({
@@ -100,6 +107,31 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, isAdmin = fal
       .eq('id', taskId)
 
     if (!error) {
+      // Send email notification if assignment changed and task is now assigned
+      if (assignmentChanged && assignedTo && assignedTo !== 'unassigned') {
+        const assignedUser = users.find(u => u.id === assignedTo)
+        const { data: { user } } = await supabase.auth.getUser()
+        const { data: currentUserProfile } = await supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', user?.id)
+          .single()
+        
+        if (assignedUser) {
+          console.log('[v0] Sending email notification to:', assignedUser.email)
+          await sendTaskAssignmentEmail(
+            assignedUser.email,
+            assignedUser.full_name || assignedUser.email,
+            title,
+            description,
+            priority,
+            dueDate?.toISOString() || null,
+            board?.title || 'Project Board',
+            currentUserProfile?.full_name || currentUserProfile?.email || 'Admin'
+          )
+        }
+      }
+      
       onUpdate()
       onClose()
     }

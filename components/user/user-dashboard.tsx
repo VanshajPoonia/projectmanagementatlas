@@ -120,9 +120,9 @@ export default function UserDashboard({ user, tasks, boards }: UserDashboardProp
                     <Link 
                       key={task.id} 
                       href={task.column?.board_id ? `/dashboard/board/${task.column.board_id}` : '#'}
-                      className="block"
+                      className="block group"
                     >
-                      <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-all cursor-pointer hover:shadow-md hover:border-green-500">
+                      <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-green-50 transition-all cursor-pointer hover:shadow-lg hover:border-green-500 hover:scale-[1.01] active:scale-[0.99]">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <h4 className="font-medium">{task.title}</h4>

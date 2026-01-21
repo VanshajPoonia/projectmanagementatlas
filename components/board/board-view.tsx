@@ -393,6 +393,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             column={selectedColumn}
             users={users}
             boardId={board.id}
+            board={board}
             onTaskCreated={async () => {
               const { data: updatedColumns } = await supabase
                 .from('columns')

@@ -10,8 +10,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { createClient } from '@/lib/supabase/client'
+import { sendTaskAssignmentEmail } from '@/lib/email'
 
 interface CreateTaskDialogProps {
+  board?: any
   open: boolean
   onOpenChange: (open: boolean) => void
   column: any
@@ -20,7 +22,7 @@ interface CreateTaskDialogProps {
   onTaskCreated?: () => void
 }
 
-export default function CreateTaskDialog({ open, onOpenChange, column, users, boardId, onTaskCreated }: CreateTaskDialogProps) {
+export default function CreateTaskDialog({ open, onOpenChange, column, users, boardId, board, onTaskCreated }: CreateTaskDialogProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [assignedTo, setAssignedTo] = useState<string>('unassigned')
@@ -64,19 +66,26 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
       if (taskError) throw taskError
 
       // Send email notification if task is assigned
-      if (assignedTo !== 'unassigned') {
+      if (assignedTo !== 'unassigned' && assignedTo) {
         const assignedUser = users.find(u => u.id === assignedTo)
+        const { data: currentUserProfile } = await supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', user.id)
+          .single()
+        
         if (assignedUser) {
-          await fetch('/api/send-notification', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              to: assignedUser.email,
-              taskTitle: title,
-              taskDescription: description,
-              dueDate: dueDate,
-            }),
-          })
+          console.log('[v0] Sending email notification to:', assignedUser.email)
+          await sendTaskAssignmentEmail(
+            assignedUser.email,
+            assignedUser.full_name || assignedUser.email,
+            title,
+            description,
+            priority,
+            dueDate,
+            board?.title || 'Project Board',
+            currentUserProfile?.full_name || currentUserProfile?.email || 'Admin'
+          )
         }
       }
 
