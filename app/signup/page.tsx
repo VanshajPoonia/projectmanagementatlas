@@ -26,15 +26,15 @@ export default function SignupPage() {
     setError(null)
 
     try {
-      // Check if email is in allowed list
-      const { data: allowedEmail } = await supabase
-        .from('allowed_emails')
-        .select('*')
-        .eq('email', email.toLowerCase())
-        .single()
+      // Check if email is from goatlasgo.us domain
+      if (!email.toLowerCase().endsWith('@goatlasgo.us')) {
+        setError('Only @goatlasgo.us email addresses are allowed to sign up.')
+        setLoading(false)
+        return
+      }
 
-      if (!allowedEmail) {
-        setError('This email is not authorized to access the system. Please contact your administrator.')
+      if (!fullName.trim()) {
+        setError('Please enter your full name.')
         setLoading(false)
         return
       }
@@ -46,7 +46,7 @@ export default function SignupPage() {
         options: {
           emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/dashboard`,
           data: {
-            full_name: fullName || allowedEmail.full_name,
+            full_name: fullName.trim(),
           }
         },
       })
@@ -65,7 +65,12 @@ export default function SignupPage() {
           return
         }
 
-        router.push('/login')
+        // Redirect based on role
+        if (email.toLowerCase() === 'bobby@goatlasgo.us') {
+          router.push('/admin')
+        } else {
+          router.push('/dashboard')
+        }
       }
     } catch (err) {
       setError('An unexpected error occurred. Please try again.')
@@ -110,12 +115,15 @@ export default function SignupPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="name@company.com"
+                placeholder="name@goatlasgo.us"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={loading}
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Only @goatlasgo.us email addresses are allowed
+              </p>
             </div>
             
             <div className="space-y-2">

@@ -35,11 +35,11 @@ export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith('/admin') && user) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('is_admin')
+      .select('role')
       .eq('id', user.id)
       .single()
 
-    if (!profile?.is_admin) {
+    if (profile?.role !== 'admin') {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
       return NextResponse.redirect(url)
@@ -50,12 +50,12 @@ export async function proxy(request: NextRequest) {
   if (user && (request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/signup'))) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('is_admin')
+      .select('role')
       .eq('id', user.id)
       .single()
 
     const url = request.nextUrl.clone()
-    url.pathname = profile?.is_admin ? '/admin' : '/dashboard'
+    url.pathname = profile?.role === 'admin' ? '/admin' : '/dashboard'
     return NextResponse.redirect(url)
   }
 

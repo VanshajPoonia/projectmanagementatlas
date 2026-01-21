@@ -24,15 +24,9 @@ export default function LoginPage() {
     setError(null)
 
     try {
-      // Check if email is in allowed list
-      const { data: allowedEmail } = await supabase
-        .from('allowed_emails')
-        .select('email')
-        .eq('email', email.toLowerCase())
-        .single()
-
-      if (!allowedEmail) {
-        setError('This email is not authorized to access the system. Please contact your administrator.')
+      // Check if email is from goatlasgo.us domain
+      if (!email.toLowerCase().endsWith('@goatlasgo.us')) {
+        setError('Only @goatlasgo.us email addresses are allowed.')
         setLoading(false)
         return
       }
@@ -50,14 +44,14 @@ export default function LoginPage() {
       }
 
       if (data.user) {
-        // Check if user is admin
+        // Check if user is admin by checking role in profiles
         const { data: profile } = await supabase
           .from('profiles')
-          .select('is_admin')
+          .select('role')
           .eq('id', data.user.id)
           .single()
 
-        router.push(profile?.is_admin ? '/admin' : '/dashboard')
+        router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')
       }
     } catch (err) {
       setError('An unexpected error occurred. Please try again.')
@@ -87,7 +81,7 @@ export default function LoginPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="name@company.com"
+                placeholder="name@goatlasgo.us"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required

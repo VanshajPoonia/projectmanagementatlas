@@ -138,10 +138,10 @@ export default function UserDashboard({ user, tasks, boards }: UserDashboardProp
                           {task.description || 'No description'}
                         </p>
                         <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                          {task.board && (
+                          {task.column?.board && (
                             <span className="flex items-center gap-1">
                               <Kanban className="w-3 h-3" />
-                              {task.board.title}
+                              {task.column.board.title}
                             </span>
                           )}
                           {task.due_date && (
