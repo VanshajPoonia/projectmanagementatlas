@@ -1,10 +1,12 @@
 'use client'
 
+import { Calendar } from "@/components/ui/calendar"
+
 import { useState, useEffect, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import TaskCard from './task-card'
@@ -13,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { gsap } from 'gsap'
-import { 
+import {
   DropdownMenu, 
   DropdownMenuContent, 
   DropdownMenuItem, 
@@ -50,6 +52,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [filterPriority, setFilterPriority] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+  const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
   const columnsRef = useRef<(HTMLDivElement | null)[]>([])
   const headerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
@@ -316,6 +319,28 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             </div>
             
             <div className="flex items-center gap-2">
+              {/* View Toggle */}
+              <div className="flex items-center border rounded-md">
+                <Button 
+                  onClick={() => setViewMode('tile')} 
+                  variant={viewMode === 'tile' ? 'default' : 'ghost'}
+                  size="sm" 
+                  className="gap-2 rounded-r-none"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                  Tile
+                </Button>
+                <Button 
+                  onClick={() => setViewMode('list')} 
+                  variant={viewMode === 'list' ? 'default' : 'ghost'}
+                  size="sm" 
+                  className="gap-2 rounded-l-none"
+                >
+                  <List className="w-4 h-4" />
+                  List
+                </Button>
+              </div>
+              
               <Button 
                 onClick={() => setShowFilters(!showFilters)} 
                 variant={activeFiltersCount > 0 ? "default" : "outline"}
@@ -385,9 +410,11 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Priorities</SelectItem>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="1">1 - Lowest</SelectItem>
+                      <SelectItem value="2">2 - Low</SelectItem>
+                      <SelectItem value="3">3 - Medium</SelectItem>
+                      <SelectItem value="4">4 - High</SelectItem>
+                      <SelectItem value="5">5 - Highest</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -398,110 +425,217 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <DragDropContext onDragEnd={onDragEnd}>
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {columns.map((column, index) => (
-              <div 
-                key={column.id} 
-                ref={el => columnsRef.current[index] = el}
-                className="flex-shrink-0 w-80"
-              >
-                <Card 
-                  className="h-full bg-white/60 backdrop-blur-sm shadow-sm hover:shadow-lg transition-all hover:scale-[1.01] border-t-4"
-                  style={{ borderTopColor: column.color || '#3b82f6' }}
+        {viewMode === 'tile' ? (
+          <DragDropContext onDragEnd={onDragEnd}>
+            <div className="flex gap-4 overflow-x-auto pb-4">
+              {columns.map((column, index) => (
+                <div 
+                  key={column.id} 
+                  ref={el => columnsRef.current[index] = el}
+                  className="flex-shrink-0 w-80"
                 >
-                  <CardHeader 
-                    className="flex flex-row items-center justify-between space-y-0 pb-3 rounded-t-lg transition-colors"
-                    style={{ backgroundColor: column.color ? `${column.color}10` : undefined }}
+                  <Card 
+                    className="h-full bg-white/60 backdrop-blur-sm shadow-sm hover:shadow-lg transition-all hover:scale-[1.01] border-t-4"
+                    style={{ borderTopColor: column.color || '#3b82f6' }}
                   >
-                    <div className="flex items-center gap-2">
-                      {column.color && (
-                        <div 
-                          className="w-3 h-3 rounded-full animate-pulse" 
-                          style={{ backgroundColor: column.color }}
-                        />
-                      )}
-                      <CardTitle className="text-lg font-semibold">{column.title}</CardTitle>
-                    </div>
-                    {isAdmin && (
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleOpenCreateDialog(column)}
-                          className="h-8 w-8 p-0 hover:scale-110 transition-transform"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:scale-110 transition-transform">
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem onClick={() => setColorPickerColumn(column.id)}>
-                              <Palette className="w-4 h-4 mr-2" />
-                              Change Color
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDeleteColumn(column.id)} className="text-red-600">
-                              <Trash className="w-4 h-4 mr-2" />
-                              Delete Column
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                    <CardHeader 
+                      className="flex flex-row items-center justify-between space-y-0 pb-3 rounded-t-lg transition-colors"
+                      style={{ backgroundColor: column.color ? `${column.color}10` : undefined }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {column.color && (
+                          <div 
+                            className="w-3 h-3 rounded-full animate-pulse" 
+                            style={{ backgroundColor: column.color }}
+                          />
+                        )}
+                        <CardTitle className="text-lg font-semibold">{column.title}</CardTitle>
                       </div>
-                    )}
-                  </CardHeader>
-                  <CardContent>
-                    <Droppable droppableId={column.id}>
-                      {(provided, snapshot) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.droppableProps}
-                          className={`space-y-3 min-h-[200px] rounded-lg p-3 transition-all duration-300 ${
-                            snapshot.isDraggingOver 
-                              ? 'bg-gradient-to-b from-primary/10 to-primary/5 ring-2 ring-primary/30 scale-[1.02]' 
-                              : 'bg-transparent'
-                          }`}
-                        >
-                          {filterTasks(column.tasks || [])?.sort((a: any, b: any) => a.position - b.position).map((task: any, index: number) => (
-                            <Draggable key={task.id} draggableId={task.id} index={index}>
-                              {(provided, snapshot) => (
-                                <div
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  {...provided.dragHandleProps}
-                                >
-                                  <TaskCard 
-                                    task={task} 
-                                    isAdmin={isAdmin}
-                                    users={users}
-                                    board={board}
-                                    isDragging={snapshot.isDragging}
-                                    onUpdate={async () => {
-                                      const { data: updatedColumns } = await supabase
-                                        .from('columns')
-                                        .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
-                                        .eq('board_id', board.id)
-                                        .order('position')
-                                      if (updatedColumns) setColumns(updatedColumns)
-                                    }}
-                                  />
-                                </div>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
+                      {isAdmin && (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleOpenCreateDialog(column)}
+                            className="h-8 w-8 p-0 hover:scale-110 transition-transform"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:scale-110 transition-transform">
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuItem onClick={() => setColorPickerColumn(column.id)}>
+                                <Palette className="w-4 h-4 mr-2" />
+                                Change Color
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDeleteColumn(column.id)} className="text-red-600">
+                                <Trash className="w-4 h-4 mr-2" />
+                                Delete Column
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       )}
-                    </Droppable>
-                  </CardContent>
-                </Card>
-              </div>
+                    </CardHeader>
+                    <CardContent>
+                      <Droppable droppableId={column.id}>
+                        {(provided, snapshot) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            className={`space-y-3 min-h-[200px] rounded-lg p-3 transition-all duration-300 ${
+                              snapshot.isDraggingOver 
+                                ? 'bg-gradient-to-b from-primary/10 to-primary/5 ring-2 ring-primary/30 scale-[1.02]' 
+                                : 'bg-transparent'
+                            }`}
+                          >
+                            {filterTasks(column.tasks || [])?.sort((a: any, b: any) => a.position - b.position).map((task: any, index: number) => (
+                              <Draggable key={task.id} draggableId={task.id} index={index}>
+                                {(provided, snapshot) => (
+                                  <div
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                  >
+                                    <TaskCard 
+                                      task={task} 
+                                      isAdmin={isAdmin}
+                                      users={users}
+                                      board={board}
+                                      isDragging={snapshot.isDragging}
+                                      onUpdate={async () => {
+                                        const { data: updatedColumns } = await supabase
+                                          .from('columns')
+                                          .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
+                                          .eq('board_id', board.id)
+                                          .order('position')
+                                        if (updatedColumns) setColumns(updatedColumns)
+                                      }}
+                                    />
+                                  </div>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </div>
+                        )}
+                      </Droppable>
+                    </CardContent>
+                  </Card>
+                </div>
             ))}
           </div>
         </DragDropContext>
+        ) : (
+          /* List View */
+          <div className="space-y-6">
+            {columns.map((column) => {
+              const columnTasks = filterTasks(column.tasks || [])
+              if (columnTasks.length === 0) return null
+              
+              return (
+                <Card key={column.id} className="shadow-sm">
+                  <CardHeader className="pb-3" style={{ backgroundColor: column.color ? `${column.color}10` : undefined }}>
+                    <div className="flex items-center gap-3">
+                      {column.color && (
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: column.color }} />
+                      )}
+                      <CardTitle>{column.title}</CardTitle>
+                      <Badge variant="secondary">{columnTasks.length}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Task</th>
+                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Assigned</th>
+                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Priority</th>
+                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Due Date</th>
+                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Tags</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {columnTasks.sort((a: any, b: any) => a.position - b.position).map((task: any) => {
+                            const assignedUser = users.find(u => u.id === task.assigned_to)
+                            return (
+                              <tr 
+                                key={task.id} 
+                                className="border-b hover:bg-accent/50 cursor-pointer transition-colors"
+                                onClick={() => {
+                                  /* Open task detail modal */
+                                }}
+                              >
+                                <td className="py-3 px-4">
+                                  <div className="space-y-1">
+                                    <div className="font-medium">{task.title}</div>
+                                    {task.description && (
+                                      <div className="text-sm text-muted-foreground line-clamp-1">
+                                        {task.description}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4">
+                                  {assignedUser ? (
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
+                                        {assignedUser.full_name?.[0] || assignedUser.email?.[0]}
+                                      </div>
+                                      <span className="text-sm">{assignedUser.full_name || assignedUser.email}</span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-sm text-muted-foreground">Unassigned</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4">
+                                  <Badge variant={task.priority >= 4 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'}>
+                                    {task.priority}
+                                  </Badge>
+                                </td>
+                                <td className="py-3 px-4">
+                                  {task.due_date ? (
+                                    <div className="flex items-center gap-2 text-sm">
+                                      <Calendar className="w-4 h-4" />
+                                      {new Date(task.due_date).toLocaleDateString()}
+                                    </div>
+                                  ) : (
+                                    <span className="text-sm text-muted-foreground">No date</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className="flex gap-1 flex-wrap">
+                                    {task.task_tags?.map((tt: any) => (
+                                      <Badge 
+                                        key={tt.tag.id} 
+                                        variant="outline"
+                                        style={{ 
+                                          borderColor: tt.tag.color,
+                                          color: tt.tag.color 
+                                        }}
+                                      >
+                                        {tt.tag.name}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
       </main>
 
       {isAdmin && (

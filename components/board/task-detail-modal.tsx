@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send } from 'lucide-react'
+import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download } from 'lucide-react'
 import { format } from 'date-fns'
 import { sendTaskAssignmentEmail } from '@/lib/email'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -42,6 +42,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const [status, setStatus] = useState('todo')
   const [dueDate, setDueDate] = useState<Date>()
   const [assignedTo, setAssignedTo] = useState('')
+  const [assignees, setAssignees] = useState<string[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#3b82f6')
   const [attachments, setAttachments] = useState<any[]>([])
@@ -57,11 +58,22 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       loadAttachments()
       loadComments()
       loadCurrentUser()
+      loadAssignees()
       if (isAdmin) {
         loadUsers()
       }
     }
   }, [open, taskId])
+
+  const loadAssignees = async () => {
+    const { data } = await supabase
+      .from('task_assignees')
+      .select('user_id')
+      .eq('task_id', taskId)
+    if (data) {
+      setAssignees(data.map(a => a.user_id))
+    }
+  }
 
   const loadCurrentUser = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -137,16 +149,24 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     const previousAssignedTo = task?.assigned_to
     const assignmentChanged = previousAssignedTo !== (assignedTo || null)
     
+    // Auto-generate entry_date when task is marked as complete
+    const updateData: any = {
+      title: title.trim(),
+      description: description.trim() || null,
+      priority,
+      status,
+      due_date: dueDate?.toISOString() || null,
+      assigned_to: assignedTo || null,
+    }
+    
+    // If status changed to 'done', set entry_date to now
+    if (status === 'done' && task?.status !== 'done') {
+      updateData.entry_date = new Date().toISOString()
+    }
+    
     const { error } = await supabase
       .from('tasks')
-      .update({
-        title: title.trim(),
-        description: description.trim() || null,
-        priority,
-        status,
-        due_date: dueDate?.toISOString() || null,
-        assigned_to: assignedTo || null,
-      })
+      .update(updateData)
       .eq('id', taskId)
 
     if (!error) {
@@ -280,6 +300,41 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     loadAttachments()
   }
 
+  const handleToggleAssignee = async (userId: string) => {
+    const isAssigned = assignees.includes(userId)
+    
+    if (isAssigned) {
+      // Remove assignee
+      await supabase
+        .from('task_assignees')
+        .delete()
+        .eq('task_id', taskId)
+        .eq('user_id', userId)
+      setAssignees(assignees.filter(id => id !== userId))
+    } else {
+      // Add assignee
+      await supabase
+        .from('task_assignees')
+        .insert({ task_id: taskId, user_id: userId })
+      setAssignees([...assignees, userId])
+      
+      // Send email notification
+      const assignedUser = users.find(u => u.id === userId)
+      if (assignedUser) {
+        await sendTaskAssignmentEmail(
+          assignedUser.email,
+          assignedUser.full_name || assignedUser.email,
+          title,
+          description,
+          priority,
+          dueDate?.toISOString() || null,
+          board?.title || 'Project Board',
+          currentUser?.full_name || currentUser?.email || 'Admin'
+        )
+      }
+    }
+  }
+
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this task?')) return
 
@@ -324,15 +379,17 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
           <div className="grid grid-cols-2 gap-4">
             {/* Priority */}
             <div className="space-y-2">
-              <Label>Priority</Label>
-              <Select value={priority} onValueChange={setPriority} disabled={!isAdmin}>
+              <label className="text-sm font-medium">Priority (1-5)</label>
+              <Select value={priority?.toString() || '3'} onValueChange={(val) => setPriority(parseInt(val))}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="1">1 - Lowest</SelectItem>
+                  <SelectItem value="2">2 - Low</SelectItem>
+                  <SelectItem value="3">3 - Medium</SelectItem>
+                  <SelectItem value="4">4 - High</SelectItem>
+                  <SelectItem value="5">5 - Highest</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -353,42 +410,105 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             </div>
           </div>
 
-          {/* Due Date */}
+          {/* Due Date (Only creator can edit) */}
           <div className="space-y-2">
-            <Label>Due Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-start text-left bg-transparent" disabled={!isAdmin}>
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dueDate ? format(dueDate, 'PPP') : 'Pick a date'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar mode="single" selected={dueDate} onSelect={setDueDate} initialFocus />
-              </PopoverContent>
-            </Popover>
+            <Label className="flex items-center gap-2">
+              <CalendarIcon className="w-4 h-4" />
+              Due Date {task?.created_by !== currentUser?.id && <span className="text-xs text-muted-foreground">(Creator only)</span>}
+            </Label>
+            {task?.created_by === currentUser?.id || isAdmin ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dueDate ? format(dueDate, 'PPP') : 'Pick a date'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dueDate}
+                    onSelect={setDueDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <div className="w-full p-2 border rounded-md bg-muted text-muted-foreground">
+                {dueDate ? format(dueDate, 'PPP') : 'No due date set'}
+              </div>
+            )}
           </div>
 
-          {/* Assigned User */}
-          {isAdmin && (
+          {/* Entry Date (Auto-generated, read-only) */}
+          {task?.entry_date && (
             <div className="space-y-2">
+              <Label className="flex items-center gap-2 text-muted-foreground">
+                <CalendarIcon className="w-4 h-4" />
+                Entry Date (Completed)
+              </Label>
+              <div className="w-full p-2 border rounded-md bg-green-50 text-green-700 font-medium">
+                {new Date(task.entry_date).toLocaleString()}
+              </div>
+            </div>
+          )}
+
+          {/* Assigned Users - Multiple Selection */}
+          {isAdmin && (
+            <div className="space-y-3">
               <Label className="flex items-center gap-2">
                 <User className="w-4 h-4" />
-                Assigned To
+                Assigned To ({assignees.length} {assignees.length === 1 ? 'person' : 'people'})
               </Label>
-              <Select value={assignedTo} onValueChange={setAssignedTo}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select user" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {users.map(user => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.full_name} ({user.email})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              
+              {/* Display assigned users */}
+              <div className="flex flex-wrap gap-2">
+                {assignees.length === 0 ? (
+                  <Badge variant="outline" className="text-muted-foreground">No assignees</Badge>
+                ) : (
+                  assignees.map(userId => {
+                    const user = users.find(u => u.id === userId)
+                    return (
+                      <Badge key={userId} className="gap-1 pr-1">
+                        {user?.full_name || user?.email || 'Unknown'}
+                        <button
+                          onClick={() => handleToggleAssignee(userId)}
+                          className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    )
+                  })
+                )}
+              </div>
+
+              {/* Add more assignees */}
+              <div className="border rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto">
+                <p className="text-xs text-muted-foreground font-medium">Click to add/remove users:</p>
+                {users.map(user => {
+                  const isAssigned = assignees.includes(user.id)
+                  return (
+                    <div
+                      key={user.id}
+                      onClick={() => handleToggleAssignee(user.id)}
+                      className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
+                        isAssigned ? 'bg-primary/10 border border-primary' : 'hover:bg-accent'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                          isAssigned ? 'bg-primary border-primary' : 'border-muted-foreground'
+                        }`}>
+                          {isAssigned && <span className="text-primary-foreground text-xs">✓</span>}
+                        </div>
+                        <span className="text-sm font-medium">{user.full_name}</span>
+                        <span className="text-xs text-muted-foreground">({user.email})</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
@@ -504,9 +624,19 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   placeholder="Write a comment..."
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddComment()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleAddComment()
+                    }
+                  }}
                 />
-                <Button onClick={handleAddComment} size="icon" disabled={!newComment.trim()}>
+                <Button 
+                  onClick={handleAddComment} 
+                  size="icon" 
+                  disabled={!newComment.trim()}
+                  type="button"
+                >
                   <Send className="w-4 h-4" />
                 </Button>
               </div>
@@ -514,41 +644,77 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
             <TabsContent value="attachments" className="space-y-4">
               <ScrollArea className="h-[300px] pr-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-3">
                   {attachments.length === 0 ? (
-                    <p className="col-span-2 text-sm text-muted-foreground text-center py-8">No attachments</p>
+                    <p className="text-sm text-muted-foreground text-center py-8">No attachments</p>
                   ) : (
-                    attachments.map((attachment) => (
-                      <div key={attachment.id} className="relative group border rounded-lg overflow-hidden">
-                        {attachment.file_type?.startsWith('image/') ? (
-                          <img
-                            src={attachment.file_data || "/placeholder.svg"}
-                            alt={attachment.file_name}
-                            className="w-full h-40 object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-40 bg-muted flex items-center justify-center">
-                            <ImageIcon className="w-12 h-12 text-muted-foreground" />
+                    attachments.map((attachment) => {
+                      const isImage = attachment.file_type?.startsWith('image/')
+                      const isPDF = attachment.file_type === 'application/pdf'
+                      const isVideo = attachment.file_type?.startsWith('video/')
+                      const isDoc = attachment.file_type?.includes('document') || attachment.file_type?.includes('word') || attachment.file_type?.includes('sheet') || attachment.file_type?.includes('excel')
+                      
+                      const getFileIcon = () => {
+                        if (isPDF) return <FileText className="w-8 h-8 text-red-500" />
+                        if (isVideo) return <Video className="w-8 h-8 text-purple-500" />
+                        if (isDoc) return <FileIcon className="w-8 h-8 text-blue-500" />
+                        return <FileIcon className="w-8 h-8 text-gray-500" />
+                      }
+                      
+                      return (
+                        <div key={attachment.id} className="relative group border rounded-lg p-3 hover:bg-accent/50 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div className="flex-shrink-0">
+                              {isImage ? (
+                                <img
+                                  src={attachment.file_data || "/placeholder.svg"}
+                                  alt={attachment.file_name}
+                                  className="w-16 h-16 object-cover rounded"
+                                />
+                              ) : (
+                                <div className="w-16 h-16 bg-muted rounded flex items-center justify-center">
+                                  {getFileIcon()}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{attachment.file_name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {(attachment.file_size / 1024).toFixed(1)} KB
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(attachment.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8 bg-transparent"
+                                onClick={() => {
+                                  const link = document.createElement('a')
+                                  link.href = attachment.file_data
+                                  link.download = attachment.file_name
+                                  link.click()
+                                }}
+                              >
+                                <Download className="w-4 h-4" />
+                              </Button>
+                              {isAdmin && (
+                                <Button
+                                  variant="destructive"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleDeleteAttachment(attachment.id)}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
-                        )}
-                        <div className="p-2 bg-background">
-                          <p className="text-xs font-medium truncate">{attachment.file_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {(attachment.file_size / 1024).toFixed(1)} KB
-                          </p>
                         </div>
-                        {isAdmin && (
-                          <Button
-                            variant="destructive"
-                            size="icon"
-                            className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => handleDeleteAttachment(attachment.id)}
-                          >
-                            <X className="w-3 h-3" />
-                          </Button>
-                        )}
-                      </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               </ScrollArea>
@@ -558,7 +724,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   type="file"
                   id="file-upload"
                   className="hidden"
-                  accept="image/*"
+                  accept="*/*"
                   onChange={handleFileUpload}
                   disabled={uploading}
                 />
@@ -569,8 +735,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   disabled={uploading}
                 >
                   <Upload className="w-4 h-4" />
-                  {uploading ? 'Uploading...' : 'Upload Image'}
+                  {uploading ? 'Uploading...' : 'Upload File'}
                 </Button>
+                <p className="text-xs text-muted-foreground text-center mt-2">
+                  Images, PDFs, Videos, Documents, Sheets - All file types supported
+                </p>
               </div>
             </TabsContent>
           </Tabs>

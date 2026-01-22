@@ -2,7 +2,7 @@
 
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, User, MoreVertical, Tag } from 'lucide-react'
+import { Calendar, User, MoreVertical, Tag, Clock, Repeat } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -13,6 +13,14 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
+
+const priorityColors = {
+  1: 'border-blue-500 text-blue-500 bg-blue-50',
+  2: 'border-green-500 text-green-500 bg-green-50',
+  3: 'border-orange-500 text-orange-500 bg-orange-50',
+  4: 'border-red-500 text-red-500 bg-red-50',
+  5: 'border-purple-500 text-purple-500 bg-purple-50',
+};
 
 interface TaskCardProps {
   task: any
@@ -36,14 +44,35 @@ export default function TaskCard({ task, isAdmin, users, board, isDragging, onUp
     }
   }
 
-  const priorityColors = {
-    high: 'border-red-500 text-red-500 bg-red-50',
-    medium: 'border-orange-500 text-orange-500 bg-orange-50',
-    low: 'border-blue-500 text-blue-500 bg-blue-50',
+  const getPriorityColor = (priority: number) => {
+    if (priority >= 4) return 'border-red-500 text-red-500 bg-red-50'
+    if (priority === 3) return 'border-orange-500 text-orange-500 bg-orange-50'
+    return 'border-blue-500 text-blue-500 bg-blue-50'
   }
 
   // Check if task is overdue
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done'
+  
+  // Calculate days remaining
+  const getDaysRemaining = () => {
+    if (!task.due_date) return null
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const dueDate = new Date(task.due_date)
+    dueDate.setHours(0, 0, 0, 0)
+    const diffTime = dueDate.getTime() - today.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays
+  }
+  
+  const daysRemaining = getDaysRemaining()
+  const getCountdownColor = () => {
+    if (daysRemaining === null) return ''
+    if (daysRemaining < 0) return 'text-red-600 bg-red-50 border-red-200'
+    if (daysRemaining === 0) return 'text-orange-600 bg-orange-50 border-orange-200'
+    if (daysRemaining <= 3) return 'text-yellow-600 bg-yellow-50 border-yellow-200'
+    return 'text-green-600 bg-green-50 border-green-200'
+  }
 
   return (
     <>
@@ -101,11 +130,31 @@ export default function TaskCard({ task, isAdmin, users, board, isDragging, onUp
 
           <div className="flex flex-wrap gap-2">
             {task.priority && (
-              <Badge variant="outline" className={`text-xs ${priorityColors[task.priority as keyof typeof priorityColors]}`}>
-                {task.priority}
+              <Badge variant="outline" className={`text-xs ${getPriorityColor(task.priority)}`}>
+                Priority: {task.priority}
+              </Badge>
+            )}
+            {task.is_recurring && (
+              <Badge variant="outline" className="text-xs bg-purple-50 border-purple-200 text-purple-600 gap-1">
+                <Repeat className="w-3 h-3" />
+                {task.recurrence_pattern}
               </Badge>
             )}
           </div>
+
+          {/* Countdown Clock */}
+          {daysRemaining !== null && (
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-md border font-semibold text-sm ${getCountdownColor()}`}>
+              <Clock className="w-4 h-4" />
+              <span>
+                {daysRemaining < 0 
+                  ? `${Math.abs(daysRemaining)} days overdue` 
+                  : daysRemaining === 0 
+                  ? 'Due today!' 
+                  : `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} remaining`}
+              </span>
+            </div>
+          )}
 
           <div className="space-y-1 pt-2 border-t">
             {task.assigned_to && (

@@ -122,4 +122,35 @@
   body {
     @apply bg-background text-foreground;
   }
+  
+  /* Mobile optimizations */
+  @media (max-width: 768px) {
+    html {
+      font-size: 14px;
+    }
+    
+    /* Improve touch targets */
+    button, a, [role="button"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    
+    /* Better mobile scrolling */
+    body {
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Optimize modal and dialog sizes */
+    [role="dialog"] {
+      max-width: 95vw !important;
+      max-height: 90vh !important;
+    }
+  }
+  
+  /* Tablet optimizations */
+  @media (min-width: 768px) and (max-width: 1024px) {
+    html {
+      font-size: 15px;
+    }
+  }
 }

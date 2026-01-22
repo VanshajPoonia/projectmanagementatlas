@@ -3,13 +3,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import EnhancedUserManagement from './enhanced-user-management'
 import BoardManagement from './board-management'
 import TaskOverview from './task-overview'
 import ChatPanel from '../chat/chat-panel'
+import CalendarView from '../calendar/calendar-view'
+import ReportsView from '../reports/reports-view'
 import UserManagement from './user-management' // Added import for UserManagement
 import { gsap } from 'gsap'
 
@@ -75,10 +77,18 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
       <main className="container mx-auto px-4 py-8">
         <div ref={tabsRef}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full max-w-2xl grid-cols-4 h-12">
+            <TabsList className="grid w-full max-w-4xl grid-cols-6 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <LayoutDashboard className="w-4 h-4" />
                 <span className="hidden sm:inline">Overview</span>
+              </TabsTrigger>
+              <TabsTrigger value="calendar" className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
+                <span className="hidden sm:inline">Calendar</span>
+              </TabsTrigger>
+              <TabsTrigger value="reports" className="flex items-center gap-2">
+                <FileBarChart className="w-4 h-4" />
+                <span className="hidden sm:inline">Reports</span>
               </TabsTrigger>
               <TabsTrigger value="users" className="flex items-center gap-2">
                 <Users className="w-4 h-4" />
@@ -96,6 +106,14 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
 
             <TabsContent value="overview" className="space-y-6">
               <TaskOverview tasks={tasks} users={users} />
+            </TabsContent>
+
+            <TabsContent value="calendar">
+              <CalendarView tasks={tasks} users={users} />
+            </TabsContent>
+
+            <TabsContent value="reports">
+              <ReportsView tasks={tasks} users={users} boards={boards} />
             </TabsContent>
 
             <TabsContent value="users">

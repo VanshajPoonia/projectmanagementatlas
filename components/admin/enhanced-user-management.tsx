@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { UserPlus, Mail, Calendar, Users, Trash2, Eye, EyeOff, Edit, Shield } from 'lucide-react'
+import { UserPlus, Mail, Calendar, Users, Trash2, Eye, EyeOff, Edit, Shield, ToggleLeft, ToggleRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
@@ -34,6 +34,16 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
   const [success, setSuccess] = useState<string | null>(null)
   const supabase = createClient()
 
+  const refreshUsers = async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (data) {
+      setUsers(data)
+    }
+  }
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -58,10 +68,9 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
       setFullName('')
       setPassword('')
       setRole('user')
+      setOpen(false)
       
-      setTimeout(() => {
-        window.location.reload()
-      }, 2000)
+      await refreshUsers()
     } catch (err: any) {
       setError(err.message || 'Failed to create user')
     } finally {
@@ -86,9 +95,25 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
       }
 
       setSuccess(`User ${userName} deleted successfully`)
-      setTimeout(() => window.location.reload(), 1500)
+      await refreshUsers()
     } catch (err: any) {
       setError(err.message || 'Failed to delete user')
+    }
+  }
+
+  const handleToggleActive = async (userId: string, currentStatus: boolean, userName: string) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_active: !currentStatus })
+        .eq('id', userId)
+
+      if (error) throw error
+
+      setSuccess(`User ${userName} ${!currentStatus ? 'activated' : 'deactivated'} successfully`)
+      await refreshUsers()
+    } catch (err: any) {
+      setError(err.message || 'Failed to update user status')
     }
   }
 
@@ -115,7 +140,7 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
 
       setSuccess('User updated successfully')
       setEditOpen(false)
-      setTimeout(() => window.location.reload(), 1500)
+      await refreshUsers()
     } catch (err: any) {
       setError(err.message || 'Failed to update user')
     } finally {
@@ -237,34 +262,50 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Calendar className="w-4 h-4" />
-                Joined {new Date(user.created_at).toLocaleDateString()}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Calendar className="w-4 h-4" />
+                  Joined {new Date(user.created_at).toLocaleDateString()}
+                </div>
+                <Badge variant={user.is_active === false ? 'destructive' : 'default'} className="text-xs">
+                  {user.is_active === false ? 'Inactive' : 'Active'}
+                </Badge>
               </div>
               
               {user.id !== currentUserId && (
-                <div className="flex gap-2">
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 gap-2 bg-transparent"
+                      onClick={() => {
+                        setSelectedUser(user)
+                        setPassword('')
+                        setEditOpen(true)
+                      }}
+                    >
+                      <Edit className="w-3 h-3" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="flex-1 gap-2"
+                      onClick={() => handleDeleteUser(user.id, user.full_name || user.email)}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Delete
+                    </Button>
+                  </div>
                   <Button
-                    variant="outline"
+                    variant={user.is_active === false ? 'default' : 'outline'}
                     size="sm"
-                    className="flex-1 gap-2 bg-transparent"
-                    onClick={() => {
-                      setSelectedUser(user)
-                      setPassword('')
-                      setEditOpen(true)
-                    }}
+                    className="w-full gap-2"
+                    onClick={() => handleToggleActive(user.id, user.is_active !== false, user.full_name || user.email)}
                   >
-                    <Edit className="w-3 h-3" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="flex-1 gap-2"
-                    onClick={() => handleDeleteUser(user.id, user.full_name || user.email)}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Delete
+                    {user.is_active === false ? <ToggleRight className="w-3 h-3" /> : <ToggleLeft className="w-3 h-3" />}
+                    {user.is_active === false ? 'Activate' : 'Deactivate'}
                   </Button>
                 </div>
               )}
