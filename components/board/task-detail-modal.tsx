@@ -1,5 +1,7 @@
 'use client'
 
+import React from "react"
+
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -11,9 +13,12 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { X, Calendar as CalendarIcon, Tag, User, Trash2 } from 'lucide-react'
+import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send } from 'lucide-react'
 import { format } from 'date-fns'
 import { sendTaskAssignmentEmail } from '@/lib/email'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 interface TaskDetailModalProps {
   board?: any
@@ -39,16 +44,54 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const [assignedTo, setAssignedTo] = useState('')
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#3b82f6')
+  const [attachments, setAttachments] = useState<any[]>([])
+  const [comments, setComments] = useState<any[]>([])
+  const [newComment, setNewComment] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [currentUser, setCurrentUser] = useState<any>(null)
 
   useEffect(() => {
     if (open && taskId) {
       loadTaskDetails()
       loadAllTags()
+      loadAttachments()
+      loadComments()
+      loadCurrentUser()
       if (isAdmin) {
         loadUsers()
       }
     }
   }, [open, taskId])
+
+  const loadCurrentUser = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+      setCurrentUser(profile)
+    }
+  }
+
+  const loadAttachments = async () => {
+    const { data } = await supabase
+      .from('task_attachments')
+      .select('*, uploaded_by:profiles(full_name, email)')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: false })
+    if (data) setAttachments(data)
+  }
+
+  const loadComments = async () => {
+    const { data } = await supabase
+      .from('task_comments')
+      .select('*, author:profiles(full_name, email)')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: true })
+    if (data) setComments(data)
+  }
 
   const loadTaskDetails = async () => {
     const { data: taskData } = await supabase
@@ -173,6 +216,68 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       setNewTagName('')
       setNewTagColor('#3b82f6')
     }
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !currentUser) return
+
+    setUploading(true)
+    
+    try {
+      // Convert file to base64 for storage
+      const reader = new FileReader()
+      reader.onloadend = async () => {
+        const base64 = reader.result as string
+        
+        const { error } = await supabase
+          .from('task_attachments')
+          .insert({
+            task_id: taskId,
+            file_name: file.name,
+            file_type: file.type,
+            file_data: base64,
+            file_size: file.size,
+            uploaded_by: currentUser.id
+          })
+
+        if (!error) {
+          loadAttachments()
+        }
+        setUploading(false)
+      }
+      reader.readAsDataURL(file)
+    } catch (err) {
+      setUploading(false)
+    }
+  }
+
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !currentUser) return
+
+    const { error } = await supabase
+      .from('task_comments')
+      .insert({
+        task_id: taskId,
+        comment: newComment.trim(),
+        author_id: currentUser.id
+      })
+
+    if (!error) {
+      setNewComment('')
+      loadComments()
+    }
+  }
+
+  const handleDeleteAttachment = async (attachmentId: string) => {
+    if (!confirm('Delete this attachment?')) return
+    
+    await supabase
+      .from('task_attachments')
+      .delete()
+      .eq('id', attachmentId)
+    
+    loadAttachments()
   }
 
   const handleDelete = async () => {
@@ -350,6 +455,125 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               </>
             )}
           </div>
+
+          {/* Attachments and Comments */}
+          <Tabs defaultValue="comments" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="comments" className="gap-2">
+                <MessageSquare className="w-4 h-4" />
+                Comments ({comments.length})
+              </TabsTrigger>
+              <TabsTrigger value="attachments" className="gap-2">
+                <ImageIcon className="w-4 h-4" />
+                Attachments ({attachments.length})
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="comments" className="space-y-4">
+              <ScrollArea className="h-[300px] pr-4">
+                <div className="space-y-4">
+                  {comments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">No comments yet</p>
+                  ) : (
+                    comments.map((comment) => (
+                      <div key={comment.id} className="flex gap-3 p-3 bg-muted/50 rounded-lg">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback>
+                            {comment.author?.full_name?.[0] || comment.author?.email?.[0] || '?'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">
+                              {comment.author?.full_name || comment.author?.email}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(comment.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-sm">{comment.comment}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+
+              <div className="flex gap-2">
+                <Input
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Write a comment..."
+                  onKeyPress={(e) => e.key === 'Enter' && handleAddComment()}
+                />
+                <Button onClick={handleAddComment} size="icon" disabled={!newComment.trim()}>
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="attachments" className="space-y-4">
+              <ScrollArea className="h-[300px] pr-4">
+                <div className="grid grid-cols-2 gap-4">
+                  {attachments.length === 0 ? (
+                    <p className="col-span-2 text-sm text-muted-foreground text-center py-8">No attachments</p>
+                  ) : (
+                    attachments.map((attachment) => (
+                      <div key={attachment.id} className="relative group border rounded-lg overflow-hidden">
+                        {attachment.file_type?.startsWith('image/') ? (
+                          <img
+                            src={attachment.file_data || "/placeholder.svg"}
+                            alt={attachment.file_name}
+                            className="w-full h-40 object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-40 bg-muted flex items-center justify-center">
+                            <ImageIcon className="w-12 h-12 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="p-2 bg-background">
+                          <p className="text-xs font-medium truncate">{attachment.file_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {(attachment.file_size / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
+                        {isAdmin && (
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => handleDeleteAttachment(attachment.id)}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+
+              <div>
+                <input
+                  type="file"
+                  id="file-upload"
+                  className="hidden"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  disabled={uploading}
+                />
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 bg-transparent"
+                  onClick={() => document.getElementById('file-upload')?.click()}
+                  disabled={uploading}
+                >
+                  <Upload className="w-4 h-4" />
+                  {uploading ? 'Uploading...' : 'Upload Image'}
+                </Button>
+              </div>
+            </TabsContent>
+          </Tabs>
 
           {/* Actions */}
           <div className="flex justify-between pt-4">

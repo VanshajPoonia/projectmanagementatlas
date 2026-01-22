@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,18 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function SignupPage() {
+  const router = useRouter()
+
+  // Redirect to login - signup is disabled
+  useEffect(() => {
+    router.push('/login')
+  }, [router])
+
+  return null
+
+  // Signup page hidden - kept for future use
+  // Original signup implementation preserved below
+  /*
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
@@ -157,4 +169,5 @@ export default function SignupPage() {
       </Card>
     </div>
   )
+  */
 }

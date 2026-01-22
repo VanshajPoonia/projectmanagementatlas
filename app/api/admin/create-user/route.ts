@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
   try {
-    const { email, password, fullName } = await request.json()
+    const { email, password, fullName, role = 'user' } = await request.json()
 
     // Create Supabase admin client
     const supabaseAdmin = createClient(
@@ -29,6 +29,16 @@ export async function POST(request: Request) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    // Update profile with role
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .update({ full_name: fullName, role })
+      .eq('id', data.user.id)
+
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 400 })
     }
 
     return NextResponse.json({ success: true, user: data.user })

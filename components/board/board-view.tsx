@@ -4,12 +4,14 @@ import { useState, useEffect, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import TaskCard from './task-card'
 import CreateTaskDialog from './create-task-dialog'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import { gsap } from 'gsap'
 import { 
   DropdownMenu, 
@@ -44,6 +46,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [boardTitle, setBoardTitle] = useState(board.title)
   const [boardDescription, setBoardDescription] = useState(board.description || '')
   const [colorPickerColumn, setColorPickerColumn] = useState<string | null>(null)
+  const [filterUser, setFilterUser] = useState<string>('all')
+  const [filterPriority, setFilterPriority] = useState<string>('all')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
   const columnsRef = useRef<(HTMLDivElement | null)[]>([])
   const headerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
@@ -219,6 +225,46 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     setColorPickerColumn(null)
   }
 
+  const filterTasks = (tasks: any[]) => {
+    if (!tasks) return []
+    
+    return tasks.filter(task => {
+      // Filter by user
+      if (filterUser !== 'all' && task.assigned_to !== filterUser) {
+        return false
+      }
+      
+      // Filter by priority
+      if (filterPriority !== 'all' && task.priority !== filterPriority) {
+        return false
+      }
+      
+      // Filter by search term
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase()
+        const matchesTitle = task.title?.toLowerCase().includes(searchLower)
+        const matchesDescription = task.description?.toLowerCase().includes(searchLower)
+        if (!matchesTitle && !matchesDescription) {
+          return false
+        }
+      }
+      
+      return true
+    })
+  }
+
+  const activeFiltersCount = [
+    filterUser !== 'all',
+    filterPriority !== 'all',
+    searchTerm !== ''
+  ].filter(Boolean).length
+
+  const clearFilters = () => {
+    setFilterUser('all')
+    setFilterPriority('all')
+    setSearchTerm('')
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       <header ref={headerRef} className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
@@ -269,13 +315,85 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
               )}
             </div>
             
-            {isAdmin && (
-              <Button onClick={() => setNewColumnDialogOpen(true)} size="sm" className="gap-2">
-                <Plus className="w-4 h-4" />
-                Add Column
+            <div className="flex items-center gap-2">
+              <Button 
+                onClick={() => setShowFilters(!showFilters)} 
+                variant={activeFiltersCount > 0 ? "default" : "outline"}
+                size="sm" 
+                className="gap-2 relative"
+              >
+                <Filter className="w-4 h-4" />
+                Filters
+                {activeFiltersCount > 0 && (
+                  <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center">
+                    {activeFiltersCount}
+                  </Badge>
+                )}
               </Button>
-            )}
+              {isAdmin && (
+                <Button onClick={() => setNewColumnDialogOpen(true)} size="sm" className="gap-2">
+                  <Plus className="w-4 h-4" />
+                  Add Column
+                </Button>
+              )}
+            </div>
           </div>
+
+          {/* Filter Bar */}
+          {showFilters && (
+            <div className="border-t pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Filter Tasks</h3>
+                {activeFiltersCount > 0 && (
+                  <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 gap-2">
+                    <X className="w-3 h-3" />
+                    Clear all
+                  </Button>
+                )}
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Search</label>
+                  <Input
+                    placeholder="Search tasks..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Assigned to</label>
+                  <Select value={filterUser} onValueChange={setFilterUser}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Users</SelectItem>
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.full_name || user.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Priority</label>
+                  <Select value={filterPriority} onValueChange={setFilterPriority}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Priorities</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -347,7 +465,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                               : 'bg-transparent'
                           }`}
                         >
-                          {column.tasks?.sort((a: any, b: any) => a.position - b.position).map((task: any, index: number) => (
+                          {filterTasks(column.tasks || [])?.sort((a: any, b: any) => a.position - b.position).map((task: any, index: number) => (
                             <Draggable key={task.id} draggableId={task.id} index={index}>
                               {(provided, snapshot) => (
                                 <div

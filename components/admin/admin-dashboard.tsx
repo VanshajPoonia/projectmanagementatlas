@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button'
 import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import UserManagement from './user-management'
+import EnhancedUserManagement from './enhanced-user-management'
 import BoardManagement from './board-management'
 import TaskOverview from './task-overview'
 import ChatPanel from '../chat/chat-panel'
+import UserManagement from './user-management' // Added import for UserManagement
 import { gsap } from 'gsap'
 
 interface AdminDashboardProps {
@@ -98,7 +99,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsContent>
 
             <TabsContent value="users">
-              <UserManagement users={users} />
+              <EnhancedUserManagement users={users} currentUserId={user.id} />
             </TabsContent>
 
             <TabsContent value="boards">
@@ -107,8 +108,8 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
 
             <TabsContent value="chat">
               <ChatPanel currentUserId={user.id} isAdmin={true} />
-          </TabsContent>
-        </Tabs>
+            </TabsContent>
+          </Tabs>
         </div>
       </main>
     </div>

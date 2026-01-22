@@ -70,10 +70,7 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-2">
             <Link href="/login">
-              <Button variant="ghost">Sign In</Button>
-            </Link>
-            <Link href="/signup">
-              <Button>Get Started</Button>
+              <Button>Sign In</Button>
             </Link>
           </div>
         </div>
@@ -89,15 +86,10 @@ export default function HomePage() {
             Streamline your team's workflow with intuitive task management, real-time collaboration, and instant notifications
           </p>
           <div className="flex items-center justify-center gap-4 pt-4">
-            <Link href="/signup">
-              <Button size="lg" className="gap-2">
-                Start Free Trial
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </Link>
             <Link href="/login">
-              <Button size="lg" variant="outline">
+              <Button size="lg" className="gap-2">
                 Sign In
+                <ArrowRight className="w-4 h-4" />
               </Button>
             </Link>
           </div>
@@ -192,11 +184,11 @@ export default function HomePage() {
           <CardContent className="p-12 text-center space-y-6">
             <h3 className="text-3xl font-bold">Ready to get started?</h3>
             <p className="text-blue-100 text-lg">
-              Join your team today and start managing projects more effectively
+              Sign in to access your project management dashboard
             </p>
-            <Link href="/signup">
+            <Link href="/login">
               <Button size="lg" variant="secondary" className="gap-2">
-                Create Your Account
+                Sign In to Your Account
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </Link>

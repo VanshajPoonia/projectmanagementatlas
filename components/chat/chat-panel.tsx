@@ -40,14 +40,21 @@ export default function ChatPanel({ currentUserId, isAdmin }: ChatPanelProps) {
           schema: 'public',
           table: 'chat_messages',
         },
-        () => {
+        (payload) => {
+          console.log('[v0] Chat message received:', payload)
           loadMessages()
         }
       )
       .subscribe()
 
+    // Also poll every 3 seconds as fallback
+    const interval = setInterval(() => {
+      loadMessages()
+    }, 3000)
+
     return () => {
       supabase.removeChannel(channel)
+      clearInterval(interval)
     }
   }, [selectedUser])
 
