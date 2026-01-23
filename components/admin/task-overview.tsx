@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ClipboardList, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
+import Link from 'next/link'
 
 interface TaskOverviewProps {
   tasks: any[]
@@ -51,44 +52,48 @@ export default function TaskOverview({ tasks, users }: TaskOverviewProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {tasks.slice(0, 10).map((task) => (
-              <div key={task.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors">
-                <div className="flex-1">
-                  <h4 className="font-medium">{task.title}</h4>
-                  <p className="text-sm text-muted-foreground line-clamp-1">{task.description || 'No description'}</p>
-                  {task.assigned_to && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Assigned to: {task.assigned_to.full_name || task.assigned_to.email}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge 
-                    variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}
-                    className={
-                      task.status === 'done' 
-                        ? 'bg-green-600' 
-                        : task.status === 'in_progress' 
-                        ? 'bg-yellow-600' 
-                        : ''
-                    }
-                  >
-                    {task.status === 'done' ? 'Done' : task.status === 'in_progress' ? 'In Progress' : 'To Do'}
-                  </Badge>
-                  {task.priority && (
-                    <Badge variant="outline" className={
-                      task.priority === 'high' 
-                        ? 'border-red-500 text-red-500' 
-                        : task.priority === 'medium' 
-                        ? 'border-orange-500 text-orange-500' 
-                        : 'border-blue-500 text-blue-500'
-                    }>
-                      {task.priority}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            ))}
+            {tasks.slice(0, 10).map((task) => {
+              const assignedUser = users.find(u => u.id === task.assigned_to)
+              
+              return (
+                <Link key={task.id} href={`/admin/board/${task.board_id}`}>
+                  <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer hover:border-primary">
+                    <div className="flex-1">
+                      <h4 className="font-medium">{task.title}</h4>
+                      <p className="text-sm text-muted-foreground line-clamp-1">{task.description || 'No description'}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Assigned to: {assignedUser?.full_name || assignedUser?.email || 'Unassigned'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge 
+                        variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}
+                        className={
+                          task.status === 'done' 
+                            ? 'bg-green-600' 
+                            : task.status === 'in_progress' 
+                            ? 'bg-yellow-600' 
+                            : ''
+                        }
+                      >
+                        {task.status === 'done' ? 'Done' : task.status === 'in_progress' ? 'In Progress' : 'To Do'}
+                      </Badge>
+                      {task.priority && (
+                        <Badge variant="outline" className={
+                          task.priority >= 4
+                            ? 'border-red-500 text-red-500' 
+                            : task.priority === 3
+                            ? 'border-orange-500 text-orange-500' 
+                            : 'border-blue-500 text-blue-500'
+                        }>
+                          {task.priority}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
             {tasks.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
                 No tasks created yet

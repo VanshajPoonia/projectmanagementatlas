@@ -30,5 +30,16 @@ export default async function DashboardPage() {
     .select('*')
     .order('created_at', { ascending: false })
 
-  return <UserDashboard user={profile} tasks={tasks || []} boards={boards || []} />
+  // Fetch all users for calendar display (to show who's assigned to tasks)
+  const { data: users } = await supabase
+    .from('profiles')
+    .select('id, full_name, email')
+
+  // Flatten board_id from nested structure for proper linking
+  const tasksWithBoardId = tasks?.map(task => ({
+    ...task,
+    board_id: task.column?.board_id
+  })) || []
+
+  return <UserDashboard user={profile} tasks={tasksWithBoardId} boards={boards || []} users={users || []} />
 }

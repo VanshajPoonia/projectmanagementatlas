@@ -10,14 +10,16 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ChatPanel from '../chat/chat-panel'
+import CalendarView from '../calendar/calendar-view'
 
 interface UserDashboardProps {
   user: any
   tasks: any[]
   boards: any[]
+  users: any[]
 }
 
-export default function UserDashboard({ user, tasks, boards }: UserDashboardProps) {
+export default function UserDashboard({ user, tasks, boards, users }: UserDashboardProps) {
   const [activeTab, setActiveTab] = useState('tasks')
   const router = useRouter()
   const supabase = createClient()
@@ -55,10 +57,14 @@ export default function UserDashboard({ user, tasks, boards }: UserDashboardProp
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-2xl grid-cols-3 h-12">
+          <TabsList className="grid w-full max-w-3xl grid-cols-4 h-12">
             <TabsTrigger value="tasks" className="flex items-center gap-2">
               <ClipboardList className="w-4 h-4" />
               <span className="hidden sm:inline">My Tasks</span>
+            </TabsTrigger>
+            <TabsTrigger value="calendar" className="flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
+              <span className="hidden sm:inline">Calendar</span>
             </TabsTrigger>
             <TabsTrigger value="boards" className="flex items-center gap-2">
               <Kanban className="w-4 h-4" />
@@ -182,6 +188,10 @@ export default function UserDashboard({ user, tasks, boards }: UserDashboardProp
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="calendar">
+            <CalendarView tasks={tasks} users={users} />
           </TabsContent>
 
           <TabsContent value="boards">

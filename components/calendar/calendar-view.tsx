@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import Link from 'next/link'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 interface CalendarViewProps {
   tasks: any[]
@@ -14,6 +16,8 @@ interface CalendarViewProps {
 
 export default function CalendarView({ tasks, users }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [expandedTasks, setExpandedTasks] = useState<any[]>([])
   const supabase = createClient()
 
   const daysInMonth = new Date(
@@ -80,6 +84,21 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
     )
   }
 
+  const handleDateClick = (day: number) => {
+    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
+    const dayTasks = getTasksForDate(day)
+    
+    if (dayTasks.length > 0) {
+      setSelectedDate(date)
+      setExpandedTasks(dayTasks)
+    }
+  }
+
+  const closeDialog = () => {
+    setSelectedDate(null)
+    setExpandedTasks([])
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -136,9 +155,10 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
             return (
               <div
                 key={day}
+                onClick={() => handleDateClick(day)}
                 className={`aspect-square border rounded-lg p-2 ${
                   today ? 'bg-primary/10 border-primary' : 'hover:bg-accent'
-                } transition-colors`}
+                } transition-colors ${dayTasks.length > 0 ? 'cursor-pointer' : ''}`}
               >
                 <div className={`text-sm font-medium mb-1 ${today ? 'text-primary' : ''}`}>
                   {day}
@@ -146,12 +166,12 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
                 <div className="space-y-1">
                   {dayTasks.slice(0, 3).map(task => {
                     const assignedUser = users.find(u => u.id === task.assigned_to)
-                    const color = task.assigned_to ? getUserColor(task.assigned_to) : '#64748b'
+                    const color = task.assigned_to ? getUserColor(task.assigned_to) : '#475569'
                     
                     return (
                       <div
                         key={task.id}
-                        className="text-xs p-1 rounded truncate text-white cursor-pointer hover:opacity-80 transition-opacity"
+                        className="text-xs p-1 rounded truncate text-white hover:opacity-90 transition-opacity font-medium shadow-sm"
                         style={{ backgroundColor: color }}
                         title={task.title}
                       >
@@ -170,6 +190,94 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
           })}
         </div>
       </CardContent>
+
+      {/* Expanded Date Dialog */}
+      <Dialog open={selectedDate !== null} onOpenChange={closeDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>
+                Tasks for {selectedDate?.toLocaleDateString('en-US', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </span>
+              <Badge variant="secondary">{expandedTasks.length} task{expandedTasks.length !== 1 ? 's' : ''}</Badge>
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-3 mt-4">
+            {expandedTasks.map(task => {
+              const assignedUser = users.find(u => u.id === task.assigned_to)
+              const color = task.assigned_to ? getUserColor(task.assigned_to) : '#475569'
+              
+              return (
+                <Link key={task.id} href={`/admin/board/${task.board_id}`}>
+                  <Card className="hover:shadow-md transition-all cursor-pointer hover:border-primary">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div 
+                              className="w-3 h-3 rounded-full flex-shrink-0" 
+                              style={{ backgroundColor: color }}
+                            />
+                            <h3 className="font-semibold text-base truncate">{task.title}</h3>
+                          </div>
+                          
+                          {task.description && (
+                            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                              {task.description}
+                            </p>
+                          )}
+                          
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="text-xs">
+                              {assignedUser?.full_name || assignedUser?.email || 'Unassigned'}
+                            </Badge>
+                            
+                            {task.priority && (
+                              <Badge 
+                                variant="outline" 
+                                className={`text-xs ${
+                                  task.priority >= 4
+                                    ? 'border-red-500 text-red-500 bg-red-50' 
+                                    : task.priority === 3
+                                    ? 'border-orange-500 text-orange-500 bg-orange-50' 
+                                    : 'border-blue-500 text-blue-500 bg-blue-50'
+                                }`}
+                              >
+                                Priority: {task.priority}
+                              </Badge>
+                            )}
+                            
+                            <Badge 
+                              variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}
+                              className={`text-xs ${
+                                task.status === 'done' 
+                                  ? 'bg-green-600' 
+                                  : task.status === 'in_progress' 
+                                  ? 'bg-yellow-600' 
+                                  : ''
+                              }`}
+                            >
+                              {task.status === 'done' ? 'Done' : task.status === 'in_progress' ? 'In Progress' : 'To Do'}
+                            </Badge>
+                          </div>
+                        </div>
+                        
+                        <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              )
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

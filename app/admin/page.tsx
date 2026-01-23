@@ -29,8 +29,14 @@ export default async function AdminPage() {
   ] = await Promise.all([
     supabase.from('profiles').select('*').order('created_at', { ascending: false }),
     supabase.from('boards').select('*').order('created_at', { ascending: false }),
-    supabase.from('tasks').select('*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email)').order('created_at', { ascending: false }),
+    supabase.from('tasks').select('*, column:columns(board_id)').order('created_at', { ascending: false }),
   ])
 
-  return <AdminDashboard user={profile} users={users || []} boards={boards || []} tasks={tasks || []} />
+  // Flatten board_id from nested column object
+  const tasksWithBoardId = tasks?.map(task => ({
+    ...task,
+    board_id: task.column?.board_id
+  })) || []
+
+  return <AdminDashboard user={profile} users={users || []} boards={boards || []} tasks={tasksWithBoardId} />
 }

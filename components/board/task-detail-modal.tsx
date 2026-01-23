@@ -242,32 +242,53 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     const file = e.target.files?.[0]
     if (!file || !currentUser) return
 
+    // Check file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024
+    if (file.size > maxSize) {
+      alert('File size must be less than 10MB')
+      e.target.value = '' // Reset input
+      return
+    }
+
     setUploading(true)
     
     try {
       // Convert file to base64 for storage
       const reader = new FileReader()
       reader.onloadend = async () => {
-        const base64 = reader.result as string
-        
-        const { error } = await supabase
-          .from('task_attachments')
-          .insert({
-            task_id: taskId,
-            file_name: file.name,
-            file_type: file.type,
-            file_data: base64,
-            file_size: file.size,
-            uploaded_by: currentUser.id
-          })
+        try {
+          const base64 = reader.result as string
+          
+          const { error } = await supabase
+            .from('task_attachments')
+            .insert({
+              task_id: taskId,
+              file_name: file.name,
+              file_type: file.type,
+              file_data: base64,
+              file_size: file.size,
+              uploaded_by: currentUser.id
+            })
 
-        if (!error) {
-          loadAttachments()
+          if (error) throw error
+          
+          await loadAttachments()
+          e.target.value = '' // Reset input for next upload
+        } catch (err) {
+          console.error('[v0] Upload error:', err)
+          alert('Failed to upload file. Please try again.')
+        } finally {
+          setUploading(false)
         }
+      }
+      reader.onerror = () => {
+        console.error('[v0] File read error')
+        alert('Failed to read file')
         setUploading(false)
       }
       reader.readAsDataURL(file)
     } catch (err) {
+      console.error('[v0] File upload error:', err)
       setUploading(false)
     }
   }
@@ -275,17 +296,25 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const handleAddComment = async () => {
     if (!newComment.trim() || !currentUser) return
 
-    const { error } = await supabase
-      .from('task_comments')
-      .insert({
-        task_id: taskId,
-        comment: newComment.trim(),
-        author_id: currentUser.id
-      })
+    const commentText = newComment.trim()
+    setNewComment('') // Clear immediately for better UX
+    
+    try {
+      const { error } = await supabase
+        .from('task_comments')
+        .insert({
+          task_id: taskId,
+          comment: commentText,
+          author_id: currentUser.id
+        })
 
-    if (!error) {
-      setNewComment('')
-      loadComments()
+      if (error) throw error
+      
+      await loadComments()
+    } catch (err) {
+      console.error('[v0] Comment error:', err)
+      setNewComment(commentText) // Restore comment if failed
+      alert('Failed to add comment. Please try again.')
     }
   }
 
