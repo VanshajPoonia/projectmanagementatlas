@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
+import NotificationInfo from '../notifications/notification-info'
 
 interface UserDashboardProps {
   user: any
@@ -77,6 +78,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
           </TabsList>
 
           <TabsContent value="tasks" className="space-y-6">
+            {/* Notification Info */}
+            <NotificationInfo />
+
             {/* Task Stats */}
             <div className="grid gap-4 md:grid-cols-3">
               <Card>

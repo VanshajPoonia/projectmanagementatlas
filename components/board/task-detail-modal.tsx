@@ -15,7 +15,7 @@ import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download } from 'lucide-react'
 import { format } from 'date-fns'
-import { sendTaskAssignmentEmail } from '@/lib/email'
+import { sendTaskAssignmentEmail, sendCommentEmail, sendTaskUpdateEmail } from '@/lib/email'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -170,18 +170,19 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       .eq('id', taskId)
 
     if (!error) {
+      // Get current user info for notifications
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: currentUserProfile } = await supabase
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', user?.id || '')
+        .single()
+
       // Send email notification if assignment changed and task is now assigned
       if (assignmentChanged && assignedTo && assignedTo !== 'unassigned') {
         const assignedUser = users.find(u => u.id === assignedTo)
-        const { data: { user } } = await supabase.auth.getUser()
-        const { data: currentUserProfile } = await supabase
-          .from('profiles')
-          .select('full_name, email')
-          .eq('id', user?.id)
-          .single()
-        
+
         if (assignedUser) {
-          console.log('[v0] Sending email notification to:', assignedUser.email)
           await sendTaskAssignmentEmail(
             assignedUser.email,
             assignedUser.full_name || assignedUser.email,
@@ -194,10 +195,36 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
           )
         }
       }
+
+      // Send update notification to all assignees if task details changed
+      if (!assignmentChanged && assignees.length > 0) {
+        const changes = []
+        if (task?.title !== title) changes.push(`Title updated to "${title}"`)
+        if (task?.description !== description) changes.push('Description updated')
+        if (task?.priority !== priority) changes.push(`Priority changed to ${priority}`)
+        if (task?.status !== status) changes.push(`Status changed to ${status}`)
+        if (task?.due_date !== dueDate?.toISOString()) changes.push('Due date updated')
+
+        if (changes.length > 0) {
+          for (const userId of assignees) {
+            const user = users.find(u => u.id === userId)
+            if (user && user.id !== currentUserProfile?.id) {
+              await sendTaskUpdateEmail(
+                user.email,
+                user.full_name || user.email,
+                title,
+                currentUserProfile?.full_name || currentUserProfile?.email || 'Someone',
+                changes.join(', ')
+              )
+            }
+          }
+        }
+      }
       
       onUpdate()
-      onClose()
+      loadTaskDetails()
     }
+
     setLoading(false)
   }
 
@@ -311,6 +338,22 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       if (error) throw error
       
       await loadComments()
+
+      // Send email notifications to all assignees
+      if (assignees.length > 0) {
+        for (const userId of assignees) {
+          const user = users.find(u => u.id === userId)
+          if (user && user.id !== currentUser.id) {
+            await sendCommentEmail(
+              user.email,
+              user.full_name || user.email,
+              title,
+              currentUser.full_name || currentUser.email,
+              commentText
+            )
+          }
+        }
+      }
     } catch (err) {
       console.error('[v0] Comment error:', err)
       setNewComment(commentText) // Restore comment if failed

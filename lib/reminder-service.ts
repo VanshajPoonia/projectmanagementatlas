@@ -1,0 +1,60 @@
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { sendTaskDueSoonEmail } from '@/lib/email'
+
+/**
+ * Checks for tasks due within 1-2 days and sends reminder emails
+ * This should be called via a cron job or scheduled task
+ */
+export async function checkDueDateReminders() {
+  const supabase = await createClient()
+  
+  try {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    const twoDaysFromNow = new Date(today)
+    twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2)
+    
+    // Get tasks due in the next 1-2 days that aren't completed
+    const { data: tasks } = await supabase
+      .from('tasks')
+      .select('*, column:columns(board_id)')
+      .neq('status', 'done')
+      .gte('due_date', today.toISOString())
+      .lte('due_date', twoDaysFromNow.toISOString())
+    
+    if (!tasks || tasks.length === 0) return
+    
+    // Get all assignees for these tasks
+    const taskIds = tasks.map(t => t.id)
+    const { data: assignees } = await supabase
+      .from('task_assignees')
+      .select('task_id, user_id, profiles!task_assignees_user_id_fkey(email, full_name)')
+      .in('task_id', taskIds)
+    
+    // Send reminders
+    for (const task of tasks) {
+      const taskAssignees = assignees?.filter(a => a.task_id === task.id) || []
+      const dueDate = new Date(task.due_date)
+      const daysRemaining = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      
+      for (const assignee of taskAssignees) {
+        if (assignee.profiles) {
+          await sendTaskDueSoonEmail(
+            assignee.profiles.email,
+            assignee.profiles.full_name || assignee.profiles.email,
+            task.title,
+            task.due_date,
+            daysRemaining
+          )
+        }
+      }
+    }
+    
+    console.log(`[v0] Sent ${tasks.length} due date reminder(s)`)
+  } catch (error) {
+    console.error('[v0] Error checking due date reminders:', error)
+  }
+}
