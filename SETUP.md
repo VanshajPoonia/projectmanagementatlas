@@ -28,21 +28,21 @@ The database has been set up with the following tables:
 ### 1. Add Your Admin Email
 Run this SQL in your Supabase SQL editor to add yourself as admin:
 
-```sql
+\`\`\`sql
 INSERT INTO allowed_emails (email, role)
 VALUES ('your-admin-email@example.com', 'admin');
-```
+\`\`\`
 
 ### 2. Add Team Members
 Add additional users who should have access:
 
-```sql
+\`\`\`sql
 INSERT INTO allowed_emails (email, role)
 VALUES 
   ('user1@example.com', 'user'),
   ('user2@example.com', 'user'),
   ('user3@example.com', 'user');
-```
+\`\`\`
 
 ### 3. Configure Environment Variables
 The following are automatically set by Supabase integration:
