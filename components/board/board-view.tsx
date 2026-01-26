@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import TaskCard from './task-card'
@@ -51,6 +51,8 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
+  const [sortColumn, setSortColumn] = useState<'title' | 'assigned' | 'priority' | 'dueDate' | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const columnsRef = useRef<(HTMLDivElement | null)[]>([])
   const headerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
@@ -261,9 +263,51 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   ].filter(Boolean).length
 
   const clearFilters = () => {
+    setSearchTerm('')
     setFilterUser('all')
     setFilterPriority('all')
-    setSearchTerm('')
+  }
+
+  const handleSort = (column: 'title' | 'assigned' | 'priority' | 'dueDate') => {
+    if (sortColumn === column) {
+      // Toggle direction if same column
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      // New column, default to ascending
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+  }
+
+  const sortTasks = (tasks: any[]) => {
+    if (!sortColumn) return tasks
+
+    return [...tasks].sort((a, b) => {
+      let comparison = 0
+
+      switch (sortColumn) {
+        case 'title':
+          comparison = (a.title || '').localeCompare(b.title || '')
+          break
+        case 'assigned':
+          const userA = users.find(u => u.id === a.assigned_to)
+          const userB = users.find(u => u.id === b.assigned_to)
+          const nameA = userA?.full_name || userA?.email || 'Unassigned'
+          const nameB = userB?.full_name || userB?.email || 'Unassigned'
+          comparison = nameA.localeCompare(nameB)
+          break
+        case 'priority':
+          comparison = (a.priority || 0) - (b.priority || 0)
+          break
+        case 'dueDate':
+          const dateA = a.due_date ? new Date(a.due_date).getTime() : 0
+          const dateB = b.due_date ? new Date(b.due_date).getTime() : 0
+          comparison = dateA - dateB
+          break
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison
+    })
   }
 
   return (
@@ -367,12 +411,23 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             <div className="border-t pt-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium">Filter Tasks</h3>
-                {activeFiltersCount > 0 && (
-                  <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 gap-2">
-                    <X className="w-3 h-3" />
-                    Clear all
+                <div className="flex items-center gap-2">
+                  {activeFiltersCount > 0 && (
+                    <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 gap-2">
+                      <X className="w-3 h-3" />
+                      Clear all
+                    </Button>
+                  )}
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setShowFilters(false)} 
+                    className="h-7 gap-1"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                    Collapse
                   </Button>
-                )}
+                </div>
               </div>
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-1.5">
@@ -551,15 +606,63 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                       <table className="w-full">
                         <thead>
                           <tr className="border-b">
-                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Task</th>
-                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Assigned</th>
-                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Priority</th>
-                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Due Date</th>
+                            <th 
+                              className="text-left py-3 px-4 font-medium text-sm text-muted-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                              onClick={() => handleSort('title')}
+                            >
+                              <div className="flex items-center gap-2">
+                                Task
+                                {sortColumn === 'title' ? (
+                                  sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                ) : (
+                                  <ArrowUpDown className="w-3 h-3 opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th 
+                              className="text-left py-3 px-4 font-medium text-sm text-muted-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                              onClick={() => handleSort('assigned')}
+                            >
+                              <div className="flex items-center gap-2">
+                                Assigned
+                                {sortColumn === 'assigned' ? (
+                                  sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                ) : (
+                                  <ArrowUpDown className="w-3 h-3 opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th 
+                              className="text-left py-3 px-4 font-medium text-sm text-muted-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                              onClick={() => handleSort('priority')}
+                            >
+                              <div className="flex items-center gap-2">
+                                Priority
+                                {sortColumn === 'priority' ? (
+                                  sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                ) : (
+                                  <ArrowUpDown className="w-3 h-3 opacity-40" />
+                                )}
+                              </div>
+                            </th>
+                            <th 
+                              className="text-left py-3 px-4 font-medium text-sm text-muted-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                              onClick={() => handleSort('dueDate')}
+                            >
+                              <div className="flex items-center gap-2">
+                                Due Date
+                                {sortColumn === 'dueDate' ? (
+                                  sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                ) : (
+                                  <ArrowUpDown className="w-3 h-3 opacity-40" />
+                                )}
+                              </div>
+                            </th>
                             <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Tags</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {columnTasks.sort((a: any, b: any) => a.position - b.position).map((task: any) => {
+                          {sortTasks(columnTasks).map((task: any) => {
                             const assignedUser = users.find(u => u.id === task.assigned_to)
                             return (
                               <tr 
