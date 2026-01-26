@@ -820,67 +820,26 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                   </div>
                                 </td>
                                 <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                                  {isAdmin ? (
-                                    <Select
-                                      value={task.assigned_to || 'unassigned'}
-                                      onValueChange={async (value) => {
-                                        const newValue = value === 'unassigned' ? null : value
-                                        const { error } = await supabase
-                                          .from('tasks')
-                                          .update({ assigned_to: newValue })
-                                          .eq('id', task.id)
-                                        
-                                        if (!error) {
-                                          // Refresh columns
-                                          const { data: updatedColumns } = await supabase
-                                            .from('columns')
-                                            .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
-                                            .eq('board_id', board.id)
-                                            .order('position')
-                                          if (updatedColumns) setColumns(updatedColumns)
-                                        }
-                                      }}
-                                    >
-                                      <SelectTrigger className="h-9 w-full">
-                                        <SelectValue>
-                                          {assignedUser ? (
-                                            <div className="flex items-center gap-2">
-                                              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
-                                                {assignedUser.full_name?.[0] || assignedUser.email?.[0]}
-                                              </div>
-                                              <span className="text-sm">{assignedUser.full_name || assignedUser.email}</span>
-                                            </div>
-                                          ) : (
-                                            <span className="text-sm text-muted-foreground">Unassigned</span>
-                                          )}
-                                        </SelectValue>
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="unassigned">Unassigned</SelectItem>
-                                        {users.map((user) => (
-                                          <SelectItem key={user.id} value={user.id}>
-                                            <div className="flex items-center gap-2">
-                                              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
-                                                {user.full_name?.[0] || user.email?.[0]}
-                                              </div>
-                                              <span>{user.full_name || user.email}</span>
-                                            </div>
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  ) : (
-                                    assignedUser ? (
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-9 gap-2"
+                                    onClick={() => {
+                                      setSelectedTaskId(task.id)
+                                      setTaskDetailOpen(true)
+                                    }}
+                                  >
+                                    {assignedUser ? (
+                                      <>
+                                        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
                                           {assignedUser.full_name?.[0] || assignedUser.email?.[0]}
                                         </div>
                                         <span className="text-sm">{assignedUser.full_name || assignedUser.email}</span>
-                                      </div>
+                                      </>
                                     ) : (
-                                      <span className="text-sm text-muted-foreground">Unassigned</span>
-                                    )
-                                  )}
+                                      <span className="text-sm text-muted-foreground">Assign</span>
+                                    )}
+                                  </Button>
                                 </td>
                                 <td className="py-3 px-4">
                                   <Badge variant={task.priority >= 4 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'}>
@@ -926,6 +885,27 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           </div>
         )}
       </main>
+
+      {selectedTaskId && (
+        <TaskDetailModal
+          taskId={selectedTaskId}
+          open={taskDetailOpen}
+          onClose={() => {
+            setTaskDetailOpen(false)
+            setSelectedTaskId(null)
+          }}
+          onUpdate={async () => {
+            const { data: updatedColumns } = await supabase
+              .from('columns')
+              .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
+              .eq('board_id', board.id)
+              .order('position')
+            if (updatedColumns) setColumns(updatedColumns)
+          }}
+          board={board}
+          isAdmin={isAdmin}
+        />
+      )}
 
       {selectedTaskId && (
         <TaskDetailModal
