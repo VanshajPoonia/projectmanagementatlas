@@ -1,32 +1,34 @@
 'use client'
 
+import React from "react"
+
+import { DialogDescription } from "@/components/ui/dialog"
+import { DialogTitle } from "@/components/ui/dialog"
+import { DialogHeader } from "@/components/ui/dialog"
+import { DialogContent } from "@/components/ui/dialog"
+import { Dialog } from "@/components/ui/dialog"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { DropdownMenuContent } from "@/components/ui/dropdown-menu"
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu } from "@/components/ui/dropdown-menu"
+import { SelectItem } from "@/components/ui/select"
+import { SelectContent } from "@/components/ui/select"
+import { SelectValue } from "@/components/ui/select"
+import { SelectTrigger } from "@/components/ui/select"
+import { Select } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { useState, useEffect, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import TaskCard from './task-card'
 import CreateTaskDialog from './create-task-dialog'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { gsap } from 'gsap'
-import {
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
-} from '@/components/ui/dropdown-menu'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+import { TaskDetailModal } from './task-detail-modal'
+import gsap from 'gsap' // Import gsap
 
 interface BoardViewProps {
   board: any
@@ -48,12 +50,21 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [colorPickerColumn, setColorPickerColumn] = useState<string | null>(null)
   const [filterUser, setFilterUser] = useState<string>('all')
   const [filterPriority, setFilterPriority] = useState<string>('all')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [filterDateRange, setFilterDateRange] = useState<'all' | 'overdue' | 'today' | 'week' | 'month'>('all')
   const [showFilters, setShowFilters] = useState(false)
-  const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
+  const [sortConfig, setSortConfig] = useState<Array<{
+    column: 'title' | 'assigned' | 'priority' | 'dueDate'
+    direction: 'asc' | 'desc'
+  }>>([])
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [taskDetailOpen, setTaskDetailOpen] = useState(false)
   const columnsRef = useRef<(HTMLDivElement | null)[]>([])
   const headerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
+  const [searchTerm, setSearchTerm] = useState('')
+  const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
+  const [sortColumn, setSortColumn] = useState<'title' | 'assigned' | 'priority' | 'dueDate' | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const columnColors = [
     '#3b82f6', // blue
@@ -227,33 +238,43 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   }
 
   const filterTasks = (tasks: any[]) => {
-    if (!tasks) return []
-    
     return tasks.filter(task => {
-      // Filter by user
-      if (filterUser !== 'all' && task.assigned_to !== filterUser) {
-        return false
-      }
+      const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (task.description?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+      const matchesUser = filterUser === 'all' || task.assigned_to === filterUser
+      const matchesPriority = filterPriority === 'all' || task.priority?.toString() === filterPriority
       
-      // Filter by priority
-      if (filterPriority !== 'all' && task.priority !== filterPriority) {
-        return false
-      }
-      
-      // Filter by search term
-      if (searchTerm) {
-        const searchLower = searchTerm.toLowerCase()
-        const matchesTitle = task.title?.toLowerCase().includes(searchLower)
-        const matchesDescription = task.description?.toLowerCase().includes(searchLower)
-        if (!matchesTitle && !matchesDescription) {
-          return false
+      // Date filtering
+      let matchesDate = true
+      if (filterDateRange !== 'all' && task.due_date) {
+        const dueDate = new Date(task.due_date)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        
+        switch (filterDateRange) {
+          case 'overdue':
+            matchesDate = dueDate < today && task.status !== 'done'
+            break
+          case 'today':
+            matchesDate = dueDate.toDateString() === today.toDateString()
+            break
+          case 'week':
+            const weekFromNow = new Date(today)
+            weekFromNow.setDate(today.getDate() + 7)
+            matchesDate = dueDate >= today && dueDate <= weekFromNow
+            break
+          case 'month':
+            const monthFromNow = new Date(today)
+            monthFromNow.setMonth(today.getMonth() + 1)
+            matchesDate = dueDate >= today && dueDate <= monthFromNow
+            break
         }
       }
       
-      return true
+      return matchesSearch && matchesUser && matchesPriority && matchesDate
     })
   }
-
+      
   const activeFiltersCount = [
     filterUser !== 'all',
     filterPriority !== 'all',
@@ -261,9 +282,77 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   ].filter(Boolean).length
 
   const clearFilters = () => {
+    setSearchTerm('')
     setFilterUser('all')
     setFilterPriority('all')
-    setSearchTerm('')
+    setFilterDateRange('all')
+  }
+
+  const handleSort = (column: 'title' | 'assigned' | 'priority' | 'dueDate', event: React.MouseEvent) => {
+    const existingIndex = sortConfig.findIndex(s => s.column === column)
+    
+    if (event.shiftKey) {
+      // Shift+Click: Add to multi-sort or toggle direction
+      if (existingIndex >= 0) {
+        // Toggle direction for existing sort
+        const newConfig = [...sortConfig]
+        newConfig[existingIndex].direction = newConfig[existingIndex].direction === 'asc' ? 'desc' : 'asc'
+        setSortConfig(newConfig)
+      } else {
+        // Add new sort column
+        setSortConfig([...sortConfig, { column, direction: 'asc' }])
+      }
+    } else {
+      // Regular click: Single column sort or toggle
+      if (existingIndex >= 0 && sortConfig.length === 1) {
+        // Toggle direction if it's the only sort
+        setSortConfig([{ column, direction: sortConfig[0].direction === 'asc' ? 'desc' : 'asc' }])
+      } else {
+        // Replace with new single sort
+        setSortConfig([{ column, direction: 'asc' }])
+      }
+    }
+  }
+  
+  const removeSortColumn = (column: 'title' | 'assigned' | 'priority' | 'dueDate') => {
+    setSortConfig(sortConfig.filter(s => s.column !== column))
+  }
+
+  const sortTasks = (tasks: any[]) => {
+    if (sortConfig.length === 0) return tasks
+
+    return [...tasks].sort((a, b) => {
+      // Apply each sort in order until we find a difference
+      for (const { column, direction } of sortConfig) {
+        let comparison = 0
+
+        switch (column) {
+          case 'title':
+            comparison = (a.title || '').localeCompare(b.title || '')
+            break
+          case 'assigned':
+            const userA = users.find(u => u.id === a.assigned_to)
+            const userB = users.find(u => u.id === b.assigned_to)
+            const nameA = userA?.full_name || userA?.email || 'Unassigned'
+            const nameB = userB?.full_name || userB?.email || 'Unassigned'
+            comparison = nameA.localeCompare(nameB)
+            break
+          case 'priority':
+            comparison = (a.priority || 0) - (b.priority || 0)
+            break
+          case 'dueDate':
+            const dateA = a.due_date ? new Date(a.due_date).getTime() : 0
+            const dateB = b.due_date ? new Date(b.due_date).getTime() : 0
+            comparison = dateA - dateB
+            break
+        }
+
+        const result = direction === 'asc' ? comparison : -comparison
+        if (result !== 0) return result
+      }
+
+      return 0
+    })
   }
 
   return (
@@ -367,14 +456,25 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             <div className="border-t pt-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium">Filter Tasks</h3>
-                {activeFiltersCount > 0 && (
-                  <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 gap-2">
-                    <X className="w-3 h-3" />
-                    Clear all
+                <div className="flex items-center gap-2">
+                  {activeFiltersCount > 0 && (
+                    <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 gap-2">
+                      <X className="w-3 h-3" />
+                      Clear all
+                    </Button>
+                  )}
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setShowFilters(false)} 
+                    className="h-7 gap-1"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                    Collapse
                   </Button>
-                )}
+                </div>
               </div>
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-1.5">
                   <label className="text-xs text-muted-foreground">Search</label>
                   <Input
@@ -413,6 +513,21 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                       <SelectItem value="3">3 - Medium</SelectItem>
                       <SelectItem value="4">4 - High</SelectItem>
                       <SelectItem value="5">5 - Highest</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Due Date</label>
+                  <Select value={filterDateRange} onValueChange={(value: any) => setFilterDateRange(value)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Dates</SelectItem>
+                      <SelectItem value="overdue">Overdue</SelectItem>
+                      <SelectItem value="today">Due Today</SelectItem>
+                      <SelectItem value="week">Due This Week</SelectItem>
+                      <SelectItem value="month">Due This Month</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -525,12 +640,36 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                     </CardContent>
                   </Card>
                 </div>
-            ))}
-          </div>
-        </DragDropContext>
+              ))}
+            </div>
+          </DragDropContext>
         ) : (
-          /* List View */
           <div className="space-y-6">
+            {/* List View */}
+            {sortConfig.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap bg-white/80 backdrop-blur-sm p-3 rounded-lg border">
+                <span className="text-sm font-medium text-muted-foreground">Active sorts:</span>
+                {sortConfig.map((sort, index) => (
+                  <Badge key={sort.column} variant="secondary" className="gap-2">
+                    {index + 1}. {sort.column === 'dueDate' ? 'Due Date' : sort.column.charAt(0).toUpperCase() + sort.column.slice(1)}
+                    {sort.direction === 'asc' ? ' ↑' : ' ↓'}
+                    <X 
+                      className="w-3 h-3 cursor-pointer hover:text-destructive" 
+                      onClick={() => removeSortColumn(sort.column)}
+                    />
+                  </Badge>
+                ))}
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setSortConfig([])}
+                  className="h-6 text-xs"
+                >
+                  Clear all
+                </Button>
+              </div>
+            )}
+
             {columns.map((column) => {
               const columnTasks = filterTasks(column.tasks || [])
               if (columnTasks.length === 0) return null
@@ -551,22 +690,123 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                       <table className="w-full">
                         <thead>
                           <tr className="border-b">
-                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Task</th>
-                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Assigned</th>
-                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Priority</th>
-                            <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Due Date</th>
+                            <th 
+                              className="text-left py-3 px-4 font-medium text-sm text-muted-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                              onClick={(e) => handleSort('title', e)}
+                              title="Click to sort, Shift+Click for multi-sort"
+                            >
+                              <div className="flex items-center gap-2">
+                                Task
+                                {(() => {
+                                  const sortIndex = sortConfig.findIndex(s => s.column === 'title')
+                                  if (sortIndex >= 0) {
+                                    const sort = sortConfig[sortIndex]
+                                    return (
+                                      <div className="flex items-center gap-1">
+                                        {sort.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                                        {sortConfig.length > 1 && (
+                                          <Badge variant="secondary" className="h-4 w-4 p-0 flex items-center justify-center text-[10px]">
+                                            {sortIndex + 1}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    )
+                                  }
+                                  return <ArrowUpDown className="w-3 h-3 opacity-40" />
+                                })()}
+                              </div>
+                            </th>
+                            <th 
+                              className="text-left py-3 px-4 font-medium text-sm text-muted-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                              onClick={(e) => handleSort('assigned', e)}
+                              title="Click to sort, Shift+Click for multi-sort"
+                            >
+                              <div className="flex items-center gap-2">
+                                Assigned
+                                {(() => {
+                                  const sortIndex = sortConfig.findIndex(s => s.column === 'assigned')
+                                  if (sortIndex >= 0) {
+                                    const sort = sortConfig[sortIndex]
+                                    return (
+                                      <div className="flex items-center gap-1">
+                                        {sort.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                                        {sortConfig.length > 1 && (
+                                          <Badge variant="secondary" className="h-4 w-4 p-0 flex items-center justify-center text-[10px]">
+                                            {sortIndex + 1}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    )
+                                  }
+                                  return <ArrowUpDown className="w-3 h-3 opacity-40" />
+                                })()}
+                              </div>
+                            </th>
+                            <th 
+                              className="text-left py-3 px-4 font-medium text-sm text-muted-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                              onClick={(e) => handleSort('priority', e)}
+                              title="Click to sort, Shift+Click for multi-sort"
+                            >
+                              <div className="flex items-center gap-2">
+                                Priority
+                                {(() => {
+                                  const sortIndex = sortConfig.findIndex(s => s.column === 'priority')
+                                  if (sortIndex >= 0) {
+                                    const sort = sortConfig[sortIndex]
+                                    return (
+                                      <div className="flex items-center gap-1">
+                                        {sort.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                                        {sortConfig.length > 1 && (
+                                          <Badge variant="secondary" className="h-4 w-4 p-0 flex items-center justify-center text-[10px]">
+                                            {sortIndex + 1}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    )
+                                  }
+                                  return <ArrowUpDown className="w-3 h-3 opacity-40" />
+                                })()}
+                              </div>
+                            </th>
+                            <th 
+                              className="text-left py-3 px-4 font-medium text-sm text-muted-foreground cursor-pointer hover:bg-accent/50 transition-colors"
+                              onClick={(e) => handleSort('dueDate', e)}
+                              title="Click to sort, Shift+Click for multi-sort"
+                            >
+                              <div className="flex items-center gap-2">
+                                Due Date
+                                {(() => {
+                                  const sortIndex = sortConfig.findIndex(s => s.column === 'dueDate')
+                                  if (sortIndex >= 0) {
+                                    const sort = sortConfig[sortIndex]
+                                    return (
+                                      <div className="flex items-center gap-1">
+                                        {sort.direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                                        {sortConfig.length > 1 && (
+                                          <Badge variant="secondary" className="h-4 w-4 p-0 flex items-center justify-center text-[10px]">
+                                            {sortIndex + 1}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    )
+                                  }
+                                  return <ArrowUpDown className="w-3 h-3 opacity-40" />
+                                })()}
+                              </div>
+                            </th>
                             <th className="text-left py-3 px-4 font-medium text-sm text-muted-foreground">Tags</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {columnTasks.sort((a: any, b: any) => a.position - b.position).map((task: any) => {
+                          {sortTasks(columnTasks).map((task: any) => {
                             const assignedUser = users.find(u => u.id === task.assigned_to)
                             return (
                               <tr 
                                 key={task.id} 
                                 className="border-b hover:bg-accent/50 cursor-pointer transition-colors"
                                 onClick={() => {
-                                  /* Open task detail modal */
+                                  setSelectedTaskId(task.id)
+                                  setTaskDetailOpen(true)
                                 }}
                               >
                                 <td className="py-3 px-4">
@@ -579,16 +819,67 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                     )}
                                   </div>
                                 </td>
-                                <td className="py-3 px-4">
-                                  {assignedUser ? (
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
-                                        {assignedUser.full_name?.[0] || assignedUser.email?.[0]}
-                                      </div>
-                                      <span className="text-sm">{assignedUser.full_name || assignedUser.email}</span>
-                                    </div>
+                                <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                                  {isAdmin ? (
+                                    <Select
+                                      value={task.assigned_to || 'unassigned'}
+                                      onValueChange={async (value) => {
+                                        const newValue = value === 'unassigned' ? null : value
+                                        const { error } = await supabase
+                                          .from('tasks')
+                                          .update({ assigned_to: newValue })
+                                          .eq('id', task.id)
+                                        
+                                        if (!error) {
+                                          // Refresh columns
+                                          const { data: updatedColumns } = await supabase
+                                            .from('columns')
+                                            .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
+                                            .eq('board_id', board.id)
+                                            .order('position')
+                                          if (updatedColumns) setColumns(updatedColumns)
+                                        }
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-9 w-full">
+                                        <SelectValue>
+                                          {assignedUser ? (
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
+                                                {assignedUser.full_name?.[0] || assignedUser.email?.[0]}
+                                              </div>
+                                              <span className="text-sm">{assignedUser.full_name || assignedUser.email}</span>
+                                            </div>
+                                          ) : (
+                                            <span className="text-sm text-muted-foreground">Unassigned</span>
+                                          )}
+                                        </SelectValue>
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                                        {users.map((user) => (
+                                          <SelectItem key={user.id} value={user.id}>
+                                            <div className="flex items-center gap-2">
+                                              <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
+                                                {user.full_name?.[0] || user.email?.[0]}
+                                              </div>
+                                              <span>{user.full_name || user.email}</span>
+                                            </div>
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
                                   ) : (
-                                    <span className="text-sm text-muted-foreground">Unassigned</span>
+                                    assignedUser ? (
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
+                                          {assignedUser.full_name?.[0] || assignedUser.email?.[0]}
+                                        </div>
+                                        <span className="text-sm">{assignedUser.full_name || assignedUser.email}</span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-sm text-muted-foreground">Unassigned</span>
+                                    )
                                   )}
                                 </td>
                                 <td className="py-3 px-4">
@@ -635,6 +926,27 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           </div>
         )}
       </main>
+
+      {selectedTaskId && (
+        <TaskDetailModal
+          taskId={selectedTaskId}
+          open={taskDetailOpen}
+          onClose={() => {
+            setTaskDetailOpen(false)
+            setSelectedTaskId(null)
+          }}
+          onUpdate={async () => {
+            const { data: updatedColumns } = await supabase
+              .from('columns')
+              .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
+              .eq('board_id', board.id)
+              .order('position')
+            if (updatedColumns) setColumns(updatedColumns)
+          }}
+          board={board}
+          isAdmin={isAdmin}
+        />
+      )}
 
       {isAdmin && (
         <>
