@@ -267,11 +267,17 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !currentUser) return
+    if (!file || !currentUser) {
+      console.log('[v0] No file or user for upload')
+      return
+    }
+
+    console.log('[v0] Uploading file:', file.name, 'Size:', file.size)
 
     // Check file size (max 10MB)
     const maxSize = 10 * 1024 * 1024
     if (file.size > maxSize) {
+      console.log('[v0] File too large')
       alert('File size must be less than 10MB')
       e.target.value = '' // Reset input
       return
@@ -321,10 +327,14 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   }
 
   const handleAddComment = async () => {
-    if (!newComment.trim() || !currentUser) return
+    if (!newComment.trim() || !currentUser) {
+      console.log('[v0] Cannot add comment - no text or user')
+      return
+    }
 
     const commentText = newComment.trim()
     setNewComment('') // Clear immediately for better UX
+    console.log('[v0] Adding comment:', commentText)
     
     try {
       const { error } = await supabase
@@ -337,10 +347,12 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
       if (error) throw error
       
+      console.log('[v0] Comment added successfully')
       await loadComments()
 
       // Send email notifications to all assignees
       if (assignees.length > 0) {
+        console.log('[v0] Sending email notifications to assignees')
         for (const userId of assignees) {
           const user = users.find(u => u.id === userId)
           if (user && user.id !== currentUser.id) {
