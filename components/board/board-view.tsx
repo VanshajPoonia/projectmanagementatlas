@@ -18,11 +18,11 @@ import { SelectTrigger } from "@/components/ui/select"
 import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, Download } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import TaskCard from './task-card'
@@ -37,6 +37,8 @@ interface BoardViewProps {
   isAdmin: boolean
   currentUserId: string
 }
+
+const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(id, full_name, email), task_tags(tag:tags(*)))'
 
 export default function BoardView({ board, columns: initialColumns, users, isAdmin, currentUserId }: BoardViewProps) {
   const [columns, setColumns] = useState(initialColumns)
@@ -60,7 +62,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [taskDetailOpen, setTaskDetailOpen] = useState(false)
   const columnsRef = useRef<(HTMLDivElement | null)[]>([])
   const headerRef = useRef<HTMLDivElement>(null)
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
   const [sortColumn, setSortColumn] = useState<'title' | 'assigned' | 'priority' | 'dueDate' | null>(null)
@@ -76,6 +78,29 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     '#06b6d4', // cyan
     '#84cc16', // lime
   ]
+
+  const refreshColumns = useCallback(async () => {
+    const { data: updatedColumns } = await supabase
+      .from('columns')
+      .select(BOARD_COLUMNS_SELECT)
+      .eq('board_id', board.id)
+      .order('position')
+
+    if (updatedColumns) {
+      setColumns(updatedColumns)
+    }
+  }, [board.id, supabase])
+
+  const getTaskAssignedUserId = (task: any) => {
+    if (!task?.assigned_to) return null
+    return typeof task.assigned_to === 'string' ? task.assigned_to : task.assigned_to.id
+  }
+
+  const getTaskAssignedUser = (task: any) => {
+    if (!task?.assigned_to) return null
+    if (typeof task.assigned_to === 'object') return task.assigned_to
+    return users.find(user => user.id === task.assigned_to) || null
+  }
 
   // GSAP animations on mount
   useEffect(() => {
@@ -116,25 +141,14 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           schema: 'public',
           table: 'tasks',
         },
-        async () => {
-          // Refresh tasks
-          const { data: updatedColumns } = await supabase
-            .from('columns')
-            .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
-            .eq('board_id', board.id)
-            .order('position')
-          
-          if (updatedColumns) {
-            setColumns(updatedColumns)
-          }
-        }
+        refreshColumns
       )
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [board.id, supabase])
+  }, [refreshColumns, supabase])
 
   const onDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId } = result
@@ -241,12 +255,16 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     return tasks.filter(task => {
       const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            (task.description?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-      const matchesUser = filterUser === 'all' || task.assigned_to === filterUser
+      const matchesUser = filterUser === 'all' || getTaskAssignedUserId(task) === filterUser
       const matchesPriority = filterPriority === 'all' || task.priority?.toString() === filterPriority
       
       // Date filtering
       let matchesDate = true
-      if (filterDateRange !== 'all' && task.due_date) {
+      if (filterDateRange !== 'all') {
+        if (!task.due_date) {
+          return false
+        }
+
         const dueDate = new Date(task.due_date)
         const today = new Date()
         today.setHours(0, 0, 0, 0)
@@ -278,6 +296,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const activeFiltersCount = [
     filterUser !== 'all',
     filterPriority !== 'all',
+    filterDateRange !== 'all',
     searchTerm !== ''
   ].filter(Boolean).length
 
@@ -331,8 +350,8 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             comparison = (a.title || '').localeCompare(b.title || '')
             break
           case 'assigned':
-            const userA = users.find(u => u.id === a.assigned_to)
-            const userB = users.find(u => u.id === b.assigned_to)
+            const userA = getTaskAssignedUser(a)
+            const userB = getTaskAssignedUser(b)
             const nameA = userA?.full_name || userA?.email || 'Unassigned'
             const nameB = userB?.full_name || userB?.email || 'Unassigned'
             comparison = nameA.localeCompare(nameB)
@@ -353,6 +372,49 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
       return 0
     })
+  }
+
+  const escapeCSVValue = (value: unknown) => {
+    const stringValue = value == null ? '' : String(value)
+    return `"${stringValue.replace(/"/g, '""')}"`
+  }
+
+  const exportVisibleTasksToCSV = () => {
+    const headers = ['Board', 'Column', 'Title', 'Description', 'Assigned To', 'Priority', 'Status', 'Due Date', 'Tags']
+    const rows = columns.flatMap((column) => {
+      const visibleTasks = sortTasks(filterTasks(column.tasks || []))
+
+      return visibleTasks.map((task: any) => {
+        const assignedUser = getTaskAssignedUser(task)
+        const tags = task.task_tags?.map((tt: any) => tt.tag?.name).filter(Boolean).join('; ') || ''
+
+        return [
+          boardTitle,
+          column.title,
+          task.title,
+          task.description || '',
+          assignedUser?.full_name || assignedUser?.email || 'Unassigned',
+          task.priority || '',
+          task.status || '',
+          task.due_date ? new Date(task.due_date).toLocaleDateString() : '',
+          tags,
+        ]
+      })
+    })
+
+    const csv = [headers, ...rows]
+      .map(row => row.map(escapeCSVValue).join(','))
+      .join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${boardTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'board'}-tasks.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -441,6 +503,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                     {activeFiltersCount}
                   </Badge>
                 )}
+              </Button>
+              <Button onClick={exportVisibleTasksToCSV} variant="outline" size="sm" className="gap-2">
+                <Download className="w-4 h-4" />
+                Export CSV
               </Button>
               {isAdmin && (
                 <Button onClick={() => setNewColumnDialogOpen(true)} size="sm" className="gap-2">
@@ -544,7 +610,9 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
               {columns.map((column, index) => (
                 <div 
                   key={column.id} 
-                  ref={el => columnsRef.current[index] = el}
+                  ref={(el) => {
+                    columnsRef.current[index] = el
+                  }}
                   className="flex-shrink-0 w-80"
                 >
                   <Card 
@@ -620,14 +688,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                       users={users}
                                       board={board}
                                       isDragging={snapshot.isDragging}
-                                      onUpdate={async () => {
-                                        const { data: updatedColumns } = await supabase
-                                          .from('columns')
-                                          .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
-                                          .eq('board_id', board.id)
-                                          .order('position')
-                                        if (updatedColumns) setColumns(updatedColumns)
-                                      }}
+                                      onUpdate={refreshColumns}
                                     />
                                   </div>
                                 )}
@@ -799,7 +860,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                         </thead>
                         <tbody>
                           {sortTasks(columnTasks).map((task: any) => {
-                            const assignedUser = users.find(u => u.id === task.assigned_to)
+                            const assignedUser = getTaskAssignedUser(task)
                             return (
                               <tr 
                                 key={task.id} 
@@ -895,33 +956,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             setSelectedTaskId(null)
           }}
           onUpdate={async () => {
-            const { data: updatedColumns } = await supabase
-              .from('columns')
-              .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
-              .eq('board_id', board.id)
-              .order('position')
-            if (updatedColumns) setColumns(updatedColumns)
-          }}
-          board={board}
-          isAdmin={isAdmin}
-        />
-      )}
-
-      {selectedTaskId && (
-        <TaskDetailModal
-          taskId={selectedTaskId}
-          open={taskDetailOpen}
-          onClose={() => {
-            setTaskDetailOpen(false)
-            setSelectedTaskId(null)
-          }}
-          onUpdate={async () => {
-            const { data: updatedColumns } = await supabase
-              .from('columns')
-              .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
-              .eq('board_id', board.id)
-              .order('position')
-            if (updatedColumns) setColumns(updatedColumns)
+            await refreshColumns()
           }}
           board={board}
           isAdmin={isAdmin}
@@ -937,14 +972,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             users={users}
             boardId={board.id}
             board={board}
-            onTaskCreated={async () => {
-              const { data: updatedColumns } = await supabase
-                .from('columns')
-                .select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(full_name, email), task_tags(tag:tags(*)))')
-                .eq('board_id', board.id)
-                .order('position')
-              if (updatedColumns) setColumns(updatedColumns)
-            }}
+            onTaskCreated={refreshColumns}
           />
           
           <Dialog open={newColumnDialogOpen} onOpenChange={setNewColumnDialogOpen}>

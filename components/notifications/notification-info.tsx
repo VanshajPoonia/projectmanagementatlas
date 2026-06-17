@@ -59,7 +59,7 @@ export default function NotificationInfo() {
 
         <div className="pt-3 border-t">
           <Badge variant="secondary" className="text-xs">
-            Powered by FormSubmit
+            Powered by Resend
           </Badge>
         </div>
       </CardContent>

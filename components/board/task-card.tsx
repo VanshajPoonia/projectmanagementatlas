@@ -34,6 +34,9 @@ interface TaskCardProps {
 export default function TaskCard({ task, isAdmin, users, board, isDragging, onUpdate }: TaskCardProps) {
   const [detailOpen, setDetailOpen] = useState(false)
   const supabase = createClient()
+  const assignedUser = typeof task.assigned_to === 'object'
+    ? task.assigned_to
+    : users.find(user => user.id === task.assigned_to)
 
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this task?')) {
@@ -157,10 +160,10 @@ export default function TaskCard({ task, isAdmin, users, board, isDragging, onUp
           )}
 
           <div className="space-y-1 pt-2 border-t">
-            {task.assigned_to && (
+            {assignedUser && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <User className="w-3 h-3" />
-                <span className="truncate">{task.assigned_to.full_name || task.assigned_to.email}</span>
+                <span className="truncate">{assignedUser.full_name || assignedUser.email}</span>
               </div>
             )}
             {task.due_date && (
