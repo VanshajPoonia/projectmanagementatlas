@@ -38,7 +38,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const [loading, setLoading] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [priority, setPriority] = useState('medium')
+  const [priority, setPriority] = useState<number>(3)
   const [status, setStatus] = useState('todo')
   const [dueDate, setDueDate] = useState<Date>()
   const [assignedTo, setAssignedTo] = useState('')
@@ -188,7 +188,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             assignedUser.full_name || assignedUser.email,
             title,
             description,
-            priority,
+            priority.toString(),
             dueDate?.toISOString() || null,
             board?.title || 'Project Board',
             currentUserProfile?.full_name || currentUserProfile?.email || 'Admin'
@@ -410,7 +410,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
           assignedUser.full_name || assignedUser.email,
           title,
           description,
-          priority,
+          priority.toString(),
           dueDate?.toISOString() || null,
           board?.title || 'Project Board',
           currentUser?.full_name || currentUser?.email || 'Admin'

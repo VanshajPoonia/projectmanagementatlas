@@ -81,14 +81,13 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
           .single()
         
         if (assignedUser) {
-          console.log('[v0] Sending email notification to:', assignedUser.email)
           await sendTaskAssignmentEmail(
             assignedUser.email,
             assignedUser.full_name || assignedUser.email,
             title,
             description,
-            priority,
-            dueDate,
+            priority.toString(),
+            dueDate || null,
             board?.title || 'Project Board',
             currentUserProfile?.full_name || currentUserProfile?.email || 'Admin'
           )
