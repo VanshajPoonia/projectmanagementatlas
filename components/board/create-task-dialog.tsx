@@ -25,7 +25,7 @@ interface CreateTaskDialogProps {
 export default function CreateTaskDialog({ open, onOpenChange, column, users, boardId, board, onTaskCreated }: CreateTaskDialogProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [assignedTo, setAssignedTo] = useState<string>('unassigned')
+  const [assignees, setAssignees] = useState<string[]>([])
   const [priority, setPriority] = useState<number>(3)
   const [dueDate, setDueDate] = useState('')
   const [isRecurring, setIsRecurring] = useState(false)
@@ -52,7 +52,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
         title,
         description,
         column_id: column.id,
-        assigned_to: assignedTo === 'unassigned' ? null : assignedTo,
+        assigned_to: assignees[0] || null,
         created_by: user.id,
         priority,
         due_date: dueDate || null,
@@ -71,33 +71,40 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
 
       if (taskError) throw taskError
 
-      // Send email notification if task is assigned
-      if (assignedTo !== 'unassigned' && assignedTo) {
-        const assignedUser = users.find(u => u.id === assignedTo)
+      // Record every assignee in the join table (source of truth) and notify each
+      if (assignees.length > 0) {
+        const { error: assigneeError } = await supabase
+          .from('task_assignees')
+          .insert(assignees.map(userId => ({ task_id: task.id, user_id: userId })))
+        if (assigneeError) throw assigneeError
+
         const { data: currentUserProfile } = await supabase
           .from('profiles')
           .select('full_name, email')
           .eq('id', user.id)
           .single()
-        
-        if (assignedUser) {
-          await sendTaskAssignmentEmail(
-            assignedUser.email,
-            assignedUser.full_name || assignedUser.email,
-            title,
-            description,
-            priority.toString(),
-            dueDate || null,
-            board?.title || 'Project Board',
-            currentUserProfile?.full_name || currentUserProfile?.email || 'Admin'
-          )
+
+        for (const userId of assignees) {
+          const assignedUser = users.find(u => u.id === userId)
+          if (assignedUser) {
+            await sendTaskAssignmentEmail(
+              assignedUser.email,
+              assignedUser.full_name || assignedUser.email,
+              title,
+              description,
+              priority.toString(),
+              dueDate || null,
+              board?.title || 'Project Board',
+              currentUserProfile?.full_name || currentUserProfile?.email || 'Admin'
+            )
+          }
         }
       }
 
       // Reset form
       setTitle('')
       setDescription('')
-      setAssignedTo('unassigned')
+      setAssignees([])
       setPriority(3)
       setDueDate('')
       setIsRecurring(false)
@@ -159,22 +166,36 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="assignedTo" className="text-sm font-medium">
-              Assign To
+            <label className="text-sm font-medium">
+              Assign To {assignees.length > 0 && `(${assignees.length})`}
             </label>
-            <Select value={assignedTo} onValueChange={setAssignedTo} disabled={loading}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a user" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unassigned">Unassigned</SelectItem>
-                {users.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.full_name || user.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="border rounded-lg p-3 space-y-2 max-h-40 overflow-y-auto">
+              {users.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No users available</p>
+              ) : (
+                users.map((user) => {
+                  const isAssigned = assignees.includes(user.id)
+                  return (
+                    <div
+                      key={user.id}
+                      onClick={() => !loading && setAssignees(
+                        isAssigned ? assignees.filter(id => id !== user.id) : [...assignees, user.id]
+                      )}
+                      className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                        isAssigned ? 'bg-primary/10 border border-primary' : 'hover:bg-accent'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                        isAssigned ? 'bg-primary border-primary' : 'border-muted-foreground'
+                      }`}>
+                        {isAssigned && <span className="text-primary-foreground text-xs">✓</span>}
+                      </div>
+                      <span className="text-sm font-medium">{user.full_name || user.email}</span>
+                    </div>
+                  )
+                })
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
