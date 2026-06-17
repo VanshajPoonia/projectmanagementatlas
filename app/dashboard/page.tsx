@@ -17,12 +17,29 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .single()
 
-  // Fetch user's assigned tasks
-  const { data: tasks } = await supabase
-    .from('tasks')
-    .select('*, column:columns(title, board_id, board:boards(id, title))')
-    .eq('assigned_to', user.id)
-    .order('created_at', { ascending: false })
+  // Fetch tasks where the user is one of the assignees (multi-assignee, all equal).
+  // Union task_assignees with the legacy assigned_to so it works regardless of
+  // whether the backfill (scripts/028) has run yet.
+  const [{ data: assigneeRows }, { data: legacyRows }] = await Promise.all([
+    supabase.from('task_assignees').select('task_id').eq('user_id', user.id),
+    supabase.from('tasks').select('id').eq('assigned_to', user.id),
+  ])
+  const assignedTaskIds = Array.from(
+    new Set([
+      ...(assigneeRows ?? []).map((r) => r.task_id),
+      ...(legacyRows ?? []).map((r) => r.id),
+    ])
+  )
+
+  let tasks: any[] = []
+  if (assignedTaskIds.length > 0) {
+    const { data } = await supabase
+      .from('tasks')
+      .select('*, task_assignees(user_id), column:columns(title, board_id, board:boards(id, title))')
+      .in('id', assignedTaskIds)
+      .order('created_at', { ascending: false })
+    tasks = data ?? []
+  }
 
   // Fetch all boards
   const { data: boards } = await supabase

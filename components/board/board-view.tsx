@@ -29,6 +29,7 @@ import TaskCard from './task-card'
 import CreateTaskDialog from './create-task-dialog'
 import { TaskDetailModal } from './task-detail-modal'
 import gsap from 'gsap' // Import gsap
+import { getAssigneeIds, getAssignees, getAssigneeNames } from '@/lib/assignees'
 
 interface BoardViewProps {
   board: any
@@ -38,7 +39,7 @@ interface BoardViewProps {
   currentUserId: string
 }
 
-const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(id, full_name, email), task_tags(tag:tags(*)))'
+const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(id, full_name, email), task_assignees(user_id), task_tags(tag:tags(*)))'
 
 export default function BoardView({ board, columns: initialColumns, users, isAdmin, currentUserId }: BoardViewProps) {
   const [columns, setColumns] = useState(initialColumns)
@@ -90,17 +91,6 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       setColumns(updatedColumns)
     }
   }, [board.id, supabase])
-
-  const getTaskAssignedUserId = (task: any) => {
-    if (!task?.assigned_to) return null
-    return typeof task.assigned_to === 'string' ? task.assigned_to : task.assigned_to.id
-  }
-
-  const getTaskAssignedUser = (task: any) => {
-    if (!task?.assigned_to) return null
-    if (typeof task.assigned_to === 'object') return task.assigned_to
-    return users.find(user => user.id === task.assigned_to) || null
-  }
 
   // GSAP animations on mount
   useEffect(() => {
@@ -255,7 +245,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     return tasks.filter(task => {
       const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            (task.description?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-      const matchesUser = filterUser === 'all' || getTaskAssignedUserId(task) === filterUser
+      const matchesUser = filterUser === 'all' || getAssigneeIds(task).includes(filterUser)
       const matchesPriority = filterPriority === 'all' || task.priority?.toString() === filterPriority
       
       // Date filtering
@@ -350,10 +340,8 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             comparison = (a.title || '').localeCompare(b.title || '')
             break
           case 'assigned':
-            const userA = getTaskAssignedUser(a)
-            const userB = getTaskAssignedUser(b)
-            const nameA = userA?.full_name || userA?.email || 'Unassigned'
-            const nameB = userB?.full_name || userB?.email || 'Unassigned'
+            const nameA = getAssigneeNames(a, users)[0] || 'Unassigned'
+            const nameB = getAssigneeNames(b, users)[0] || 'Unassigned'
             comparison = nameA.localeCompare(nameB)
             break
           case 'priority':
@@ -385,7 +373,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       const visibleTasks = sortTasks(filterTasks(column.tasks || []))
 
       return visibleTasks.map((task: any) => {
-        const assignedUser = getTaskAssignedUser(task)
+        const assigneeNames = getAssigneeNames(task, users)
         const tags = task.task_tags?.map((tt: any) => tt.tag?.name).filter(Boolean).join('; ') || ''
 
         return [
@@ -393,7 +381,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           column.title,
           task.title,
           task.description || '',
-          assignedUser?.full_name || assignedUser?.email || 'Unassigned',
+          assigneeNames.length ? assigneeNames.join('; ') : 'Unassigned',
           task.priority || '',
           task.status || '',
           task.due_date ? new Date(task.due_date).toLocaleDateString() : '',
@@ -860,7 +848,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                         </thead>
                         <tbody>
                           {sortTasks(columnTasks).map((task: any) => {
-                            const assignedUser = getTaskAssignedUser(task)
+                            const taskAssignees = getAssignees(task, users)
                             return (
                               <tr 
                                 key={task.id} 
@@ -890,12 +878,24 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                       setTaskDetailOpen(true)
                                     }}
                                   >
-                                    {assignedUser ? (
+                                    {taskAssignees.length > 0 ? (
                                       <>
-                                        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">
-                                          {assignedUser.full_name?.[0] || assignedUser.email?.[0]}
+                                        <div className="flex -space-x-2">
+                                          {taskAssignees.slice(0, 3).map((u: any) => (
+                                            <div
+                                              key={u.id}
+                                              className="w-6 h-6 rounded-full bg-primary/10 border border-background flex items-center justify-center text-xs font-medium"
+                                              title={u.full_name || u.email}
+                                            >
+                                              {u.full_name?.[0] || u.email?.[0]}
+                                            </div>
+                                          ))}
                                         </div>
-                                        <span className="text-sm">{assignedUser.full_name || assignedUser.email}</span>
+                                        <span className="text-sm">
+                                          {taskAssignees.length === 1
+                                            ? (taskAssignees[0].full_name || taskAssignees[0].email)
+                                            : `${taskAssignees.length} people`}
+                                        </span>
                                       </>
                                     ) : (
                                       <span className="text-sm text-muted-foreground">Assign</span>

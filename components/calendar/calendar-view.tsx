@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { getAssigneeIds, getAssignees } from '@/lib/assignees'
 
 interface CalendarViewProps {
   tasks: any[]
@@ -165,8 +166,8 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
                 </div>
                 <div className="space-y-1">
                   {dayTasks.slice(0, 3).map(task => {
-                    const assignedUser = users.find(u => u.id === task.assigned_to)
-                    const color = task.assigned_to ? getUserColor(task.assigned_to) : '#475569'
+                    const firstAssigneeId = getAssigneeIds(task)[0]
+                    const color = firstAssigneeId ? getUserColor(firstAssigneeId) : '#475569'
                     
                     return (
                       <div
@@ -210,8 +211,9 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
           
           <div className="space-y-3 mt-4">
             {expandedTasks.map(task => {
-              const assignedUser = users.find(u => u.id === task.assigned_to)
-              const color = task.assigned_to ? getUserColor(task.assigned_to) : '#475569'
+              const taskAssignees = getAssignees(task, users)
+              const firstAssigneeId = getAssigneeIds(task)[0]
+              const color = firstAssigneeId ? getUserColor(firstAssigneeId) : '#475569'
               
               return (
                 <Link key={task.id} href={`/admin/board/${task.board_id}`}>
@@ -235,7 +237,7 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
                           
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="outline" className="text-xs">
-                              {assignedUser?.full_name || assignedUser?.email || 'Unassigned'}
+                              {taskAssignees.length ? taskAssignees.map((u: any) => u.full_name || u.email).join(', ') : 'Unassigned'}
                             </Badge>
                             
                             {task.priority && (

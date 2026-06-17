@@ -13,6 +13,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
+import { getAssignees } from '@/lib/assignees'
 
 const priorityColors = {
   1: 'border-blue-500 text-blue-500 bg-blue-50',
@@ -34,9 +35,7 @@ interface TaskCardProps {
 export default function TaskCard({ task, isAdmin, users, board, isDragging, onUpdate }: TaskCardProps) {
   const [detailOpen, setDetailOpen] = useState(false)
   const supabase = createClient()
-  const assignedUser = typeof task.assigned_to === 'object'
-    ? task.assigned_to
-    : users.find(user => user.id === task.assigned_to)
+  const taskAssignees = getAssignees(task, users)
 
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this task?')) {
@@ -160,10 +159,14 @@ export default function TaskCard({ task, isAdmin, users, board, isDragging, onUp
           )}
 
           <div className="space-y-1 pt-2 border-t">
-            {assignedUser && (
+            {taskAssignees.length > 0 && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <User className="w-3 h-3" />
-                <span className="truncate">{assignedUser.full_name || assignedUser.email}</span>
+                <span className="truncate">
+                  {taskAssignees.length === 1
+                    ? (taskAssignees[0].full_name || taskAssignees[0].email)
+                    : `${taskAssignees[0].full_name || taskAssignees[0].email} +${taskAssignees.length - 1}`}
+                </span>
               </div>
             )}
             {task.due_date && (

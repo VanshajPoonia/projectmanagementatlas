@@ -41,7 +41,6 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const [priority, setPriority] = useState<number>(3)
   const [status, setStatus] = useState('todo')
   const [dueDate, setDueDate] = useState<Date>()
-  const [assignedTo, setAssignedTo] = useState('')
   const [assignees, setAssignees] = useState<string[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#3b82f6')
@@ -71,7 +70,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       .select('user_id')
       .eq('task_id', taskId)
     if (data) {
-      setAssignees(data.map(a => a.user_id))
+      setAssignees(data.map((a: any) => a.user_id))
     }
   }
 
@@ -119,7 +118,6 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       setPriority(taskData.priority)
       setStatus(taskData.status)
       setDueDate(taskData.due_date ? new Date(taskData.due_date) : undefined)
-      setAssignedTo(taskData.assigned_to || '')
       setTags(taskData.task_tags?.map((tt: any) => tt.tag) || [])
     }
   }
@@ -144,11 +142,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     if (!title.trim()) return
 
     setLoading(true)
-    
-    // Check if assigned user changed
-    const previousAssignedTo = task?.assigned_to
-    const assignmentChanged = previousAssignedTo !== (assignedTo || null)
-    
+
     // Auto-generate entry_date when task is marked as complete
     const updateData: any = {
       title: title.trim(),
@@ -156,7 +150,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       priority,
       status,
       due_date: dueDate?.toISOString() || null,
-      assigned_to: assignedTo || null,
+      // task_assignees is the source of truth; keep assigned_to as a mirror of the first assignee
+      assigned_to: assignees[0] || null,
     }
     
     // If status changed to 'done', set entry_date to now
@@ -178,26 +173,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
         .eq('id', user?.id || '')
         .single()
 
-      // Send email notification if assignment changed and task is now assigned
-      if (assignmentChanged && assignedTo && assignedTo !== 'unassigned') {
-        const assignedUser = users.find(u => u.id === assignedTo)
-
-        if (assignedUser) {
-          await sendTaskAssignmentEmail(
-            assignedUser.email,
-            assignedUser.full_name || assignedUser.email,
-            title,
-            description,
-            priority.toString(),
-            dueDate?.toISOString() || null,
-            board?.title || 'Project Board',
-            currentUserProfile?.full_name || currentUserProfile?.email || 'Admin'
-          )
-        }
-      }
-
       // Send update notification to all assignees if task details changed
-      if (!assignmentChanged && assignees.length > 0) {
+      if (assignees.length > 0) {
         const changes = []
         if (task?.title !== title) changes.push(`Title updated to "${title}"`)
         if (task?.description !== description) changes.push('Description updated')
@@ -386,23 +363,31 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
   const handleToggleAssignee = async (userId: string) => {
     const isAssigned = assignees.includes(userId)
-    
+    const newAssignees = isAssigned
+      ? assignees.filter(id => id !== userId)
+      : [...assignees, userId]
+
     if (isAssigned) {
-      // Remove assignee
       await supabase
         .from('task_assignees')
         .delete()
         .eq('task_id', taskId)
         .eq('user_id', userId)
-      setAssignees(assignees.filter(id => id !== userId))
     } else {
-      // Add assignee
       await supabase
         .from('task_assignees')
         .insert({ task_id: taskId, user_id: userId })
-      setAssignees([...assignees, userId])
-      
-      // Send email notification
+    }
+    setAssignees(newAssignees)
+
+    // Keep the assigned_to mirror in sync with the first assignee
+    await supabase
+      .from('tasks')
+      .update({ assigned_to: newAssignees[0] || null })
+      .eq('id', taskId)
+
+    // Notify a newly added assignee
+    if (!isAssigned) {
       const assignedUser = users.find(u => u.id === userId)
       if (assignedUser) {
         await sendTaskAssignmentEmail(

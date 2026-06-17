@@ -11,6 +11,7 @@ import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Filter, X, Download, Calendar as CalendarIcon, Users, Tag } from 'lucide-react'
 import { format } from 'date-fns'
+import { getAssigneeIds, getAssigneeNames } from '@/lib/assignees'
 
 interface ReportsViewProps {
   tasks: any[]
@@ -49,7 +50,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
     let filtered = [...tasks]
 
     if (filterUser.length > 0) {
-      filtered = filtered.filter(task => filterUser.includes(task.assigned_to))
+      filtered = filtered.filter(task => getAssigneeIds(task).some(id => filterUser.includes(id)))
     }
 
     if (filterTags.length > 0) {
@@ -112,16 +113,16 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
   const exportToCSV = () => {
     const headers = ['Title', 'Description', 'Priority', 'Status', 'Assigned To', 'Board', 'Created Date', 'Due Date', 'Tags']
     const rows = filteredTasks.map(task => {
-      const assignedUser = users.find(u => u.id === task.assigned_to)
+      const assigneeNames = getAssigneeNames(task, users)
       const board = boards.find(b => b.id === task.board_id)
       const tags = task.task_tags?.map((tt: any) => tt.tag.name).join('; ') || ''
-      
+
       return [
         task.title,
         task.description || '',
         task.priority,
         task.status,
-        assignedUser?.full_name || assignedUser?.email || 'Unassigned',
+        assigneeNames.length ? assigneeNames.join('; ') : 'Unassigned',
         board?.title || 'Unknown',
         new Date(task.created_at).toLocaleDateString(),
         task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No due date',
@@ -352,11 +353,11 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
               </thead>
               <tbody>
                 {filteredTasks.map(task => {
-                  const assignedUser = users.find(u => u.id === task.assigned_to)
+                  const assigneeNames = getAssigneeNames(task, users)
                   return (
                     <tr key={task.id} className="border-b hover:bg-accent/50">
                       <td className="py-3 px-4 font-medium">{task.title}</td>
-                      <td className="py-3 px-4 text-sm">{assignedUser?.full_name || 'Unassigned'}</td>
+                      <td className="py-3 px-4 text-sm">{assigneeNames.length ? assigneeNames.join(', ') : 'Unassigned'}</td>
                       <td className="py-3 px-4">
                         <Badge variant={task.priority >= 4 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'}>
                           {task.priority}
