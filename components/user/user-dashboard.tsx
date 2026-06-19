@@ -5,13 +5,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
 import NotificationInfo from '../notifications/notification-info'
+import PersonalTasks from '../personal/personal-tasks'
 
 interface UserDashboardProps {
   user: any
@@ -35,13 +36,13 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const doneTasks = tasks.filter(t => t.status === 'done')
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-green-600 to-green-700 rounded-lg flex items-center justify-center">
-              <LayoutDashboard className="w-6 h-6 text-white" />
+            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
+              <LayoutDashboard className="w-6 h-6 text-primary-foreground" />
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight">My Dashboard</h1>
@@ -58,10 +59,14 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-3xl grid-cols-4 h-12">
+          <TabsList className="grid w-full max-w-3xl grid-cols-5 h-12">
             <TabsTrigger value="tasks" className="flex items-center gap-2">
               <ClipboardList className="w-4 h-4" />
               <span className="hidden sm:inline">My Tasks</span>
+            </TabsTrigger>
+            <TabsTrigger value="personal" className="flex items-center gap-2">
+              <Lock className="w-4 h-4" />
+              <span className="hidden sm:inline">Personal</span>
             </TabsTrigger>
             <TabsTrigger value="calendar" className="flex items-center gap-2">
               <Calendar className="w-4 h-4" />
@@ -86,34 +91,34 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">To Do</CardTitle>
-                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
-                    <ClipboardList className="w-4 h-4 text-white" />
+                  <div className="w-8 h-8 bg-secondary rounded-lg flex items-center justify-center">
+                    <ClipboardList className="w-4 h-4 text-foreground" />
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{todoTasks.length}</div>
+                  <div className="text-2xl font-semibold">{todoTasks.length}</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-                  <div className="w-8 h-8 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-lg flex items-center justify-center">
-                    <ClipboardList className="w-4 h-4 text-white" />
+                  <div className="w-8 h-8 bg-secondary rounded-lg flex items-center justify-center">
+                    <ClipboardList className="w-4 h-4 text-foreground" />
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{inProgressTasks.length}</div>
+                  <div className="text-2xl font-semibold">{inProgressTasks.length}</div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Completed</CardTitle>
-                  <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
-                    <ClipboardList className="w-4 h-4 text-white" />
+                  <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                    <ClipboardList className="w-4 h-4 text-primary-foreground" />
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{doneTasks.length}</div>
+                  <div className="text-2xl font-semibold">{doneTasks.length}</div>
                 </CardContent>
               </Card>
             </div>
@@ -132,7 +137,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                       href={task.column?.board_id ? `/dashboard/board/${task.column.board_id}` : '#'}
                       className="block group"
                     >
-                      <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-green-50 transition-all cursor-pointer hover:shadow-lg hover:border-green-500 hover:scale-[1.01] active:scale-[0.99]">
+                      <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-all cursor-pointer hover:shadow-md hover:border-primary/30">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <h4 className="font-medium">{task.title}</h4>
@@ -194,6 +199,10 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
             </Card>
           </TabsContent>
 
+          <TabsContent value="personal">
+            <PersonalTasks userId={user.id} />
+          </TabsContent>
+
           <TabsContent value="calendar">
             <CalendarView tasks={tasks} users={users} />
           </TabsContent>
@@ -208,11 +217,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {boards.map((board) => (
                     <Link key={board.id} href={`/dashboard/board/${board.id}`}>
-                      <Card className="hover:shadow-lg transition-all cursor-pointer hover:border-green-500">
+                      <Card className="hover:shadow-md transition-all cursor-pointer hover:border-primary/30">
                         <CardHeader>
                           <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                              <Kanban className="w-5 h-5 text-white" />
+                            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
+                              <Kanban className="w-5 h-5 text-primary-foreground" />
                             </div>
                             <div className="flex-1 min-w-0">
                               <CardTitle className="text-lg truncate">{board.title}</CardTitle>
