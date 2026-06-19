@@ -1,22 +1,22 @@
 'use client'
 
-import React from "react"
-
-import { useState, useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Send, ImageIcon, Paperclip } from 'lucide-react'
+import { Send, Paperclip } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
 import ChatMessage from './chat-message'
 
 interface ChatPanelProps {
   currentUserId: string
   isAdmin: boolean
+  className?: string
 }
 
-export default function ChatPanel({ currentUserId, isAdmin }: ChatPanelProps) {
+export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPanelProps) {
   const [messages, setMessages] = useState<any[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [selectedUser, setSelectedUser] = useState<string>('')
@@ -26,13 +26,54 @@ export default function ChatPanel({ currentUserId, isAdmin }: ChatPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
+  const selectedUserName = users.find((user) => user.id === selectedUser)?.full_name
+    || users.find((user) => user.id === selectedUser)?.email
+    || 'member'
+
+  const loadUsers = useCallback(async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, role')
+      .neq('id', currentUserId)
+      .order('full_name', { ascending: true, nullsFirst: false })
+
+    const availableUsers = data || []
+    setUsers(availableUsers)
+    setSelectedUser((current) => (
+      current && availableUsers.some((user: any) => user.id === current)
+        ? current
+        : availableUsers[0]?.id || ''
+    ))
+  }, [currentUserId, supabase])
+
+  const loadMessages = useCallback(async () => {
+    if (!selectedUser) {
+      setMessages([])
+      return
+    }
+
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('*, sender:profiles!chat_messages_sender_id_fkey(full_name, email)')
+      .or(
+        `and(sender_id.eq.${currentUserId},recipient_id.eq.${selectedUser}),and(sender_id.eq.${selectedUser},recipient_id.eq.${currentUserId})`
+      )
+      .order('created_at', { ascending: true })
+
+    if (data) setMessages(data)
+  }, [currentUserId, selectedUser, supabase])
+
   useEffect(() => {
     loadUsers()
+  }, [loadUsers])
+
+  useEffect(() => {
     loadMessages()
 
-    // Subscribe to real-time messages
+    if (!selectedUser) return
+
     const channel = supabase
-      .channel('chat-messages')
+      .channel(`chat-messages-${currentUserId}-${selectedUser}`)
       .on(
         'postgres_changes',
         {
@@ -40,63 +81,17 @@ export default function ChatPanel({ currentUserId, isAdmin }: ChatPanelProps) {
           schema: 'public',
           table: 'chat_messages',
         },
-        (payload) => {
-          console.log('[v0] Chat message received:', payload)
-          loadMessages()
-        }
+        loadMessages
       )
       .subscribe()
 
-    // Also poll every 3 seconds as fallback
-    const interval = setInterval(() => {
-      loadMessages()
-    }, 3000)
+    const interval = setInterval(loadMessages, 5000)
 
     return () => {
       supabase.removeChannel(channel)
       clearInterval(interval)
     }
-  }, [selectedUser])
-
-  const loadUsers = async () => {
-    if (isAdmin) {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, full_name, email, role')
-        .neq('id', currentUserId)
-        .order('full_name')
-      
-      if (data) setUsers(data)
-    } else {
-      const { data } = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
-        .eq('role', 'admin')
-      
-      if (data) {
-        setUsers(data)
-        if (data.length > 0) setSelectedUser(data[0].id)
-      }
-    }
-  }
-
-  const loadMessages = async () => {
-    if (!selectedUser && !isAdmin) return
-
-    let query = supabase
-      .from('chat_messages')
-      .select('*, sender:profiles!chat_messages_sender_id_fkey(full_name, email)')
-      .order('created_at', { ascending: true })
-
-    if (isAdmin && selectedUser) {
-      query = query.or(`sender_id.eq.${selectedUser},recipient_id.eq.${selectedUser}`)
-    } else if (!isAdmin) {
-      query = query.or(`sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId}`)
-    }
-
-    const { data } = await query
-    if (data) setMessages(data)
-  }
+  }, [currentUserId, loadMessages, selectedUser, supabase])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -104,32 +99,32 @@ export default function ChatPanel({ currentUserId, isAdmin }: ChatPanelProps) {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newMessage.trim()) return
+    if (!newMessage.trim() || !selectedUser) return
 
-    const receiverId = isAdmin ? selectedUser : users[0]?.id
-    if (!receiverId) return
-
-    await supabase.from('chat_messages').insert({
+    const { error } = await supabase.from('chat_messages').insert({
       sender_id: currentUserId,
-      recipient_id: receiverId,
-      message: newMessage,
+      recipient_id: selectedUser,
+      message: newMessage.trim(),
     })
 
-    setNewMessage('')
+    if (!error) {
+      setNewMessage('')
+      loadMessages()
+    }
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file) return
+    if (!file || !selectedUser) return
 
     setUploading(true)
-    
+
     try {
       const fileExt = file.name.split('.').pop()
-      const fileName = `${Math.random()}.${fileExt}`
+      const fileName = `${crypto.randomUUID()}.${fileExt}`
       const filePath = `${currentUserId}/${fileName}`
 
-      const { error: uploadError, data } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('chat-attachments')
         .upload(filePath, file)
 
@@ -139,109 +134,99 @@ export default function ChatPanel({ currentUserId, isAdmin }: ChatPanelProps) {
         .from('chat-attachments')
         .getPublicUrl(filePath)
 
-      const receiverId = isAdmin ? selectedUser : users[0]?.id
-      if (!receiverId) return
-
       await supabase.from('chat_messages').insert({
         sender_id: currentUserId,
-        recipient_id: receiverId,
-        message: file.type.startsWith('image/') ? '📷 Image' : '📎 File',
+        recipient_id: selectedUser,
+        message: file.type.startsWith('image/') ? 'Image' : `File: ${file.name}`,
         image_url: publicUrl,
       })
+
+      loadMessages()
     } catch (error) {
       console.error('Error uploading file:', error)
     } finally {
       setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
   return (
-    <div className="space-y-4">
-      {isAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Select User</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Select value={selectedUser} onValueChange={setSelectedUser}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a user to chat with" />
-              </SelectTrigger>
-              <SelectContent>
-                {users.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.full_name || user.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="h-[600px] flex flex-col">
-        <CardHeader className="border-b">
-          <CardTitle>
-            {isAdmin 
-              ? selectedUser 
-                ? `Chat with ${users.find(u => u.id === selectedUser)?.full_name || 'User'}`
-                : 'Select a user to start chatting'
-              : `Chat with Admin`
-            }
-          </CardTitle>
-        </CardHeader>
-        
-        <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.map((message) => (
-            <ChatMessage 
-              key={message.id} 
-              message={message} 
-              isOwn={message.sender_id === currentUserId}
-            />
-          ))}
-          <div ref={messagesEndRef} />
-          
-          {messages.length === 0 && (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              No messages yet. Start a conversation!
-            </div>
-          )}
-        </CardContent>
-
-        <div className="border-t p-4">
-          <form onSubmit={handleSendMessage} className="flex gap-2">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-              className="hidden"
-              accept="image/*,.pdf,.doc,.docx"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading || (!isAdmin && !selectedUser)}
-            >
-              <Paperclip className="w-4 h-4" />
-            </Button>
-            <Input
-              placeholder="Type a message..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              disabled={uploading || (!isAdmin && !selectedUser)}
-            />
-            <Button 
-              type="submit" 
-              size="icon"
-              disabled={uploading || (!isAdmin && !selectedUser)}
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </form>
+    <Card className={cn('flex h-[min(72vh,640px)] min-h-[460px] flex-col overflow-hidden', className)}>
+      <CardHeader className="border-b p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-base">
+              {selectedUser ? `Chat with ${selectedUserName}` : 'Team chat'}
+            </CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {isAdmin ? 'Talk to any team member' : 'Talk to admins or teammates'}
+            </p>
+          </div>
+          <Select value={selectedUser} onValueChange={setSelectedUser}>
+            <SelectTrigger className="h-10 sm:w-64">
+              <SelectValue placeholder="Choose a member" />
+            </SelectTrigger>
+            <SelectContent>
+              {users.map((user) => (
+                <SelectItem key={user.id} value={user.id}>
+                  {user.full_name || user.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      </Card>
-    </div>
+      </CardHeader>
+
+      <CardContent className="flex-1 space-y-4 overflow-y-auto p-4">
+        {messages.map((message) => (
+          <ChatMessage
+            key={message.id}
+            message={message}
+            isOwn={message.sender_id === currentUserId}
+          />
+        ))}
+        <div ref={messagesEndRef} />
+
+        {messages.length === 0 && (
+          <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
+            {selectedUser ? 'No messages yet. Start the conversation.' : 'Choose a member to start chatting.'}
+          </div>
+        )}
+      </CardContent>
+
+      <div className="border-t p-4">
+        <form onSubmit={handleSendMessage} className="flex gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            className="hidden"
+            accept="image/*,.pdf,.doc,.docx"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading || !selectedUser}
+          >
+            <Paperclip className="w-4 h-4" />
+          </Button>
+          <Input
+            placeholder={selectedUser ? 'Type a message...' : 'Choose a member first'}
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            disabled={uploading || !selectedUser}
+          />
+          <Button
+            type="submit"
+            size="icon"
+            disabled={uploading || !selectedUser || !newMessage.trim()}
+          >
+            <Send className="w-4 h-4" />
+          </Button>
+        </form>
+      </div>
+    </Card>
   )
 }
