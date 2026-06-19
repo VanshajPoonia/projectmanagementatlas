@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Filter, X, Download, Calendar as CalendarIcon, Users, Tag } from 'lucide-react'
 import { format } from 'date-fns'
 import { getAssigneeIds, getAssigneeNames } from '@/lib/assignees'
+import { cleanTaskDescription } from '@/lib/display-text'
 
 interface ReportsViewProps {
   tasks: any[]
@@ -119,7 +120,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
 
       return [
         task.title,
-        task.description || '',
+        cleanTaskDescription(task.description),
         task.priority,
         task.status,
         assigneeNames.length ? assigneeNames.join('; ') : 'Unassigned',
