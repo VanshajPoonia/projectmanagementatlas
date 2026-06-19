@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getAssigneeIds, getAssignees } from '@/lib/assignees'
+import { cleanTaskDescription } from '@/lib/display-text'
 
 interface CalendarViewProps {
   tasks: any[]
@@ -226,12 +227,12 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
                               className="w-3 h-3 rounded-full flex-shrink-0" 
                               style={{ backgroundColor: color }}
                             />
-                            <h3 className="font-semibold text-base truncate">{task.title}</h3>
+                            <h3 className="break-words text-base font-semibold line-clamp-2 [overflow-wrap:anywhere]">{task.title}</h3>
                           </div>
                           
-                          {task.description && (
+                          {cleanTaskDescription(task.description) && (
                             <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                              {task.description}
+                              {cleanTaskDescription(task.description)}
                             </p>
                           )}
                           

@@ -13,6 +13,7 @@ import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
 import NotificationInfo from '../notifications/notification-info'
 import PersonalTasks from '../personal/personal-tasks'
+import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 
 interface UserDashboardProps {
   user: any
@@ -140,7 +141,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                       <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-all cursor-pointer hover:shadow-md hover:border-primary/30">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <h4 className="font-medium">{task.title}</h4>
+                            <h4 className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">{task.title}</h4>
                             <Badge 
                               variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}
                               className={
@@ -154,9 +155,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                               {task.column?.title || task.status}
                             </Badge>
                           </div>
-                          <p className="text-sm text-muted-foreground line-clamp-1 mt-1">
-                            {task.description || 'No description'}
-                          </p>
+                          {cleanTaskDescription(task.description) && (
+                            <p className="text-sm text-muted-foreground line-clamp-1 mt-1">
+                              {cleanTaskDescription(task.description)}
+                            </p>
+                          )}
                           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                             {task.column?.board && (
                               <span className="flex items-center gap-1">
@@ -225,9 +228,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                             </div>
                             <div className="flex-1 min-w-0">
                               <CardTitle className="text-lg truncate">{board.title}</CardTitle>
-                              <CardDescription className="text-sm line-clamp-2">
-                                {board.description || 'No description'}
-                              </CardDescription>
+                              {cleanBoardDescription(board.description) && (
+                                <CardDescription className="text-sm line-clamp-2">
+                                  {cleanBoardDescription(board.description)}
+                                </CardDescription>
+                              )}
                             </div>
                           </div>
                         </CardHeader>

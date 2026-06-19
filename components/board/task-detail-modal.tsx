@@ -19,6 +19,7 @@ import { sendTaskAssignmentEmail, sendCommentEmail, sendTaskUpdateEmail } from '
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { cleanTaskDescription } from '@/lib/display-text'
 
 interface TaskDetailModalProps {
   board?: any
@@ -114,7 +115,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     if (taskData) {
       setTask(taskData)
       setTitle(taskData.title)
-      setDescription(taskData.description || '')
+      setDescription(cleanTaskDescription(taskData.description))
       setPriority(taskData.priority)
       setStatus(taskData.status)
       setDueDate(taskData.due_date ? new Date(taskData.due_date) : undefined)
@@ -177,7 +178,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       if (assignees.length > 0) {
         const changes = []
         if (task?.title !== title) changes.push(`Title updated to "${title}"`)
-        if (task?.description !== description) changes.push('Description updated')
+        if (cleanTaskDescription(task?.description) !== description) changes.push('Description updated')
         if (task?.priority !== priority) changes.push(`Priority changed to ${priority}`)
         if (task?.status !== status) changes.push(`Status changed to ${status}`)
         if (task?.due_date !== dueDate?.toISOString()) changes.push('Due date updated')
