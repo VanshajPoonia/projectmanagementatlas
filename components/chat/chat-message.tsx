@@ -10,11 +10,11 @@ interface ChatMessageProps {
 }
 
 export default function ChatMessage({ message, isOwn }: ChatMessageProps) {
-  const isImage = message.image_url && message.message === '📷 Image'
+  const isImage = message.image_url && (message.message === 'Image' || message.message === '📷 Image')
   
   return (
     <div className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : 'flex-row'} animate-in slide-in-from-bottom-2 duration-300`}>
-      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
+      <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-semibold text-sm flex-shrink-0">
         {message.sender?.full_name?.charAt(0) || message.sender?.email?.charAt(0).toUpperCase() || 'U'}
       </div>
       
@@ -23,7 +23,7 @@ export default function ChatMessage({ message, isOwn }: ChatMessageProps) {
           {message.sender?.full_name || message.sender?.email || 'User'}
         </span>
         
-        <Card className={`p-3 ${isOwn ? 'bg-blue-600 text-white' : 'bg-white'} shadow-sm`}>
+        <Card className={`p-3 ${isOwn ? 'bg-primary text-primary-foreground' : 'bg-background'} shadow-sm`}>
           {isImage ? (
             <a href={message.image_url} target="_blank" rel="noopener noreferrer" className="block">
               <div className="relative w-48 h-48 rounded-lg overflow-hidden">
@@ -40,7 +40,7 @@ export default function ChatMessage({ message, isOwn }: ChatMessageProps) {
               href={message.image_url} 
               target="_blank" 
               rel="noopener noreferrer"
-              className={`flex items-center gap-2 ${isOwn ? 'text-white hover:underline' : 'text-blue-600 hover:underline'}`}
+              className={`flex items-center gap-2 ${isOwn ? 'text-primary-foreground hover:underline' : 'text-primary hover:underline'}`}
             >
               {message.message}
             </a>
