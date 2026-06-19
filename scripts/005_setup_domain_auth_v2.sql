@@ -175,7 +175,7 @@ CREATE POLICY "Users can view chat messages"
   USING (
     is_admin_user() OR 
     sender_id = auth.uid() OR 
-    receiver_id = auth.uid()
+    recipient_id = auth.uid()
   );
 
 CREATE POLICY "Users can send chat messages"
@@ -183,7 +183,8 @@ CREATE POLICY "Users can send chat messages"
   TO authenticated
   WITH CHECK (
     sender_id = auth.uid() AND
-    (is_admin_user() OR receiver_id IN (SELECT id FROM profiles WHERE is_admin = true))
+    recipient_id <> auth.uid() AND
+    recipient_id IN (SELECT id FROM profiles)
   );
 
 CREATE POLICY "Users can delete own messages"
