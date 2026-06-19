@@ -15,14 +15,6 @@ import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
 import { getAssignees } from '@/lib/assignees'
 
-const priorityColors = {
-  1: 'border-blue-500 text-blue-500 bg-blue-50',
-  2: 'border-green-500 text-green-500 bg-green-50',
-  3: 'border-orange-500 text-orange-500 bg-orange-50',
-  4: 'border-red-500 text-red-500 bg-red-50',
-  5: 'border-purple-500 text-purple-500 bg-purple-50',
-};
-
 interface TaskCardProps {
   task: any
   isAdmin: boolean

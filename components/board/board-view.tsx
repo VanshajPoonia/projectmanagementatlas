@@ -406,8 +406,8 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
-      <header ref={headerRef} className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+    <div className="min-h-screen bg-background">
+      <header ref={headerRef} className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4 flex-1">
@@ -696,7 +696,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           <div className="space-y-6">
             {/* List View */}
             {sortConfig.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap bg-white/80 backdrop-blur-sm p-3 rounded-lg border">
+              <div className="flex items-center gap-2 flex-wrap bg-background/80 backdrop-blur-sm p-3 rounded-lg border">
                 <span className="text-sm font-medium text-muted-foreground">Active sorts:</span>
                 {sortConfig.map((sort, index) => (
                   <Badge key={sort.column} variant="secondary" className="gap-2">
