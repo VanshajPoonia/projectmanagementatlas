@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import EnhancedUserManagement from './enhanced-user-management'
@@ -14,6 +14,7 @@ import CalendarView from '../calendar/calendar-view'
 import ReportsView from '../reports/reports-view'
 import UserManagement from './user-management' // Added import for UserManagement
 import PersonalTasks from '../personal/personal-tasks'
+import BookmarksSection from '../bookmarks/bookmarks-section'
 import { gsap } from 'gsap'
 
 interface AdminDashboardProps {
@@ -80,8 +81,8 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full max-w-4xl grid-cols-7 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
-                <LayoutDashboard className="w-4 h-4" />
-                <span className="hidden sm:inline">Overview</span>
+                <Home className="w-4 h-4" />
+                <span className="hidden sm:inline">Home</span>
               </TabsTrigger>
               <TabsTrigger value="calendar" className="flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
@@ -110,6 +111,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
+              <BookmarksSection userId={user.id} isAdmin={true} />
               <TaskOverview tasks={tasks} users={users} />
             </TabsContent>
 

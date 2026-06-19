@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -13,6 +13,7 @@ import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
 import NotificationInfo from '../notifications/notification-info'
 import PersonalTasks from '../personal/personal-tasks'
+import BookmarksSection from '../bookmarks/bookmarks-section'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 
 interface UserDashboardProps {
@@ -62,8 +63,8 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full max-w-3xl grid-cols-5 h-12">
             <TabsTrigger value="tasks" className="flex items-center gap-2">
-              <ClipboardList className="w-4 h-4" />
-              <span className="hidden sm:inline">My Tasks</span>
+              <Home className="w-4 h-4" />
+              <span className="hidden sm:inline">Home</span>
             </TabsTrigger>
             <TabsTrigger value="personal" className="flex items-center gap-2">
               <Lock className="w-4 h-4" />
@@ -84,6 +85,8 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
           </TabsList>
 
           <TabsContent value="tasks" className="space-y-6">
+            <BookmarksSection userId={user.id} isAdmin={false} />
+
             {/* Notification Info */}
             <NotificationInfo />
 
