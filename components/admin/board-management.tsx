@@ -13,6 +13,7 @@ import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette } from 'luc
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import Link from 'next/link'
+import { cleanBoardDescription } from '@/lib/display-text'
 
 interface BoardManagementProps {
   boards: any[]
@@ -306,9 +307,11 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                     </div>
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-lg truncate">{board.title}</CardTitle>
-                      <CardDescription className="text-sm line-clamp-2">
-                        {board.description || 'No description'}
-                      </CardDescription>
+                      {cleanBoardDescription(board.description) && (
+                        <CardDescription className="text-sm line-clamp-2">
+                          {cleanBoardDescription(board.description)}
+                        </CardDescription>
+                      )}
                     </div>
                   </div>
                 </CardHeader>

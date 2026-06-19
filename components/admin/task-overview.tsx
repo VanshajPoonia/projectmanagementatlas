@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { ClipboardList, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 import { getAssigneeNames } from '@/lib/assignees'
+import { cleanTaskDescription } from '@/lib/display-text'
 
 interface TaskOverviewProps {
   tasks: any[]
@@ -55,13 +56,16 @@ export default function TaskOverview({ tasks, users }: TaskOverviewProps) {
           <div className="space-y-4">
             {tasks.slice(0, 10).map((task) => {
               const assigneeNames = getAssigneeNames(task, users)
+              const taskDescription = cleanTaskDescription(task.description)
 
               return (
                 <Link key={task.id} href={`/admin/board/${task.board_id}`}>
                   <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer hover:border-primary">
                     <div className="flex-1">
-                      <h4 className="font-medium">{task.title}</h4>
-                      <p className="text-sm text-muted-foreground line-clamp-1">{task.description || 'No description'}</p>
+                      <h4 className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">{task.title}</h4>
+                      {taskDescription && (
+                        <p className="text-sm text-muted-foreground line-clamp-1">{taskDescription}</p>
+                      )}
                       <p className="text-xs text-muted-foreground mt-1">
                         Assigned to: {assigneeNames.length ? assigneeNames.join(', ') : 'Unassigned'}
                       </p>
