@@ -15,10 +15,10 @@
 -- - Creates/uses a board named "Main PM Sheet".
 -- - Creates two columns: "Tasks" and "On Going Indefinitely".
 -- - Preserves Company as board tags: ALL, HM, AGC, SRG.
--- - Preserves all source details in task.description.
+-- - Uses the sheet notes/status as task descriptions when present.
 -- - Assigns users by matching profiles.full_name or profile email prefix.
 -- - If a named assignee is not found in profiles, the task remains unassigned
---   for that person, but the original assignee text is preserved in description.
+--   for that person.
 
 BEGIN;
 
@@ -170,7 +170,7 @@ BEGIN
     INSERT INTO public.boards (title, description, created_by, color)
     VALUES (
       'Main PM Sheet',
-      'Imported from Marketing Project Management.xlsx > Main PM Sheet. Completed rows intentionally excluded.',
+      NULL,
       v_creator_id,
       '#2563eb'
     )
@@ -178,7 +178,7 @@ BEGIN
   ELSE
     UPDATE public.boards
     SET
-      description = 'Imported from Marketing Project Management.xlsx > Main PM Sheet. Completed rows intentionally excluded.',
+      description = NULL,
       color = '#2563eb'
     WHERE id = v_board_id;
 
@@ -303,21 +303,7 @@ BEGIN
     )
     VALUES (
       rec.title,
-      concat_ws(
-        E'\n',
-        'Source: Marketing Project Management.xlsx > Main PM Sheet',
-        'Section: ' || CASE WHEN rec.section = 'ongoing' THEN 'On Going Indefinitely' ELSE 'Tasks' END,
-        'Task Description: ' || rec.title,
-        CASE WHEN rec.company IS NOT NULL THEN 'Company: ' || rec.company END,
-        CASE
-          WHEN rec.source_priority IS NOT NULL THEN 'Priority: ' || rec.source_priority
-          ELSE 'Priority: Not listed in sheet'
-        END,
-        CASE WHEN rec.entry_date IS NOT NULL THEN 'Entry Date: ' || rec.entry_date::TEXT END,
-        'Due Date: ' || coalesce(rec.due_label, rec.due_date::TEXT, 'No due date'),
-        'Assigned To: ' || coalesce(rec.assigned_raw, 'Unassigned'),
-        CASE WHEN rec.notes IS NOT NULL THEN 'Notes & Status: ' || rec.notes END
-      ),
+      rec.notes,
       CASE WHEN rec.section = 'ongoing' THEN v_ongoing_column_id ELSE v_tasks_column_id END,
       v_primary_assignee_id,
       v_creator_id,
