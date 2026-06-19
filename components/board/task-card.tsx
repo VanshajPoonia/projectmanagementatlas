@@ -14,6 +14,7 @@ import { createClient } from '@/lib/supabase/client'
 import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
 import { getAssignees } from '@/lib/assignees'
+import { cleanTaskDescription } from '@/lib/display-text'
 
 interface TaskCardProps {
   task: any
@@ -28,6 +29,7 @@ export default function TaskCard({ task, isAdmin, users, board, isDragging, onUp
   const [detailOpen, setDetailOpen] = useState(false)
   const supabase = createClient()
   const taskAssignees = getAssignees(task, users)
+  const taskDescription = cleanTaskDescription(task.description)
 
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this task?')) {
@@ -70,15 +72,17 @@ export default function TaskCard({ task, isAdmin, users, board, isDragging, onUp
 
   return (
     <>
-      <Card 
-        className={`group p-4 cursor-grab active:cursor-grabbing hover:shadow-lg transition-all hover:scale-[1.02] ${
-          isDragging ? 'shadow-xl rotate-2 opacity-70 cursor-grabbing' : ''
-        } ${isOverdue ? 'border-2 border-red-400 bg-red-50/30' : 'hover:border-primary/50'}`}
+      <Card
+        className={`group min-w-0 cursor-grab overflow-hidden p-3 active:cursor-grabbing transition-colors hover:border-primary/40 hover:shadow-md ${
+          isDragging ? 'shadow-xl opacity-80 cursor-grabbing' : ''
+        } ${isOverdue ? 'border-red-300 bg-red-50/30' : ''}`}
         onClick={() => setDetailOpen(true)}
       >
-        <div className="space-y-3">
-          <div className="flex items-start justify-between gap-2">
-            <h4 className="font-semibold text-sm leading-tight flex-1 text-pretty">{task.title}</h4>
+        <div className="space-y-2.5">
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <h4 className="min-w-0 flex-1 break-words text-sm font-semibold leading-tight text-pretty line-clamp-4 [overflow-wrap:anywhere]">
+              {task.title}
+            </h4>
             {isAdmin && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -98,8 +102,10 @@ export default function TaskCard({ task, isAdmin, users, board, isDragging, onUp
             )}
           </div>
 
-          {task.description && (
-            <p className="text-xs text-muted-foreground line-clamp-2">{task.description}</p>
+          {taskDescription && (
+            <p className="break-words text-xs text-muted-foreground line-clamp-3 [overflow-wrap:anywhere]">
+              {taskDescription}
+            </p>
           )}
 
           {/* Tags */}
@@ -136,21 +142,20 @@ export default function TaskCard({ task, isAdmin, users, board, isDragging, onUp
             )}
           </div>
 
-          {/* Countdown Clock */}
           {daysRemaining !== null && (
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-md border font-semibold text-sm ${getCountdownColor()}`}>
-              <Clock className="w-4 h-4" />
+            <Badge variant="outline" className={`gap-1 text-xs ${getCountdownColor()}`}>
+              <Clock className="w-3 h-3" />
               <span>
-                {daysRemaining < 0 
-                  ? `${Math.abs(daysRemaining)} days overdue` 
-                  : daysRemaining === 0 
-                  ? 'Due today!' 
+                {daysRemaining < 0
+                  ? `${Math.abs(daysRemaining)} days overdue`
+                  : daysRemaining === 0
+                  ? 'Due today'
                   : `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} remaining`}
               </span>
-            </div>
+            </Badge>
           )}
 
-          <div className="space-y-1 pt-2 border-t">
+          <div className="space-y-1 border-t pt-2">
             {taskAssignees.length > 0 && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <User className="w-3 h-3" />
