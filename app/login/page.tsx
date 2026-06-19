@@ -60,10 +60,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
-      <Card className="w-full max-w-md shadow-xl">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md border-border shadow-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-3xl font-bold tracking-tight">Welcome back</CardTitle>
+          <CardTitle className="text-3xl font-semibold tracking-tight">Welcome back</CardTitle>
           <CardDescription>Sign in to access your project dashboard</CardDescription>
         </CardHeader>
         <CardContent>
