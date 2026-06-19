@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import EnhancedUserManagement from './enhanced-user-management'
@@ -13,6 +13,7 @@ import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
 import ReportsView from '../reports/reports-view'
 import UserManagement from './user-management' // Added import for UserManagement
+import PersonalTasks from '../personal/personal-tasks'
 import { gsap } from 'gsap'
 
 interface AdminDashboardProps {
@@ -53,13 +54,13 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header ref={headerRef} className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+      <header ref={headerRef} className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center">
-              <LayoutDashboard className="w-6 h-6 text-white" />
+            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
+              <LayoutDashboard className="w-6 h-6 text-primary-foreground" />
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight">Admin Dashboard</h1>
@@ -77,7 +78,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
       <main className="container mx-auto px-4 py-8">
         <div ref={tabsRef}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full max-w-4xl grid-cols-6 h-12">
+            <TabsList className="grid w-full max-w-4xl grid-cols-7 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <LayoutDashboard className="w-4 h-4" />
                 <span className="hidden sm:inline">Overview</span>
@@ -101,6 +102,10 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
               <TabsTrigger value="chat" className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4" />
                 <span className="hidden sm:inline">Chat</span>
+              </TabsTrigger>
+              <TabsTrigger value="personal" className="flex items-center gap-2">
+                <Lock className="w-4 h-4" />
+                <span className="hidden sm:inline">Personal</span>
               </TabsTrigger>
             </TabsList>
 
@@ -126,6 +131,10 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
 
             <TabsContent value="chat">
               <ChatPanel currentUserId={user.id} isAdmin={true} />
+            </TabsContent>
+
+            <TabsContent value="personal">
+              <PersonalTasks userId={user.id} />
             </TabsContent>
           </Tabs>
         </div>
