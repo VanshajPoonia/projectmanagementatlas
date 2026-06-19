@@ -18,10 +18,10 @@ export default function TaskOverview({ tasks, users }: TaskOverviewProps) {
   const todoTasks = tasks.filter(t => t.status === 'todo').length
 
   const stats = [
-    { title: 'Total Tasks', value: totalTasks, icon: ClipboardList, color: 'from-blue-500 to-blue-600' },
-    { title: 'Completed', value: completedTasks, icon: CheckCircle2, color: 'from-green-500 to-green-600' },
-    { title: 'In Progress', value: inProgressTasks, icon: Clock, color: 'from-yellow-500 to-yellow-600' },
-    { title: 'To Do', value: todoTasks, icon: AlertCircle, color: 'from-purple-500 to-purple-600' },
+    { title: 'Total Tasks', value: totalTasks, icon: ClipboardList, primary: true },
+    { title: 'Completed', value: completedTasks, icon: CheckCircle2, primary: false },
+    { title: 'In Progress', value: inProgressTasks, icon: Clock, primary: false },
+    { title: 'To Do', value: todoTasks, icon: AlertCircle, primary: false },
   ]
 
   return (
@@ -36,12 +36,12 @@ export default function TaskOverview({ tasks, users }: TaskOverviewProps) {
           <Card key={index} className="hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-              <div className={`w-10 h-10 bg-gradient-to-br ${stat.color} rounded-lg flex items-center justify-center`}>
-                <stat.icon className="w-5 h-5 text-white" />
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${stat.primary ? 'bg-primary' : 'bg-secondary'}`}>
+                <stat.icon className={`w-5 h-5 ${stat.primary ? 'text-primary-foreground' : 'text-foreground'}`} />
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{stat.value}</div>
+              <div className="text-3xl font-semibold">{stat.value}</div>
             </CardContent>
           </Card>
         ))}
