@@ -18,18 +18,19 @@ import { SelectTrigger } from "@/components/ui/select"
 import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, Download } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, Download, MessageSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import TaskCard from './task-card'
 import CreateTaskDialog from './create-task-dialog'
 import { TaskDetailModal } from './task-detail-modal'
-import gsap from 'gsap' // Import gsap
+import ChatPanel from '@/components/chat/chat-panel'
 import { getAssigneeIds, getAssignees, getAssigneeNames } from '@/lib/assignees'
+import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 
 interface BoardViewProps {
   board: any
@@ -49,7 +50,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [newColumnTitle, setNewColumnTitle] = useState('')
   const [editingBoardTitle, setEditingBoardTitle] = useState(false)
   const [boardTitle, setBoardTitle] = useState(board.title)
-  const [boardDescription, setBoardDescription] = useState(board.description || '')
+  const [boardDescription, setBoardDescription] = useState(cleanBoardDescription(board.description))
   const [colorPickerColumn, setColorPickerColumn] = useState<string | null>(null)
   const [filterUser, setFilterUser] = useState<string>('all')
   const [filterPriority, setFilterPriority] = useState<string>('all')
@@ -61,13 +62,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   }>>([])
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [taskDetailOpen, setTaskDetailOpen] = useState(false)
-  const columnsRef = useRef<(HTMLDivElement | null)[]>([])
-  const headerRef = useRef<HTMLDivElement>(null)
+  const [chatDialogOpen, setChatDialogOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
-  const [sortColumn, setSortColumn] = useState<'title' | 'assigned' | 'priority' | 'dueDate' | null>(null)
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const columnColors = [
     '#3b82f6', // blue
@@ -91,34 +89,6 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       setColumns(updatedColumns)
     }
   }, [board.id, supabase])
-
-  // GSAP animations on mount
-  useEffect(() => {
-    if (headerRef.current) {
-      gsap.fromTo(
-        headerRef.current,
-        { y: -100, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.8, ease: 'power3.out' }
-      )
-    }
-
-    columnsRef.current.forEach((col, index) => {
-      if (col) {
-        gsap.fromTo(
-          col,
-          { y: 50, opacity: 0, scale: 0.9 },
-          { 
-            y: 0, 
-            opacity: 1, 
-            scale: 1,
-            duration: 0.6, 
-            delay: index * 0.1,
-            ease: 'back.out(1.2)'
-          }
-        )
-      }
-    })
-  }, [columns.length])
 
   useEffect(() => {
     // Subscribe to real-time updates
@@ -243,8 +213,9 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
   const filterTasks = (tasks: any[]) => {
     return tasks.filter(task => {
+      const taskDescription = cleanTaskDescription(task.description)
       const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           (task.description?.toLowerCase() || '').includes(searchTerm.toLowerCase())
+                           taskDescription.toLowerCase().includes(searchTerm.toLowerCase())
       const matchesUser = filterUser === 'all' || getAssigneeIds(task).includes(filterUser)
       const matchesPriority = filterPriority === 'all' || task.priority?.toString() === filterPriority
       
@@ -380,7 +351,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           boardTitle,
           column.title,
           task.title,
-          task.description || '',
+          cleanTaskDescription(task.description),
           assigneeNames.length ? assigneeNames.join('; ') : 'Unassigned',
           task.priority || '',
           task.status || '',
@@ -407,10 +378,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
   return (
     <div className="min-h-screen bg-background">
-      <header ref={headerRef} className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4 flex-1">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 flex-1 items-start gap-4">
               <Link href={isAdmin ? '/admin' : '/dashboard'}>
                 <Button variant="outline" size="sm">
                   <ArrowLeft className="w-4 h-4 mr-2" />
@@ -450,12 +421,14 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                       </Button>
                     )}
                   </div>
-                  <p className="text-sm text-muted-foreground">{boardDescription || 'No description'}</p>
+                  {boardDescription && (
+                    <p className="text-sm text-muted-foreground">{boardDescription}</p>
+                  )}
                 </div>
               )}
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
               {/* View Toggle */}
               <div className="flex items-center border rounded-md">
                 <Button 
@@ -491,6 +464,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                     {activeFiltersCount}
                   </Badge>
                 )}
+              </Button>
+              <Button onClick={() => setChatDialogOpen(true)} variant="outline" size="sm" className="gap-2">
+                <MessageSquare className="w-4 h-4" />
+                Chat
               </Button>
               <Button onClick={exportVisibleTasksToCSV} variant="outline" size="sm" className="gap-2">
                 <Download className="w-4 h-4" />
@@ -591,78 +568,85 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="mx-auto w-full max-w-[1800px] px-4 py-6">
         {viewMode === 'tile' ? (
           <DragDropContext onDragEnd={onDragEnd}>
-            <div className="flex gap-4 overflow-x-auto pb-4">
-              {columns.map((column, index) => (
-                <div 
-                  key={column.id} 
-                  ref={(el) => {
-                    columnsRef.current[index] = el
-                  }}
-                  className="flex-shrink-0 w-80"
-                >
-                  <Card 
-                    className="h-full bg-white/60 backdrop-blur-sm shadow-sm hover:shadow-lg transition-all hover:scale-[1.01] border-t-4"
-                    style={{ borderTopColor: column.color || '#3b82f6' }}
-                  >
-                    <CardHeader 
-                      className="flex flex-row items-center justify-between space-y-0 pb-3 rounded-t-lg transition-colors"
-                      style={{ backgroundColor: column.color ? `${column.color}10` : undefined }}
+            <div className="-mx-4 overflow-x-auto px-4 pb-6">
+              <div className="flex items-start gap-4">
+                {columns.map((column) => {
+                  const visibleTasks = filterTasks(column.tasks || [])
+                    .sort((a: any, b: any) => a.position - b.position)
+
+                  return (
+                    <section
+                      key={column.id}
+                      className="w-[min(360px,calc(100vw-2rem))] flex-shrink-0 rounded-lg border bg-muted/20"
                     >
-                      <div className="flex items-center gap-2">
-                        {column.color && (
-                          <div 
-                            className="w-3 h-3 rounded-full animate-pulse" 
-                            style={{ backgroundColor: column.color }}
-                          />
-                        )}
-                        <CardTitle className="text-lg font-semibold">{column.title}</CardTitle>
-                      </div>
-                      {isAdmin && (
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleOpenCreateDialog(column)}
-                            className="h-8 w-8 p-0 hover:scale-110 transition-transform"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:scale-110 transition-transform">
-                                <MoreVertical className="w-4 h-4" />
+                      <div
+                        className="rounded-t-lg border-t-4 px-4 py-3"
+                        style={{
+                          borderTopColor: column.color || '#3b82f6',
+                          backgroundColor: column.color ? `${column.color}10` : undefined,
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              {column.color && (
+                                <div
+                                  className="h-2.5 w-2.5 rounded-full"
+                                  style={{ backgroundColor: column.color }}
+                                />
+                              )}
+                              <h2 className="truncate text-base font-semibold">{column.title}</h2>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {visibleTasks.length} {visibleTasks.length === 1 ? 'task' : 'tasks'}
+                            </p>
+                          </div>
+                          {isAdmin && (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                onClick={() => handleOpenCreateDialog(column)}
+                              >
+                                <Plus className="w-4 h-4" />
                               </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                              <DropdownMenuItem onClick={() => setColorPickerColumn(column.id)}>
-                                <Palette className="w-4 h-4 mr-2" />
-                                Change Color
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDeleteColumn(column.id)} className="text-red-600">
-                                <Trash className="w-4 h-4 mr-2" />
-                                Delete Column
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon-sm">
+                                    <MoreVertical className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48">
+                                  <DropdownMenuItem onClick={() => setColorPickerColumn(column.id)}>
+                                    <Palette className="w-4 h-4 mr-2" />
+                                    Change Color
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleDeleteColumn(column.id)} className="text-red-600">
+                                    <Trash className="w-4 h-4 mr-2" />
+                                    Delete Column
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </CardHeader>
-                    <CardContent>
+                      </div>
+
                       <Droppable droppableId={column.id}>
                         {(provided, snapshot) => (
                           <div
                             ref={provided.innerRef}
                             {...provided.droppableProps}
-                            className={`space-y-3 min-h-[200px] rounded-lg p-3 transition-all duration-300 ${
-                              snapshot.isDraggingOver 
-                                ? 'bg-gradient-to-b from-primary/10 to-primary/5 ring-2 ring-primary/30 scale-[1.02]' 
-                                : 'bg-transparent'
+                            className={`space-y-3 p-3 transition-colors ${
+                              snapshot.isDraggingOver
+                                ? 'bg-primary/5 ring-2 ring-inset ring-primary/20'
+                                : ''
                             }`}
                           >
-                            {filterTasks(column.tasks || [])?.sort((a: any, b: any) => a.position - b.position).map((task: any, index: number) => (
+                            {visibleTasks.map((task: any, index: number) => (
                               <Draggable key={task.id} draggableId={task.id} index={index}>
                                 {(provided, snapshot) => (
                                   <div
@@ -670,8 +654,8 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                     {...provided.draggableProps}
                                     {...provided.dragHandleProps}
                                   >
-                                    <TaskCard 
-                                      task={task} 
+                                    <TaskCard
+                                      task={task}
                                       isAdmin={isAdmin}
                                       users={users}
                                       board={board}
@@ -682,14 +666,19 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                 )}
                               </Draggable>
                             ))}
+                            {visibleTasks.length === 0 && (
+                              <div className="rounded-md border border-dashed bg-background/60 px-3 py-8 text-center text-sm text-muted-foreground">
+                                No tasks match this view
+                              </div>
+                            )}
                             {provided.placeholder}
                           </div>
                         )}
                       </Droppable>
-                    </CardContent>
-                  </Card>
-                </div>
-              ))}
+                    </section>
+                  )
+                })}
+              </div>
             </div>
           </DragDropContext>
         ) : (
@@ -849,6 +838,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                         <tbody>
                           {sortTasks(columnTasks).map((task: any) => {
                             const taskAssignees = getAssignees(task, users)
+                            const taskDescription = cleanTaskDescription(task.description)
                             return (
                               <tr 
                                 key={task.id} 
@@ -860,10 +850,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                               >
                                 <td className="py-3 px-4">
                                   <div className="space-y-1">
-                                    <div className="font-medium">{task.title}</div>
-                                    {task.description && (
+                                    <div className="break-words font-medium [overflow-wrap:anywhere]">{task.title}</div>
+                                    {taskDescription && (
                                       <div className="text-sm text-muted-foreground line-clamp-1">
-                                        {task.description}
+                                        {taskDescription}
                                       </div>
                                     )}
                                   </div>
@@ -946,6 +936,16 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           </div>
         )}
       </main>
+
+      <Dialog open={chatDialogOpen} onOpenChange={setChatDialogOpen}>
+        <DialogContent className="max-w-3xl p-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Team chat</DialogTitle>
+            <DialogDescription>Chat with another team member from this board.</DialogDescription>
+          </DialogHeader>
+          <ChatPanel currentUserId={currentUserId} isAdmin={isAdmin} className="border-0 shadow-none" />
+        </DialogContent>
+      </Dialog>
 
       {selectedTaskId && (
         <TaskDetailModal
