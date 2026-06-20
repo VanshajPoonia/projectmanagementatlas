@@ -6,9 +6,9 @@
 -- so a flag on `tasks` could never be made truly private to just the owner.
 -- This table has exactly one policy, with no admin clause at all.
 
-CREATE TABLE IF NOT EXISTS personal_tasks (
+CREATE TABLE IF NOT EXISTS public.personal_tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   description TEXT,
   due_date TIMESTAMP WITH TIME ZONE,
@@ -17,13 +17,15 @@ CREATE TABLE IF NOT EXISTS personal_tasks (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON public.personal_tasks(user_id);
 
-ALTER TABLE personal_tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.personal_tasks ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Users manage only their own personal tasks" ON personal_tasks;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.personal_tasks TO authenticated;
+
+DROP POLICY IF EXISTS "Users manage only their own personal tasks" ON public.personal_tasks;
 CREATE POLICY "Users manage only their own personal tasks"
-  ON personal_tasks FOR ALL
+  ON public.personal_tasks FOR ALL
   TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
