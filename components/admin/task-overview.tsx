@@ -6,6 +6,7 @@ import { ClipboardList, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 import { getAssigneeNames } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
+import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 
 interface TaskOverviewProps {
   tasks: any[]
@@ -14,9 +15,9 @@ interface TaskOverviewProps {
 
 export default function TaskOverview({ tasks, users }: TaskOverviewProps) {
   const totalTasks = tasks.length
-  const completedTasks = tasks.filter(t => t.status === 'done').length
-  const inProgressTasks = tasks.filter(t => t.status === 'in_progress').length
-  const todoTasks = tasks.filter(t => t.status === 'todo').length
+  const completedTasks = tasks.filter(t => getNormalizedTaskStatus(t) === 'done').length
+  const inProgressTasks = tasks.filter(t => getNormalizedTaskStatus(t) === 'in_progress').length
+  const todoTasks = tasks.filter(t => getNormalizedTaskStatus(t) === 'to_do').length
 
   const stats = [
     { title: 'Total Tasks', value: totalTasks, icon: ClipboardList, primary: true },
@@ -57,6 +58,7 @@ export default function TaskOverview({ tasks, users }: TaskOverviewProps) {
             {tasks.slice(0, 10).map((task) => {
               const assigneeNames = getAssigneeNames(task, users)
               const taskDescription = cleanTaskDescription(task.description)
+              const taskStatus = getNormalizedTaskStatus(task)
 
               return (
                 <Link key={task.id} href={`/admin/board/${task.board_id}`}>
@@ -72,16 +74,16 @@ export default function TaskOverview({ tasks, users }: TaskOverviewProps) {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge 
-                        variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}
+                        variant={taskStatus === 'done' ? 'default' : taskStatus === 'in_progress' ? 'secondary' : 'outline'}
                         className={
-                          task.status === 'done' 
+                          taskStatus === 'done'
                             ? 'bg-green-600' 
-                            : task.status === 'in_progress' 
+                            : taskStatus === 'in_progress'
                             ? 'bg-yellow-600' 
                             : ''
                         }
                       >
-                        {task.status === 'done' ? 'Done' : task.status === 'in_progress' ? 'In Progress' : 'To Do'}
+                        {getTaskStatusLabel(task)}
                       </Badge>
                       {task.priority && (
                         <Badge variant="outline" className={

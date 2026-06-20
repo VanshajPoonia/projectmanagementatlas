@@ -15,27 +15,54 @@ import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
 import { getAssignees } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
+import { getNormalizedTaskStatus } from '@/lib/task-status'
+import { toast } from 'sonner'
 
 interface TaskCardProps {
   task: any
   isAdmin: boolean
+  currentUserId: string
   users: any[]
   board?: any
   isDragging?: boolean
   onUpdate?: () => void
 }
 
-export default function TaskCard({ task, isAdmin, users, board, isDragging, onUpdate }: TaskCardProps) {
+export default function TaskCard({ task, isAdmin, currentUserId, users, board, isDragging, onUpdate }: TaskCardProps) {
   const [detailOpen, setDetailOpen] = useState(false)
   const supabase = createClient()
   const taskAssignees = getAssignees(task, users)
   const taskDescription = cleanTaskDescription(task.description)
+  const canDelete = isAdmin || task.created_by === currentUserId
 
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this task?')) {
-      const { error } = await supabase.from('tasks').delete().eq('id', task.id)
+      const { error } = await supabase
+        .from('tasks')
+        .update({ deleted_at: new Date().toISOString(), deleted_by: currentUserId })
+        .eq('id', task.id)
       if (!error) {
         onUpdate?.()
+        toast.success('Task deleted', {
+          description: 'You can undo this action for a short time.',
+          action: {
+            label: 'Undo',
+            onClick: async () => {
+              const { error: undoError } = await supabase
+                .from('tasks')
+                .update({ deleted_at: null, deleted_by: null })
+                .eq('id', task.id)
+              if (undoError) {
+                toast.error('Could not restore task')
+              } else {
+                toast.success('Task restored')
+                onUpdate?.()
+              }
+            },
+          },
+        })
+      } else {
+        toast.error('Could not delete task', { description: error.message })
       }
     }
   }
@@ -47,7 +74,7 @@ export default function TaskCard({ task, isAdmin, users, board, isDragging, onUp
   }
 
   // Check if task is overdue
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done'
+  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && getNormalizedTaskStatus(task) !== 'done'
   
   // Calculate days remaining
   const getDaysRemaining = () => {
@@ -83,7 +110,7 @@ export default function TaskCard({ task, isAdmin, users, board, isDragging, onUp
             <h4 className="min-w-0 flex-1 break-words text-sm font-semibold leading-tight text-pretty line-clamp-4 [overflow-wrap:anywhere]">
               {task.title}
             </h4>
-            {isAdmin && (
+            {canDelete && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                   <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -186,6 +213,7 @@ export default function TaskCard({ task, isAdmin, users, board, isDragging, onUp
         }}
         board={board}
         isAdmin={isAdmin}
+        currentUserId={currentUserId}
       />
     </>
   )

@@ -1,7 +1,6 @@
 'use client'
 
-import React from "react"
-
+import type { ChangeEvent } from 'react'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -13,13 +12,14 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download } from 'lucide-react'
+import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download, LinkIcon, ExternalLink, Plus } from 'lucide-react'
 import { format } from 'date-fns'
 import { sendTaskAssignmentEmail, sendCommentEmail, sendTaskUpdateEmail } from '@/lib/email'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cleanTaskDescription } from '@/lib/display-text'
+import { toast } from 'sonner'
 
 interface TaskDetailModalProps {
   board?: any
@@ -28,9 +28,10 @@ interface TaskDetailModalProps {
   onClose: () => void
   onUpdate: () => void
   isAdmin?: boolean
+  currentUserId: string
 }
 
-export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false }: TaskDetailModalProps) {
+export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId }: TaskDetailModalProps) {
   const supabase = createClient()
   const [task, setTask] = useState<any>(null)
   const [tags, setTags] = useState<any[]>([])
@@ -41,12 +42,16 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<number>(3)
   const [status, setStatus] = useState('todo')
+  const [visibility, setVisibility] = useState<'assigned' | 'board'>('assigned')
   const [dueDate, setDueDate] = useState<Date>()
   const [assignees, setAssignees] = useState<string[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#3b82f6')
   const [attachments, setAttachments] = useState<any[]>([])
   const [comments, setComments] = useState<any[]>([])
+  const [links, setLinks] = useState<any[]>([])
+  const [linkTitle, setLinkTitle] = useState('')
+  const [linkUrl, setLinkUrl] = useState('')
   const [newComment, setNewComment] = useState('')
   const [uploading, setUploading] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(null)
@@ -57,13 +62,20 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       loadAllTags()
       loadAttachments()
       loadComments()
+      loadLinks()
       loadCurrentUser()
       loadAssignees()
-      if (isAdmin) {
-        loadUsers()
-      }
+      loadUsers()
     }
   }, [open, taskId])
+
+  const canEdit = Boolean(
+    isAdmin
+    || task?.created_by === currentUserId
+    || (typeof task?.assigned_to === 'string' ? task.assigned_to : task?.assigned_to?.id) === currentUserId
+    || assignees.includes(currentUserId)
+  )
+  const canDelete = Boolean(isAdmin || task?.created_by === currentUserId)
 
   const loadAssignees = async () => {
     const { data } = await supabase
@@ -90,10 +102,28 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const loadAttachments = async () => {
     const { data } = await supabase
       .from('task_attachments')
-      .select('*, uploaded_by:profiles(full_name, email)')
+      .select('id, task_id, file_name, file_type, file_size, created_at, uploaded_by:profiles(full_name, email)')
       .eq('task_id', taskId)
       .order('created_at', { ascending: false })
-    if (data) setAttachments(data)
+
+    if (!data) return
+
+    // Images render an inline thumbnail and need file_data right away; everything
+    // else only needs it on download, so skip pulling those (often large) blobs here.
+    const imageIds = data.filter((attachment: any) => attachment.file_type?.startsWith('image/')).map((attachment: any) => attachment.id)
+
+    if (imageIds.length === 0) {
+      setAttachments(data)
+      return
+    }
+
+    const { data: imageData } = await supabase
+      .from('task_attachments')
+      .select('id, file_data')
+      .in('id', imageIds)
+
+    const fileDataById = new Map((imageData ?? []).map((row: any) => [row.id, row.file_data]))
+    setAttachments(data.map((attachment: any) => ({ ...attachment, file_data: fileDataById.get(attachment.id) })))
   }
 
   const loadComments = async () => {
@@ -103,6 +133,15 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       .eq('task_id', taskId)
       .order('created_at', { ascending: true })
     if (data) setComments(data)
+  }
+
+  const loadLinks = async () => {
+    const { data } = await supabase
+      .from('task_links')
+      .select('*')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: false })
+    if (data) setLinks(data)
   }
 
   const loadTaskDetails = async () => {
@@ -118,6 +157,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       setDescription(cleanTaskDescription(taskData.description))
       setPriority(taskData.priority)
       setStatus(taskData.status)
+      setVisibility(taskData.visibility || 'assigned')
       setDueDate(taskData.due_date ? new Date(taskData.due_date) : undefined)
       setTags(taskData.task_tags?.map((tt: any) => tt.tag) || [])
     }
@@ -151,6 +191,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       priority,
       status,
       due_date: dueDate?.toISOString() || null,
+      visibility,
       // task_assignees is the source of truth; keep assigned_to as a mirror of the first assignee
       assigned_to: assignees[0] || null,
     }
@@ -170,23 +211,45 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       const { data: { user } } = await supabase.auth.getUser()
       const { data: currentUserProfile } = await supabase
         .from('profiles')
-        .select('full_name, email')
+        .select('id, full_name, email')
         .eq('id', user?.id || '')
         .single()
+      const actorId = currentUserProfile?.id || user?.id
 
       // Send update notification to all assignees if task details changed
       if (assignees.length > 0) {
-        const changes = []
+        const changes: string[] = []
         if (task?.title !== title) changes.push(`Title updated to "${title}"`)
         if (cleanTaskDescription(task?.description) !== description) changes.push('Description updated')
         if (task?.priority !== priority) changes.push(`Priority changed to ${priority}`)
         if (task?.status !== status) changes.push(`Status changed to ${status}`)
+        if ((task?.visibility || 'assigned') !== visibility) changes.push(`Visibility changed to ${visibility === 'board' ? 'board visible' : 'assigned only'}`)
         if (task?.due_date !== dueDate?.toISOString()) changes.push('Due date updated')
 
         if (changes.length > 0) {
+          const notificationRows = assignees
+            .filter((userId) => userId !== actorId)
+            .map((userId) => ({
+              recipient_id: userId,
+              task_id: taskId,
+              actor_id: actorId,
+              type: 'update',
+              message: `${currentUserProfile?.full_name || currentUserProfile?.email || 'Someone'} updated "${title}": ${changes.join(', ')}`,
+            }))
+
+          if (actorId && notificationRows.length > 0) {
+            const { error: notificationError } = await supabase
+              .from('task_notifications')
+              .insert(notificationRows)
+
+            if (notificationError) {
+              console.error('Could not create task update notifications', notificationError)
+            }
+          }
+
           for (const userId of assignees) {
             const user = users.find(u => u.id === userId)
-            if (user && user.id !== currentUserProfile?.id) {
+            if (user && user.id !== actorId) {
               await sendTaskUpdateEmail(
                 user.email,
                 user.full_name || user.email,
@@ -201,6 +264,9 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       
       onUpdate()
       loadTaskDetails()
+      toast.success('Task updated')
+    } else {
+      toast.error('Could not update task', { description: error.message })
     }
 
     setLoading(false)
@@ -243,7 +309,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     }
   }
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !currentUser) {
       console.log('[v0] No file or user for upload')
@@ -320,6 +386,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
         .insert({
           task_id: taskId,
           comment: commentText,
+          user_id: currentUser.id,
           author_id: currentUser.id
         })
 
@@ -363,21 +430,31 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   }
 
   const handleToggleAssignee = async (userId: string) => {
+    if (!canEdit) return
+
     const isAssigned = assignees.includes(userId)
     const newAssignees = isAssigned
       ? assignees.filter(id => id !== userId)
       : [...assignees, userId]
 
     if (isAssigned) {
-      await supabase
+      const { error } = await supabase
         .from('task_assignees')
         .delete()
         .eq('task_id', taskId)
         .eq('user_id', userId)
+      if (error) {
+        toast.error('Could not remove assignee', { description: error.message })
+        return
+      }
     } else {
-      await supabase
+      const { error } = await supabase
         .from('task_assignees')
         .insert({ task_id: taskId, user_id: userId })
+      if (error) {
+        toast.error('Could not add assignee', { description: error.message })
+        return
+      }
     }
     setAssignees(newAssignees)
 
@@ -391,6 +468,18 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     if (!isAssigned) {
       const assignedUser = users.find(u => u.id === userId)
       if (assignedUser) {
+        if (userId !== currentUser?.id) {
+          await supabase
+            .from('task_notifications')
+            .insert({
+              recipient_id: userId,
+              task_id: taskId,
+              actor_id: currentUser?.id,
+              type: 'assignment',
+              message: `${currentUser?.full_name || currentUser?.email || 'Someone'} assigned you "${title}"`,
+            })
+        }
+
         await sendTaskAssignmentEmail(
           assignedUser.email,
           assignedUser.full_name || assignedUser.email,
@@ -401,16 +490,86 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
           board?.title || 'Project Board',
           currentUser?.full_name || currentUser?.email || 'Admin'
         )
+        toast.success('Assignee notified', {
+          description: `${assignedUser.full_name || assignedUser.email} was added to this task.`,
+        })
       }
     }
+  }
+
+  const handleAddLink = async () => {
+    if (!canEdit || !linkUrl.trim() || !currentUser) return
+
+    const { error } = await supabase
+      .from('task_links')
+      .insert({
+        task_id: taskId,
+        title: linkTitle.trim() || linkUrl.trim(),
+        url: linkUrl.trim(),
+        created_by: currentUser.id,
+      })
+
+    if (error) {
+      toast.error('Could not add link', { description: error.message })
+      return
+    }
+
+    setLinkTitle('')
+    setLinkUrl('')
+    await loadLinks()
+    toast.success('Link added')
+  }
+
+  const handleDeleteLink = async (linkId: string) => {
+    if (!canEdit) return
+
+    const { error } = await supabase
+      .from('task_links')
+      .delete()
+      .eq('id', linkId)
+
+    if (error) {
+      toast.error('Could not remove link', { description: error.message })
+      return
+    }
+
+    await loadLinks()
+    toast.success('Link removed')
   }
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this task?')) return
 
-    await supabase.from('tasks').delete().eq('id', taskId)
+    const { error } = await supabase
+      .from('tasks')
+      .update({ deleted_at: new Date().toISOString(), deleted_by: currentUserId })
+      .eq('id', taskId)
+
+    if (error) {
+      toast.error('Could not delete task', { description: error.message })
+      return
+    }
+
     onUpdate()
     onClose()
+    toast.success('Task deleted', {
+      description: 'You can undo this action for a short time.',
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          const { error: undoError } = await supabase
+            .from('tasks')
+            .update({ deleted_at: null, deleted_by: null })
+            .eq('id', taskId)
+          if (undoError) {
+            toast.error('Could not restore task')
+          } else {
+            toast.success('Task restored')
+            onUpdate()
+          }
+        },
+      },
+    })
   }
 
   const availableTags = allTags.filter(tag => !tags.find(t => t.id === tag.id))
@@ -430,7 +589,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Task title"
-              disabled={!isAdmin}
+              disabled={!canEdit}
             />
           </div>
 
@@ -442,7 +601,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Add a description..."
               rows={5}
-              disabled={!isAdmin}
+              disabled={!canEdit}
             />
           </div>
 
@@ -450,7 +609,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             {/* Priority */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Priority (1-5)</label>
-              <Select value={priority?.toString() || '3'} onValueChange={(val) => setPriority(parseInt(val))}>
+              <Select value={priority?.toString() || '3'} onValueChange={(val) => setPriority(parseInt(val))} disabled={!canEdit}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -467,7 +626,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             {/* Status */}
             <div className="space-y-2">
               <Label>Status</Label>
-              <Select value={status} onValueChange={setStatus} disabled={!isAdmin}>
+              <Select value={status} onValueChange={setStatus} disabled={!canEdit}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -480,13 +639,26 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             </div>
           </div>
 
-          {/* Due Date (Only creator can edit) */}
+          <div className="space-y-2">
+            <Label>Visibility</Label>
+            <Select value={visibility} onValueChange={(value: 'assigned' | 'board') => setVisibility(value)} disabled={!canEdit}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="assigned">Only admins, creator, and assignees</SelectItem>
+                <SelectItem value="board">Visible to everyone on the board</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Due Date */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <CalendarIcon className="w-4 h-4" />
-              Due Date {task?.created_by !== currentUser?.id && <span className="text-xs text-muted-foreground">(Creator only)</span>}
+              Due Date
             </Label>
-            {task?.created_by === currentUser?.id || isAdmin ? (
+            {canEdit ? (
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent">
@@ -524,7 +696,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
           )}
 
           {/* Assigned Users - Multiple Selection */}
-          {isAdmin && (
+          {canEdit && (
             <div className="space-y-3">
               <Label className="flex items-center gap-2">
                 <User className="w-4 h-4" />
@@ -542,6 +714,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                       <Badge key={userId} className="gap-1 pr-1">
                         {user?.full_name || user?.email || 'Unknown'}
                         <button
+                          type="button"
                           onClick={() => handleToggleAssignee(userId)}
                           className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
                         >
@@ -559,10 +732,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                 {users.map(user => {
                   const isAssigned = assignees.includes(user.id)
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={user.id}
                       onClick={() => handleToggleAssignee(user.id)}
-                      className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
+                      className={`flex w-full items-center justify-between rounded p-2 text-left transition-colors ${
                         isAssigned ? 'bg-primary/10 border border-primary' : 'hover:bg-accent'
                       }`}
                     >
@@ -572,12 +746,35 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                         }`}>
                           {isAssigned && <span className="text-primary-foreground text-xs">✓</span>}
                         </div>
-                        <span className="text-sm font-medium">{user.full_name}</span>
+                        <span className="text-sm font-medium">{user.full_name || user.email}</span>
                         <span className="text-xs text-muted-foreground">({user.email})</span>
                       </div>
-                    </div>
+                    </button>
                   )
                 })}
+              </div>
+            </div>
+          )}
+
+          {!canEdit && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <User className="w-4 h-4" />
+                Assigned To
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                {assignees.length === 0 ? (
+                  <Badge variant="outline" className="text-muted-foreground">No assignees</Badge>
+                ) : (
+                  assignees.map(userId => {
+                    const user = users.find(u => u.id === userId)
+                    return (
+                      <Badge key={userId} variant="outline">
+                        {user?.full_name || user?.email || 'Unknown'}
+                      </Badge>
+                    )
+                  })
+                )}
               </div>
             </div>
           )}
@@ -596,8 +793,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   className="text-white flex items-center gap-1"
                 >
                   {tag.name}
-                  {isAdmin && (
-                    <button onClick={() => handleRemoveTag(tag.id)}>
+                  {canEdit && (
+                    <button type="button" onClick={() => handleRemoveTag(tag.id)}>
                       <X className="w-3 h-3" />
                     </button>
                   )}
@@ -605,7 +802,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               ))}
             </div>
 
-            {isAdmin && (
+            {canEdit && (
               <>
                 <Select onValueChange={handleAddTag}>
                   <SelectTrigger>
@@ -626,29 +823,31 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   </SelectContent>
                 </Select>
 
-                <div className="flex gap-2 mt-2">
-                  <Input
-                    value={newTagName}
-                    onChange={(e) => setNewTagName(e.target.value)}
-                    placeholder="New tag name"
-                  />
-                  <input
-                    type="color"
-                    value={newTagColor}
-                    onChange={(e) => setNewTagColor(e.target.value)}
-                    className="w-12 h-10 rounded border cursor-pointer"
-                  />
-                  <Button onClick={handleCreateTag} variant="outline">
-                    Create Tag
-                  </Button>
-                </div>
+                {isAdmin && (
+                  <div className="flex gap-2 mt-2">
+                    <Input
+                      value={newTagName}
+                      onChange={(e) => setNewTagName(e.target.value)}
+                      placeholder="New tag name"
+                    />
+                    <input
+                      type="color"
+                      value={newTagColor}
+                      onChange={(e) => setNewTagColor(e.target.value)}
+                      className="w-12 h-10 rounded border cursor-pointer"
+                    />
+                    <Button onClick={handleCreateTag} variant="outline">
+                      Create Tag
+                    </Button>
+                  </div>
+                )}
               </>
             )}
           </div>
 
           {/* Attachments and Comments */}
           <Tabs defaultValue="comments" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="comments" className="gap-2">
                 <MessageSquare className="w-4 h-4" />
                 Comments ({comments.length})
@@ -656,6 +855,10 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               <TabsTrigger value="attachments" className="gap-2">
                 <ImageIcon className="w-4 h-4" />
                 Attachments ({attachments.length})
+              </TabsTrigger>
+              <TabsTrigger value="links" className="gap-2">
+                <LinkIcon className="w-4 h-4" />
+                Links ({links.length})
               </TabsTrigger>
             </TabsList>
 
@@ -761,16 +964,29 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                                 variant="outline"
                                 size="icon"
                                 className="h-8 w-8 bg-transparent"
-                                onClick={() => {
+                                onClick={async () => {
+                                  let fileData = attachment.file_data
+                                  if (!fileData) {
+                                    const { data } = await supabase
+                                      .from('task_attachments')
+                                      .select('file_data')
+                                      .eq('id', attachment.id)
+                                      .single()
+                                    fileData = data?.file_data
+                                  }
+                                  if (!fileData) {
+                                    toast.error('Could not download file')
+                                    return
+                                  }
                                   const link = document.createElement('a')
-                                  link.href = attachment.file_data
+                                  link.href = fileData
                                   link.download = attachment.file_name
                                   link.click()
                                 }}
                               >
                                 <Download className="w-4 h-4" />
                               </Button>
-                              {isAdmin && (
+                              {canDelete && (
                                 <Button
                                   variant="destructive"
                                   size="icon"
@@ -812,11 +1028,63 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                 </p>
               </div>
             </TabsContent>
+
+            <TabsContent value="links" className="space-y-4">
+              <ScrollArea className="h-[300px] pr-4">
+                <div className="space-y-3">
+                  {links.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">No links yet</p>
+                  ) : (
+                    links.map((link) => (
+                      <div key={link.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                        <div className="min-w-0">
+                          <a
+                            href={link.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex min-w-0 items-center gap-2 break-words text-sm font-medium text-primary hover:underline [overflow-wrap:anywhere]"
+                          >
+                            <ExternalLink className="h-4 w-4 shrink-0" />
+                            {link.title}
+                          </a>
+                          <p className="mt-1 break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">{link.url}</p>
+                        </div>
+                        {canEdit && (
+                          <Button variant="ghost" size="icon-sm" onClick={() => handleDeleteLink(link.id)} aria-label="Remove link">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+
+              {canEdit && (
+                <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr_auto]">
+                  <Input
+                    placeholder="Label"
+                    value={linkTitle}
+                    onChange={(e) => setLinkTitle(e.target.value)}
+                  />
+                  <Input
+                    type="url"
+                    placeholder="https://..."
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                  />
+                  <Button onClick={handleAddLink} variant="outline" disabled={!linkUrl.trim()}>
+                    <Plus className="h-4 w-4" />
+                    Add
+                  </Button>
+                </div>
+              )}
+            </TabsContent>
           </Tabs>
 
           {/* Actions */}
           <div className="flex justify-between pt-4">
-            {isAdmin && (
+            {canDelete && (
               <Button onClick={handleDelete} variant="destructive" size="sm">
                 <Trash2 className="w-4 h-4 mr-2" />
                 Delete Task
@@ -826,7 +1094,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               <Button onClick={onClose} variant="outline">
                 Cancel
               </Button>
-              {isAdmin && (
+              {canEdit && (
                 <Button onClick={handleUpdate} disabled={loading || !title.trim()}>
                   {loading ? 'Updating...' : 'Update Task'}
                 </Button>

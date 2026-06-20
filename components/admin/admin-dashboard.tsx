@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import EnhancedUserManagement from './enhanced-user-management'
@@ -15,6 +15,8 @@ import ReportsView from '../reports/reports-view'
 import UserManagement from './user-management' // Added import for UserManagement
 import PersonalTasks from '../personal/personal-tasks'
 import BookmarksSection from '../bookmarks/bookmarks-section'
+import MarketingCalendar from '../marketing/marketing-calendar'
+import TaskNotificationToasts from '../notifications/task-notification-toasts'
 import { gsap } from 'gsap'
 
 interface AdminDashboardProps {
@@ -56,6 +58,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
 
   return (
     <div className="min-h-screen bg-background">
+      <TaskNotificationToasts userId={user.id} />
       {/* Header */}
       <header ref={headerRef} className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -79,7 +82,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
       <main className="container mx-auto px-4 py-8">
         <div ref={tabsRef}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full max-w-4xl grid-cols-7 h-12">
+            <TabsList className="grid w-full max-w-5xl grid-cols-8 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <Home className="w-4 h-4" />
                 <span className="hidden sm:inline">Home</span>
@@ -87,6 +90,10 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
               <TabsTrigger value="calendar" className="flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
                 <span className="hidden sm:inline">Calendar</span>
+              </TabsTrigger>
+              <TabsTrigger value="marketing" className="flex items-center gap-2">
+                <Megaphone className="w-4 h-4" />
+                <span className="hidden sm:inline">Marketing</span>
               </TabsTrigger>
               <TabsTrigger value="reports" className="flex items-center gap-2">
                 <FileBarChart className="w-4 h-4" />
@@ -117,6 +124,10 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
 
             <TabsContent value="calendar">
               <CalendarView tasks={tasks} users={users} />
+            </TabsContent>
+
+            <TabsContent value="marketing">
+              <MarketingCalendar userId={user.id} userName={user.full_name || user.email} isAdmin />
             </TabsContent>
 
             <TabsContent value="reports">
