@@ -19,6 +19,8 @@ BEGIN
     'tasks',
     'columns',
     'boards',
+    'marketing_calendar_checks',
+    'marketing_calendar_items',
     'chat_messages'
   ]) AS t(table_name)
   WHERE to_regclass(format('public.%I', table_name)) IS NOT NULL;
