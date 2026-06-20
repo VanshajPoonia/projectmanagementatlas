@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getAssigneeIds, getAssignees } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
+import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 
 interface CalendarViewProps {
   tasks: any[]
@@ -215,6 +216,7 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
               const taskAssignees = getAssignees(task, users)
               const firstAssigneeId = getAssigneeIds(task)[0]
               const color = firstAssigneeId ? getUserColor(firstAssigneeId) : '#475569'
+              const taskStatus = getNormalizedTaskStatus(task)
               
               return (
                 <Link key={task.id} href={`/admin/board/${task.board_id}`}>
@@ -256,17 +258,17 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
                               </Badge>
                             )}
                             
-                            <Badge 
-                              variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}
+                            <Badge
+                              variant={taskStatus === 'done' ? 'default' : taskStatus === 'in_progress' ? 'secondary' : 'outline'}
                               className={`text-xs ${
-                                task.status === 'done' 
-                                  ? 'bg-green-600' 
-                                  : task.status === 'in_progress' 
-                                  ? 'bg-yellow-600' 
+                                taskStatus === 'done'
+                                  ? 'bg-green-600'
+                                  : taskStatus === 'in_progress'
+                                  ? 'bg-yellow-600'
                                   : ''
                               }`}
                             >
-                              {task.status === 'done' ? 'Done' : task.status === 'in_progress' ? 'In Progress' : 'To Do'}
+                              {getTaskStatusLabel(task)}
                             </Badge>
                           </div>
                         </div>

@@ -31,6 +31,8 @@ import { TaskDetailModal } from './task-detail-modal'
 import ChatPanel from '@/components/chat/chat-panel'
 import { getAssigneeIds, getAssignees, getAssigneeNames } from '@/lib/assignees'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
+import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
+import { toast } from 'sonner'
 
 interface BoardViewProps {
   board: any
@@ -66,6 +68,16 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const supabase = useMemo(() => createClient(), [])
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
+
+  const canManageTask = useCallback((task: any) => {
+    const assignedToId = typeof task?.assigned_to === 'string' ? task.assigned_to : task?.assigned_to?.id
+    return Boolean(
+      isAdmin
+      || task?.created_by === currentUserId
+      || assignedToId === currentUserId
+      || getAssigneeIds(task).includes(currentUserId)
+    )
+  }, [currentUserId, isAdmin])
 
   const columnColors = [
     '#3b82f6', // blue
@@ -123,6 +135,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
     const task = sourceColumn.tasks.find((t: any) => t.id === draggableId)
     if (!task) return
+    if (!canManageTask(task)) {
+      toast.error('Only admins, creators, and assignees can move this task.')
+      return
+    }
 
     // Update task column and position
     const newStatus = destColumn.title.toLowerCase().replace(' ', '_')
@@ -232,7 +248,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         
         switch (filterDateRange) {
           case 'overdue':
-            matchesDate = dueDate < today && task.status !== 'done'
+            matchesDate = dueDate < today && getNormalizedTaskStatus(task) !== 'done'
             break
           case 'today':
             matchesDate = dueDate.toDateString() === today.toDateString()
@@ -341,7 +357,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const exportVisibleTasksToCSV = () => {
     const headers = ['Board', 'Column', 'Title', 'Description', 'Assigned To', 'Priority', 'Status', 'Due Date', 'Tags']
     const rows = columns.flatMap((column) => {
-      const visibleTasks = sortTasks(filterTasks(column.tasks || []))
+      const visibleTasks = sortTasks(filterTasks((column.tasks || []).filter((task: any) => !task.deleted_at)))
 
       return visibleTasks.map((task: any) => {
         const assigneeNames = getAssigneeNames(task, users)
@@ -354,7 +370,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           cleanTaskDescription(task.description),
           assigneeNames.length ? assigneeNames.join('; ') : 'Unassigned',
           task.priority || '',
-          task.status || '',
+          getTaskStatusLabel(task),
           task.due_date ? new Date(task.due_date).toLocaleDateString() : '',
           tags,
         ]
@@ -574,7 +590,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             <div className="-mx-4 overflow-x-auto px-4 pb-6">
               <div className="flex items-start gap-4">
                 {columns.map((column) => {
-                  const visibleTasks = filterTasks(column.tasks || [])
+                  const visibleTasks = filterTasks((column.tasks || []).filter((task: any) => !task.deleted_at))
                     .sort((a: any, b: any) => a.position - b.position)
 
                   return (
@@ -604,15 +620,16 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                               {visibleTasks.length} {visibleTasks.length === 1 ? 'task' : 'tasks'}
                             </p>
                           </div>
-                          {isAdmin && (
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                onClick={() => handleOpenCreateDialog(column)}
-                              >
-                                <Plus className="w-4 h-4" />
-                              </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              onClick={() => handleOpenCreateDialog(column)}
+                              aria-label={`Add task to ${column.title}`}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                            {isAdmin && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="icon-sm">
@@ -630,8 +647,8 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -647,7 +664,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                             }`}
                           >
                             {visibleTasks.map((task: any, index: number) => (
-                              <Draggable key={task.id} draggableId={task.id} index={index}>
+                              <Draggable key={task.id} draggableId={task.id} index={index} isDragDisabled={!canManageTask(task)}>
                                 {(provided, snapshot) => (
                                   <div
                                     ref={provided.innerRef}
@@ -657,6 +674,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                     <TaskCard
                                       task={task}
                                       isAdmin={isAdmin}
+                                      currentUserId={currentUserId}
                                       users={users}
                                       board={board}
                                       isDragging={snapshot.isDragging}
@@ -709,7 +727,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             )}
 
             {columns.map((column) => {
-              const columnTasks = filterTasks(column.tasks || [])
+              const columnTasks = filterTasks((column.tasks || []).filter((task: any) => !task.deleted_at))
               if (columnTasks.length === 0) return null
               
               return (
@@ -960,21 +978,22 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           }}
           board={board}
           isAdmin={isAdmin}
+          currentUserId={currentUserId}
         />
       )}
 
+      <CreateTaskDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        column={selectedColumn}
+        users={users}
+        boardId={board.id}
+        board={board}
+        onTaskCreated={refreshColumns}
+      />
+
       {isAdmin && (
         <>
-          <CreateTaskDialog
-            open={createDialogOpen}
-            onOpenChange={setCreateDialogOpen}
-            column={selectedColumn}
-            users={users}
-            boardId={board.id}
-            board={board}
-            onTaskCreated={refreshColumns}
-          />
-          
           <Dialog open={newColumnDialogOpen} onOpenChange={setNewColumnDialogOpen}>
             <DialogContent>
               <DialogHeader>

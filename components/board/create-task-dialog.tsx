@@ -1,7 +1,6 @@
 'use client'
 
-import React from "react"
-
+import type { FormEvent } from 'react'
 import { useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -11,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { createClient } from '@/lib/supabase/client'
 import { sendTaskAssignmentEmail } from '@/lib/email'
+import { LinkIcon, Plus, X } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface CreateTaskDialogProps {
   board?: any
@@ -26,16 +27,35 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [assignees, setAssignees] = useState<string[]>([])
+  const [visibility, setVisibility] = useState<'assigned' | 'board'>('assigned')
   const [priority, setPriority] = useState<number>(3)
   const [dueDate, setDueDate] = useState('')
   const [isRecurring, setIsRecurring] = useState(false)
   const [recurrencePattern, setRecurrencePattern] = useState<'daily' | 'weekly' | 'monthly'>('daily')
   const [recurrenceInterval, setRecurrenceInterval] = useState(1)
+  const [links, setLinks] = useState<Array<{ title: string; url: string }>>([])
+  const [linkTitle, setLinkTitle] = useState('')
+  const [linkUrl, setLinkUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const addLink = () => {
+    const trimmedUrl = linkUrl.trim()
+    if (!trimmedUrl) return
+
+    setLinks((current) => [
+      ...current,
+      {
+        title: linkTitle.trim() || trimmedUrl,
+        url: trimmedUrl,
+      },
+    ])
+    setLinkTitle('')
+    setLinkUrl('')
+  }
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
@@ -58,6 +78,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
         due_date: dueDate || null,
         status,
         position: column.tasks?.length || 0,
+        visibility,
         is_recurring: isRecurring,
         recurrence_pattern: isRecurring ? recurrencePattern : null,
         recurrence_interval: isRecurring ? recurrenceInterval : null,
@@ -71,6 +92,20 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
 
       if (taskError) throw taskError
 
+      if (links.length > 0) {
+        const { error: linksError } = await supabase
+          .from('task_links')
+          .insert(
+            links.map((link) => ({
+              task_id: task.id,
+              title: link.title,
+              url: link.url,
+              created_by: user.id,
+            }))
+          )
+        if (linksError) throw linksError
+      }
+
       // Record every assignee in the join table (source of truth) and notify each
       if (assignees.length > 0) {
         const { error: assigneeError } = await supabase
@@ -83,6 +118,23 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
           .select('full_name, email')
           .eq('id', user.id)
           .single()
+
+        const notificationRows = assignees
+          .filter((userId) => userId !== user.id)
+          .map((userId) => ({
+            recipient_id: userId,
+            task_id: task.id,
+            actor_id: user.id,
+            type: 'assignment',
+            message: `${currentUserProfile?.full_name || currentUserProfile?.email || 'Someone'} assigned you "${title}"`,
+          }))
+
+        if (notificationRows.length > 0) {
+          const { error: notificationError } = await supabase
+            .from('task_notifications')
+            .insert(notificationRows)
+          if (notificationError) throw notificationError
+        }
 
         for (const userId of assignees) {
           const assignedUser = users.find(u => u.id === userId)
@@ -101,15 +153,23 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
         }
       }
 
+      toast.success('Task created', {
+        description: assignees.length > 0 ? `${assignees.length} assignee${assignees.length === 1 ? '' : 's'} notified.` : 'Only you and admins can see it until assignees are added.',
+      })
+
       // Reset form
       setTitle('')
       setDescription('')
       setAssignees([])
+      setVisibility('assigned')
       setPriority(3)
       setDueDate('')
       setIsRecurring(false)
       setRecurrencePattern('daily')
       setRecurrenceInterval(1)
+      setLinks([])
+      setLinkTitle('')
+      setLinkUrl('')
       onOpenChange(false)
       
       // Trigger callback to refresh board data
@@ -117,7 +177,9 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
         onTaskCreated()
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to create task. Please try again.')
+      const message = err?.message || 'Failed to create task. Please try again.'
+      setError(message)
+      toast.error('Task was not created', { description: message })
     } finally {
       setLoading(false)
     }
@@ -176,12 +238,13 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
                 users.map((user) => {
                   const isAssigned = assignees.includes(user.id)
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={user.id}
                       onClick={() => !loading && setAssignees(
                         isAssigned ? assignees.filter(id => id !== user.id) : [...assignees, user.id]
                       )}
-                      className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                      className={`flex w-full items-center gap-2 rounded p-2 text-left transition-colors ${
                         isAssigned ? 'bg-primary/10 border border-primary' : 'hover:bg-accent'
                       }`}
                     >
@@ -191,10 +254,72 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
                         {isAssigned && <span className="text-primary-foreground text-xs">✓</span>}
                       </div>
                       <span className="text-sm font-medium">{user.full_name || user.email}</span>
-                    </div>
+                    </button>
                   )
                 })
               )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="visibility" className="text-sm font-medium">
+              Visibility
+            </label>
+            <Select value={visibility} onValueChange={(val: 'assigned' | 'board') => setVisibility(val)} disabled={loading}>
+              <SelectTrigger id="visibility">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="assigned">Only admins, creator, and assignees</SelectItem>
+                <SelectItem value="board">Visible to everyone on the board</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-3 rounded-lg border p-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <LinkIcon className="h-4 w-4" />
+              External links
+            </div>
+            {links.length > 0 && (
+              <div className="space-y-2">
+                {links.map((link, index) => (
+                  <div key={`${link.url}-${index}`} className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-2 py-1.5">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{link.title}</div>
+                      <div className="truncate text-xs text-muted-foreground">{link.url}</div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setLinks((current) => current.filter((_, linkIndex) => linkIndex !== index))}
+                      aria-label="Remove link"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr_auto]">
+              <Input
+                placeholder="Label"
+                value={linkTitle}
+                onChange={(e) => setLinkTitle(e.target.value)}
+                disabled={loading}
+              />
+              <Input
+                type="url"
+                placeholder="https://..."
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                disabled={loading}
+              />
+              <Button type="button" variant="outline" onClick={addLink} disabled={loading || !linkUrl.trim()}>
+                <Plus className="h-4 w-4" />
+                Add
+              </Button>
             </div>
           </div>
 
