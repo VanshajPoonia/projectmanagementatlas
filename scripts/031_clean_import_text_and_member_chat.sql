@@ -22,7 +22,7 @@ WHERE t.column_id = c.id
 
 ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
 
-GRANT SELECT, INSERT, DELETE ON public.chat_messages TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.chat_messages TO authenticated;
 
 DROP POLICY IF EXISTS "Users can view chat messages" ON public.chat_messages;
 DROP POLICY IF EXISTS "Users can send chat messages" ON public.chat_messages;

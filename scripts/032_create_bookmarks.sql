@@ -6,6 +6,8 @@
 -- EXISTS ... role = 'admin' subquery) rather than is_admin_user() / is_admin,
 -- which scripts/005 introduced but which never actually made it into production.
 
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS public.bookmarks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   scope TEXT NOT NULL CHECK (scope IN ('company', 'personal')),
@@ -40,7 +42,11 @@ DROP POLICY IF EXISTS "Users can create their own personal bookmarks" ON public.
 CREATE POLICY "Users can create their own personal bookmarks"
   ON public.bookmarks FOR INSERT
   TO authenticated
-  WITH CHECK (scope = 'personal' AND user_id = auth.uid());
+  WITH CHECK (
+    scope = 'personal'
+    AND user_id = auth.uid()
+    AND created_by = auth.uid()
+  );
 
 DROP POLICY IF EXISTS "Admins can create company bookmarks" ON public.bookmarks;
 CREATE POLICY "Admins can create company bookmarks"
@@ -48,6 +54,7 @@ CREATE POLICY "Admins can create company bookmarks"
   TO authenticated
   WITH CHECK (
     scope = 'company'
+    AND created_by = auth.uid()
     AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
@@ -85,3 +92,5 @@ CREATE POLICY "Admins can delete company bookmarks"
     scope = 'company'
     AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
+
+COMMIT;
