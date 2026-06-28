@@ -24,35 +24,24 @@ The database has been set up with the following tables:
 
 ## Initial Setup Steps
 
-### 1. Add Your Admin Email
-Run this SQL in your Supabase SQL editor to add yourself as admin:
-
-\`\`\`sql
-INSERT INTO allowed_emails (email, role)
-VALUES ('your-admin-email@example.com', 'admin');
-\`\`\`
-
-### 2. Add Team Members
-Add additional users who should have access:
-
-\`\`\`sql
-INSERT INTO allowed_emails (email, role)
-VALUES 
-  ('user1@example.com', 'user'),
-  ('user2@example.com', 'user'),
-  ('user3@example.com', 'user');
-\`\`\`
-
-### 3. Configure Environment Variables
+### 1. Configure Environment Variables
 The following are automatically set by Supabase integration:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL`
 
+Email notifications also require:
+- `RESEND_API_KEY`
+- `EMAIL_FROM`
+
+### 2. Create the First Admin
+Create the first admin in Supabase Auth, then make sure the matching row in `profiles` has `role = 'admin'`.
+
+### 3. Add Team Members
+Admins create additional users from the admin dashboard. Public self-service signup is disabled.
+
 ### 4. Email Notifications
-Email notifications use FormSubmit. When tasks are assigned, emails are sent via:
-- Endpoint: `https://formsubmit.co/ajax/{user-email}`
-- No API key needed
+Email notifications use Resend. When tasks are assigned, emails are sent from the configured `EMAIL_FROM` address.
 
 ## User Roles
 
@@ -73,8 +62,8 @@ Email notifications use FormSubmit. When tasks are assigned, emails are sent via
 
 ## Usage Flow
 
-1. **Admin signs up** at `/signup` with approved email
-2. **Admin adds more users** via Admin Dashboard → User Management
+1. **Admin logs in** at `/login`
+2. **Admin adds more users** via Admin Dashboard → Users
 3. **Admin creates boards** for different projects
 4. **Admin creates tasks** and assigns them to users
 5. **Email sent automatically** to assigned user
@@ -86,7 +75,6 @@ Email notifications use FormSubmit. When tasks are assigned, emails are sent via
 
 - `/` - Landing page
 - `/login` - Login page
-- `/signup` - Signup (restricted to allowed emails)
 - `/admin` - Admin dashboard
 - `/admin/board/[id]` - Admin board view with full controls
 - `/dashboard` - User dashboard
@@ -95,7 +83,7 @@ Email notifications use FormSubmit. When tasks are assigned, emails are sent via
 ## Security Features
 
 - Row Level Security (RLS) on all tables
-- Email whitelist enforced at signup
+- Public signup disabled
 - Role-based access control
 - Secure file uploads with proper permissions
 - Middleware for route protection
@@ -106,10 +94,10 @@ Email notifications use FormSubmit. When tasks are assigned, emails are sent via
 Edit the board to add custom columns (e.g., "Testing", "Review")
 
 ### Task Priorities
-Tasks support: Low, Medium, High, Urgent
+Tasks support numeric priorities from 1 to 5.
 
 ### Task Status
-Default statuses: To Do, In Progress, Done, Blocked
+Default statuses: To Do, In Progress, Done. Admins can create or archive additional statuses.
 
 ## Support
 
