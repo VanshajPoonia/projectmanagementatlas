@@ -385,7 +385,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       ) : (
         <>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1120px] border-collapse text-sm">
+            <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>
                   <th className="sticky left-0 z-30 w-[142px] border-b border-r bg-[#111] px-3 py-2 text-left text-xs font-bold uppercase text-white" rowSpan={2}>
@@ -433,7 +433,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                         const busy = item?.id === busyItemId
 
                         return (
-                          <td key={`${dateKey}-${channel.channel}`} className="h-[96px] border-b border-r bg-background p-1.5">
+                          <td key={`${dateKey}-${channel.section}-${channel.channel}`} className="h-[96px] border-b border-r bg-background p-1.5">
                             {item ? (
                               <button
                                 type="button"
