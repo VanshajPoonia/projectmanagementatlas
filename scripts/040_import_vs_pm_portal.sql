@@ -117,7 +117,7 @@ With the filter being able to CTRL+Click on multiple filter types.
 
 — Requested by Bobby (V''s PM Portal #17, added 2026-01-22)
 [Build note: Task visibility model shipped in scripts/035.]', 'done', 'Done', 15),
-      ('Chat improvements (request truncated in source sheet)', 'Not really in to the chat area but if it is to be used then it would be best if the chats can be 
+      ('Chat improvements (request truncated in source sheet)', 'Not really in to the chat area but if it is to be used then it would be best if the chats can be
 
 — Requested by Bobby (V''s PM Portal #18, added 2026-01-22)
 [Build note: The original request text was cut off in Bobby''s sheet. Chat works and now has unread indicators (#25); confirm the rest of this request with Bobby.]', 'in_progress', 'In Progress', 1),
