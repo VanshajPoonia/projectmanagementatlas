@@ -28,10 +28,11 @@ export default async function DashboardPage() {
     .order('created_at', { ascending: false })
   const tasks = tasksData ?? []
 
-  // Fetch all boards
+  // Fetch all boards (archived boards are hidden from non-admins)
   const { data: boards } = await supabase
     .from('boards')
     .select('*')
+    .is('archived_at', null)
     .order('created_at', { ascending: false })
 
   // Fetch all users for calendar display (to show who's assigned to tasks)

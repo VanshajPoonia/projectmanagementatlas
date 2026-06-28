@@ -28,7 +28,7 @@ export default async function AdminPage() {
     { data: tasks },
   ] = await Promise.all([
     supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-    supabase.from('boards').select('*').order('created_at', { ascending: false }),
+    supabase.from('boards').select('*').is('archived_at', null).order('created_at', { ascending: false }),
     supabase.from('tasks').select('*, column:columns(board_id), task_assignees(user_id)').is('deleted_at', null).order('created_at', { ascending: false }),
   ])
 
