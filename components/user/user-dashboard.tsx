@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home, Megaphone } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home, Megaphone, Bookmark, Bell, ListTodo, CheckCircle2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -16,6 +16,9 @@ import TaskNotificationToasts from '../notifications/task-notification-toasts'
 import PersonalTasks from '../personal/personal-tasks'
 import BookmarksSection from '../bookmarks/bookmarks-section'
 import MarketingCalendar from '../marketing/marketing-calendar'
+import DashboardWindow from '../dashboard/dashboard-window'
+import AccountSettings from '../account/account-settings'
+import ChatUnreadBadge from '../chat/chat-unread-badge'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 
@@ -69,10 +72,13 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
               <p className="text-sm text-muted-foreground">{user.full_name}</p>
             </div>
           </div>
-          <Button onClick={handleSignOut} variant="outline" size="sm">
-            <LogOut className="w-4 h-4 mr-2" />
-            Sign Out
-          </Button>
+          <div className="flex items-center gap-2">
+            <AccountSettings userId={user.id} currentName={user.full_name || ''} email={user.email} />
+            <Button onClick={handleSignOut} variant="outline" size="sm">
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -105,17 +111,22 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
             <TabsTrigger value="chat" className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4" />
               <span className="hidden sm:inline">Chat</span>
+              <ChatUnreadBadge userId={user.id} />
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="tasks" className="space-y-6">
-            <BookmarksSection userId={user.id} isAdmin={false} />
+            <DashboardWindow id="bookmarks" title="Bookmarks" description="Quick links you use every day" icon={<Bookmark className="h-4 w-4" />}>
+              <BookmarksSection userId={user.id} isAdmin={false} embedded />
+            </DashboardWindow>
 
-            {/* Notification Info */}
-            <NotificationInfo />
+            <DashboardWindow id="notifications" title="Notifications" icon={<Bell className="h-4 w-4" />}>
+              <NotificationInfo />
+            </DashboardWindow>
 
-            {/* Task Stats */}
-            <div className="grid gap-4 md:grid-cols-3">
+            <DashboardWindow id="task-summary" title="Task Summary" description="Your workload at a glance" icon={<ClipboardList className="h-4 w-4" />}>
+              {/* Task Stats */}
+              <div className="grid gap-4 md:grid-cols-3">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">To Do</CardTitle>
@@ -149,15 +160,10 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                   <div className="text-2xl font-semibold">{doneTasks.length}</div>
                 </CardContent>
               </Card>
-            </div>
+              </div>
+            </DashboardWindow>
 
-            {/* Task List */}
-            <Card>
-              <CardHeader>
-                <CardTitle>My Active Tasks</CardTitle>
-                <CardDescription>Assigned tasks that still need attention</CardDescription>
-              </CardHeader>
-              <CardContent>
+            <DashboardWindow id="active-tasks" title="My Active Tasks" description="Assigned tasks that still need attention" icon={<ListTodo className="h-4 w-4" />}>
                 <div className="space-y-4">
                   {activeTasks.map((task) => {
                     const taskStatus = getNormalizedTaskStatus(task)
@@ -228,15 +234,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                     </div>
                   )}
                 </div>
-              </CardContent>
-            </Card>
+            </DashboardWindow>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Done Tasks</CardTitle>
-                <CardDescription>Assigned tasks that have been completed</CardDescription>
-              </CardHeader>
-              <CardContent>
+            <DashboardWindow id="done-tasks" title="Done Tasks" description="Assigned tasks that have been completed" icon={<CheckCircle2 className="h-4 w-4" />} defaultCollapsed>
                 <div className="space-y-4">
                   {doneTasks.map((task) => (
                     <Link
@@ -281,8 +281,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                     </div>
                   )}
                 </div>
-              </CardContent>
-            </Card>
+            </DashboardWindow>
           </TabsContent>
 
           <TabsContent value="personal">
