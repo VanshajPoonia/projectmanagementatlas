@@ -6,9 +6,9 @@ A comprehensive project management system with admin controls, task management, 
 ## Features
 ✅ **Admin Dashboard** - Manage users, boards, and tasks
 ✅ **Task Management** - Drag-and-drop Trello-like boards with status tracking
-✅ **Email Restrictions** - Only approved emails can sign up
+✅ **Login-only access** - Accounts are created by admins, not public signup
 ✅ **Real-time Chat** - Chat between admin and users with image uploads
-✅ **Email Notifications** - Automatic task assignment notifications via FormSubmit
+✅ **Email Notifications** - Automatic task assignment notifications via Resend
 ✅ **Role-based Access** - Admin vs Regular User permissions
 ✅ **Smooth Animations** - Polished UI with transitions and effects
 
@@ -16,7 +16,6 @@ A comprehensive project management system with admin controls, task management, 
 
 The database has been set up with the following tables:
 - `profiles` - User profiles with role management
-- `allowed_emails` - Whitelist of emails that can sign up
 - `boards` - Project boards
 - `columns` - Board columns (To Do, In Progress, Done, etc.)
 - `tasks` - Tasks with assignments and priorities
