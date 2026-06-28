@@ -1,0 +1,8 @@
+-- 044_drop_allowed_emails.sql
+-- allowed_emails was a signup-whitelist mechanism for a self-service signup flow
+-- that no longer exists (app/signup/page.tsx redirects straight to /login). Its
+-- only application-code reader was the legacy components/admin/user-management.tsx,
+-- which was unreachable dead code and has been deleted. Confirmed zero remaining
+-- references in the codebase before dropping.
+--
+-- Already applied directly to production.
