@@ -13,15 +13,51 @@ interface AccountSettingsProps {
   userId: string
   currentName: string
   email: string
+  notifyAssignment?: boolean
+  notifyUpdate?: boolean
+  notifyComment?: boolean
+  notifyDueSoon?: boolean
 }
 
-export default function AccountSettings({ userId, currentName, email }: AccountSettingsProps) {
+const NOTIFICATION_OPTIONS = [
+  { key: 'assignment', column: 'notify_email_assignment', label: 'Task assignments', description: 'When you are assigned to a task' },
+  { key: 'update', column: 'notify_email_update', label: 'Task updates', description: 'When details, status, or priority change' },
+  { key: 'comment', column: 'notify_email_comment', label: 'New comments', description: 'When someone comments on your tasks' },
+  { key: 'dueSoon', column: 'notify_email_due_soon', label: 'Due date reminders', description: 'When a task is due in 1-2 days' },
+] as const
+
+export default function AccountSettings({
+  userId,
+  currentName,
+  email,
+  notifyAssignment = true,
+  notifyUpdate = true,
+  notifyComment = true,
+  notifyDueSoon = true,
+}: AccountSettingsProps) {
   const [open, setOpen] = useState(false)
   const [fullName, setFullName] = useState(currentName || '')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [saving, setSaving] = useState(false)
+  const [prefs, setPrefs] = useState({
+    assignment: notifyAssignment,
+    update: notifyUpdate,
+    comment: notifyComment,
+    dueSoon: notifyDueSoon,
+  })
   const supabase = createClient()
+
+  const handleTogglePref = async (key: keyof typeof prefs, column: string) => {
+    const newValue = !prefs[key]
+    setPrefs((current) => ({ ...current, [key]: newValue }))
+
+    const { error } = await supabase.from('profiles').update({ [column]: newValue }).eq('id', userId)
+    if (error) {
+      setPrefs((current) => ({ ...current, [key]: !newValue }))
+      toast.error('Could not update preference', { description: error.message })
+    }
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -80,7 +116,7 @@ export default function AccountSettings({ userId, currentName, email }: AccountS
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Account settings</DialogTitle>
-          <DialogDescription>Update your display name or change your password.</DialogDescription>
+          <DialogDescription>Update your display name, password, or email notification preferences.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSave} className="space-y-4">
           <div className="space-y-2">
@@ -120,6 +156,34 @@ export default function AccountSettings({ userId, currentName, email }: AccountS
             {saving ? 'Saving...' : 'Save changes'}
           </Button>
         </form>
+
+        <div className="space-y-3 border-t pt-4">
+          <Label>Email notifications</Label>
+          <div className="space-y-3">
+            {NOTIFICATION_OPTIONS.map(({ key, column, label, description }) => (
+              <div key={key} className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{label}</p>
+                  <p className="text-xs text-muted-foreground">{description}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTogglePref(key, column)}
+                  aria-label={`Toggle ${label.toLowerCase()} emails`}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                    prefs[key] ? 'bg-primary' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      prefs[key] ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   )
