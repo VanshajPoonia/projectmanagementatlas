@@ -19,7 +19,9 @@ import MarketingCalendar from '../marketing/marketing-calendar'
 import TaskNotificationToasts from '../notifications/task-notification-toasts'
 import DashboardWindow from '../dashboard/dashboard-window'
 import AccountSettings from '../account/account-settings'
+import ThemeToggle from '../theme-toggle'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
+import MobileBottomNav, { type NavItem } from '../dashboard/mobile-bottom-nav'
 import { gsap } from 'gsap'
 
 interface AdminDashboardProps {
@@ -30,11 +32,23 @@ interface AdminDashboardProps {
 }
 
 export default function AdminDashboard({ user, users, boards, tasks }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTabState] = useState('overview')
   const router = useRouter()
   const supabase = createClient()
   const headerRef = useRef<HTMLDivElement>(null)
   const tabsRef = useRef<HTMLDivElement>(null)
+
+  // Restores whichever tab was active before navigating away (e.g. into a board),
+  // so the in-app Back button returns here instead of resetting to Home.
+  useEffect(() => {
+    const savedTab = sessionStorage.getItem('admin-active-tab')
+    if (savedTab) setActiveTabState(savedTab)
+  }, [])
+
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab)
+    sessionStorage.setItem('admin-active-tab', tab)
+  }
 
   useEffect(() => {
     if (headerRef.current) {
@@ -59,6 +73,30 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
     router.push('/login')
   }
 
+  const primaryNavItems: NavItem[] = [
+    { value: 'overview', label: 'Home', icon: Home },
+    { value: 'boards', label: 'Boards', icon: ClipboardList },
+    { value: 'reports', label: 'Reports', icon: FileBarChart },
+    {
+      value: 'chat',
+      label: 'Chat',
+      icon: MessageSquare,
+      badge: (
+        <span className="absolute -top-1 -right-2">
+          <ChatUnreadBadge userId={user.id} />
+        </span>
+      ),
+    },
+  ]
+
+  const moreNavItems: NavItem[] = [
+    { value: 'calendar', label: 'Calendar', icon: Calendar },
+    { value: 'marketing', label: 'Marketing', icon: Megaphone },
+    { value: 'users', label: 'Users', icon: Users },
+    { value: 'statuses', label: 'Statuses', icon: SlidersHorizontal },
+    { value: 'personal', label: 'Personal', icon: Lock },
+  ]
+
   return (
     <div className="min-h-screen bg-background">
       <TaskNotificationToasts userId={user.id} />
@@ -75,20 +113,29 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <AccountSettings userId={user.id} currentName={user.full_name || ''} email={user.email} />
+            <ThemeToggle />
+            <AccountSettings
+              userId={user.id}
+              currentName={user.full_name || ''}
+              email={user.email}
+              notifyAssignment={user.notify_email_assignment}
+              notifyUpdate={user.notify_email_update}
+              notifyComment={user.notify_email_comment}
+              notifyDueSoon={user.notify_email_due_soon}
+            />
             <Button onClick={handleSignOut} variant="outline" size="sm">
-              <LogOut className="w-4 h-4 mr-2" />
-              Sign Out
+              <LogOut className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Sign Out</span>
             </Button>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 pb-24 md:pb-8">
         <div ref={tabsRef}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full max-w-6xl grid-cols-9 h-12">
+            <TabsList className="hidden md:grid w-full max-w-6xl grid-cols-9 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <Home className="w-4 h-4" />
                 <span className="hidden sm:inline">Home</span>
@@ -138,7 +185,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsContent>
 
             <TabsContent value="calendar">
-              <CalendarView tasks={tasks} users={users} />
+              <CalendarView tasks={tasks} users={users} isAdmin />
             </TabsContent>
 
             <TabsContent value="marketing">
@@ -171,6 +218,13 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
           </Tabs>
         </div>
       </main>
+
+      <MobileBottomNav
+        items={primaryNavItems}
+        moreItems={moreNavItems}
+        activeTab={activeTab}
+        onChange={setActiveTab}
+      />
     </div>
   )
 }
