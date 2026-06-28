@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 export async function PUT(request: Request) {
   const supabase = await createClient()
-  
+
   // Check if user is admin
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
@@ -19,6 +20,10 @@ export async function PUT(request: Request) {
 
   if (profile?.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden - Admin only' }, { status: 403 })
+  }
+
+  if (!checkRateLimit(`update-user:${user.id}`, 10, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests, please slow down.' }, { status: 429 })
   }
 
   const { userId, fullName, role, password } = await request.json()

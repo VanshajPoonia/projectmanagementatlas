@@ -1,8 +1,31 @@
+import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: Request) {
   try {
+    const supabase = await createServerClient()
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden - Admin only' }, { status: 403 })
+    }
+
+    if (!checkRateLimit(`create-user:${user.id}`, 10, 60_000)) {
+      return NextResponse.json({ error: 'Too many requests, please slow down.' }, { status: 429 })
+    }
+
     const { email, password, fullName, role = 'user' } = await request.json()
 
     // Create Supabase admin client
