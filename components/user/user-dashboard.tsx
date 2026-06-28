@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,7 +18,9 @@ import BookmarksSection from '../bookmarks/bookmarks-section'
 import MarketingCalendar from '../marketing/marketing-calendar'
 import DashboardWindow from '../dashboard/dashboard-window'
 import AccountSettings from '../account/account-settings'
+import ThemeToggle from '../theme-toggle'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
+import MobileBottomNav, { type NavItem } from '../dashboard/mobile-bottom-nav'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 
@@ -30,10 +32,22 @@ interface UserDashboardProps {
 }
 
 export default function UserDashboard({ user, tasks, boards, users }: UserDashboardProps) {
-  const [activeTab, setActiveTab] = useState('tasks')
+  const [activeTab, setActiveTabState] = useState('tasks')
   const router = useRouter()
   const supabase = createClient()
   const isAdmin = user.role === 'admin'
+
+  // Restores whichever tab was active before navigating away (e.g. into a board),
+  // so the in-app Back button returns here instead of resetting to Home.
+  useEffect(() => {
+    const savedTab = sessionStorage.getItem('user-active-tab')
+    if (savedTab) setActiveTabState(savedTab)
+  }, [])
+
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab)
+    sessionStorage.setItem('user-active-tab', tab)
+  }
   const isKaylaMarketingUser = String(user.email ?? '').trim().toLowerCase() === 'kayla@goatlasgo.us'
   const canUseMarketingCalendar = isKaylaMarketingUser || isAdmin
   const myTasks = useMemo(() => {
@@ -57,6 +71,24 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const doneTasks = myTasks.filter(t => getNormalizedTaskStatus(t) === 'done')
   const activeTasks = myTasks.filter(t => getNormalizedTaskStatus(t) !== 'done')
 
+  const navItems: NavItem[] = [
+    { value: 'tasks', label: 'Home', icon: Home },
+    { value: 'personal', label: 'Personal', icon: Lock },
+    { value: 'calendar', label: 'Calendar', icon: Calendar },
+    ...(canUseMarketingCalendar ? [{ value: 'marketing', label: 'Marketing', icon: Megaphone }] : []),
+    { value: 'boards', label: 'Boards', icon: Kanban },
+    {
+      value: 'chat',
+      label: 'Chat',
+      icon: MessageSquare,
+      badge: (
+        <span className="absolute -top-1 -right-2">
+          <ChatUnreadBadge userId={user.id} />
+        </span>
+      ),
+    },
+  ]
+
   return (
     <div className="min-h-screen bg-background">
       <TaskNotificationToasts userId={user.id} />
@@ -73,19 +105,28 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <AccountSettings userId={user.id} currentName={user.full_name || ''} email={user.email} />
+            <ThemeToggle />
+            <AccountSettings
+              userId={user.id}
+              currentName={user.full_name || ''}
+              email={user.email}
+              notifyAssignment={user.notify_email_assignment}
+              notifyUpdate={user.notify_email_update}
+              notifyComment={user.notify_email_comment}
+              notifyDueSoon={user.notify_email_due_soon}
+            />
             <Button onClick={handleSignOut} variant="outline" size="sm">
-              <LogOut className="w-4 h-4 mr-2" />
-              Sign Out
+              <LogOut className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Sign Out</span>
             </Button>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 pb-24 md:pb-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full ${canUseMarketingCalendar ? 'max-w-4xl grid-cols-6' : 'max-w-3xl grid-cols-5'} h-12`}>
+          <TabsList className={`hidden md:grid w-full ${canUseMarketingCalendar ? 'max-w-4xl grid-cols-6' : 'max-w-3xl grid-cols-5'} h-12`}>
             <TabsTrigger value="tasks" className="flex items-center gap-2">
               <Home className="w-4 h-4" />
               <span className="hidden sm:inline">Home</span>
@@ -205,7 +246,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                               {task.due_date && (
                                 <span className="flex items-center gap-1">
                                   <Calendar className="w-3 h-3" />
-                                  {new Date(task.due_date).toLocaleDateString()}
+                                  {new Date(task.due_date).toLocaleDateString('en-US')}
                                 </span>
                               )}
                             </div>
@@ -267,7 +308,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                             {task.due_date && (
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
-                                {new Date(task.due_date).toLocaleDateString()}
+                                {new Date(task.due_date).toLocaleDateString('en-US')}
                               </span>
                             )}
                           </div>
@@ -289,7 +330,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
           </TabsContent>
 
           <TabsContent value="calendar">
-            <CalendarView tasks={tasks} users={users} />
+            <CalendarView tasks={tasks} users={users} isAdmin={isAdmin} />
           </TabsContent>
 
           {canUseMarketingCalendar && (
@@ -337,6 +378,8 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
           </TabsContent>
         </Tabs>
       </main>
+
+      <MobileBottomNav items={navItems} activeTab={activeTab} onChange={setActiveTab} />
     </div>
   )
 }
