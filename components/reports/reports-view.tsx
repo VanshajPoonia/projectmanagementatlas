@@ -135,8 +135,8 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
         task.status,
         assigneeNames.length ? assigneeNames.join('; ') : 'Unassigned',
         board?.title || 'Unknown',
-        new Date(task.created_at).toLocaleDateString(),
-        task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No due date',
+        new Date(task.created_at).toLocaleDateString('en-US'),
+        task.due_date ? new Date(task.due_date).toLocaleDateString('en-US') : 'No due date',
         tags
       ].map(cell => `"${cell}"`)
     })
@@ -166,7 +166,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
           String(task.priority ?? ''),
           getTaskStatusLabel(task),
           board?.title || 'Unknown',
-          task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No date',
+          task.due_date ? new Date(task.due_date).toLocaleDateString('en-US') : 'No date',
           tags,
         ]
         return `<tr>${cells.map(c => `<td>${escapeHtml(String(c))}</td>`).join('')}</tr>`
@@ -407,7 +407,54 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
           <CardTitle>Results ({filteredTasks.length} tasks)</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <div className="space-y-3 md:hidden">
+            {filteredTasks.map(task => {
+              const assigneeNames = getAssigneeNames(task, users)
+              return (
+                <div key={task.id} className="rounded-lg border p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    {task.board_id ? (
+                      <Link
+                        href={`/admin/board/${task.board_id}`}
+                        className="inline-flex items-start gap-1.5 font-medium hover:text-primary hover:underline"
+                      >
+                        <span className="break-words [overflow-wrap:anywhere]">{task.title}</span>
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-60 mt-0.5" />
+                      </Link>
+                    ) : (
+                      <span className="font-medium break-words [overflow-wrap:anywhere]">{task.title}</span>
+                    )}
+                    <Badge
+                      className="shrink-0"
+                      variant={task.priority >= 4 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'}
+                    >
+                      P{task.priority}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    <Badge variant="outline">{getTaskStatusLabel(task)}</Badge>
+                    <span>{assigneeNames.length ? assigneeNames.join(', ') : 'Unassigned'}</span>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {task.due_date ? new Date(task.due_date).toLocaleDateString('en-US') : 'No date'}
+                  </div>
+                  {task.task_tags?.length > 0 && (
+                    <div className="flex gap-1 flex-wrap">
+                      {task.task_tags.map((tt: any) => (
+                        <Badge key={tt.tag.id} variant="outline" style={{ borderColor: tt.tag.color }}>
+                          {tt.tag.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            {filteredTasks.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground text-sm">No tasks match these filters</div>
+            )}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full">
               <thead>
                 <tr className="border-b">
@@ -447,7 +494,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
                         <Badge>{getTaskStatusLabel(task)}</Badge>
                       </td>
                       <td className="py-3 px-4 text-sm">
-                        {task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No date'}
+                        {task.due_date ? new Date(task.due_date).toLocaleDateString('en-US') : 'No date'}
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex gap-1 flex-wrap">
