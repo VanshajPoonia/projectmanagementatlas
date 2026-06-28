@@ -580,7 +580,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Task Details</DialogTitle>
         </DialogHeader>
@@ -890,7 +890,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                               {comment.author?.full_name || comment.author?.email}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              {new Date(comment.created_at).toLocaleDateString()}
+                              {new Date(comment.created_at).toLocaleDateString('en-US')}
                             </span>
                           </div>
                           <p className="text-sm">{comment.comment}</p>
@@ -965,7 +965,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                                 {(attachment.file_size / 1024).toFixed(1)} KB
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {new Date(attachment.created_at).toLocaleDateString()}
+                                {new Date(attachment.created_at).toLocaleDateString('en-US')}
                               </p>
                             </div>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
