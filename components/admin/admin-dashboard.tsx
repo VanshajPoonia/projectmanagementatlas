@@ -3,20 +3,23 @@
 import { useState, useEffect, useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone, Bookmark, SlidersHorizontal } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import EnhancedUserManagement from './enhanced-user-management'
 import BoardManagement from './board-management'
+import StatusManagement from './status-management'
 import TaskOverview from './task-overview'
 import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
 import ReportsView from '../reports/reports-view'
-import UserManagement from './user-management' // Added import for UserManagement
 import PersonalTasks from '../personal/personal-tasks'
 import BookmarksSection from '../bookmarks/bookmarks-section'
 import MarketingCalendar from '../marketing/marketing-calendar'
 import TaskNotificationToasts from '../notifications/task-notification-toasts'
+import DashboardWindow from '../dashboard/dashboard-window'
+import AccountSettings from '../account/account-settings'
+import ChatUnreadBadge from '../chat/chat-unread-badge'
 import { gsap } from 'gsap'
 
 interface AdminDashboardProps {
@@ -71,10 +74,13 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
               <p className="text-sm text-muted-foreground">{user.full_name}</p>
             </div>
           </div>
-          <Button onClick={handleSignOut} variant="outline" size="sm">
-            <LogOut className="w-4 h-4 mr-2" />
-            Sign Out
-          </Button>
+          <div className="flex items-center gap-2">
+            <AccountSettings userId={user.id} currentName={user.full_name || ''} email={user.email} />
+            <Button onClick={handleSignOut} variant="outline" size="sm">
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -82,7 +88,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
       <main className="container mx-auto px-4 py-8">
         <div ref={tabsRef}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full max-w-5xl grid-cols-8 h-12">
+            <TabsList className="grid w-full max-w-6xl grid-cols-9 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <Home className="w-4 h-4" />
                 <span className="hidden sm:inline">Home</span>
@@ -107,9 +113,14 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
                 <ClipboardList className="w-4 h-4" />
                 <span className="hidden sm:inline">Boards</span>
               </TabsTrigger>
+              <TabsTrigger value="statuses" className="flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4" />
+                <span className="hidden sm:inline">Statuses</span>
+              </TabsTrigger>
               <TabsTrigger value="chat" className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4" />
                 <span className="hidden sm:inline">Chat</span>
+                <ChatUnreadBadge userId={user.id} />
               </TabsTrigger>
               <TabsTrigger value="personal" className="flex items-center gap-2">
                 <Lock className="w-4 h-4" />
@@ -118,8 +129,12 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
-              <BookmarksSection userId={user.id} isAdmin={true} />
-              <TaskOverview tasks={tasks} users={users} />
+              <DashboardWindow id="admin-bookmarks" title="Bookmarks" description="Quick links you use every day" icon={<Bookmark className="h-4 w-4" />}>
+                <BookmarksSection userId={user.id} isAdmin={true} embedded />
+              </DashboardWindow>
+              <DashboardWindow id="admin-overview" title="Overview" description="Quick overview of your project management" icon={<LayoutDashboard className="h-4 w-4" />}>
+                <TaskOverview tasks={tasks} users={users} />
+              </DashboardWindow>
             </TabsContent>
 
             <TabsContent value="calendar">
@@ -140,6 +155,10 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
 
             <TabsContent value="boards">
               <BoardManagement boards={boards} />
+            </TabsContent>
+
+            <TabsContent value="statuses">
+              <StatusManagement />
             </TabsContent>
 
             <TabsContent value="chat">
