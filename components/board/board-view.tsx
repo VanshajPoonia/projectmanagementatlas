@@ -24,7 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, Download, MessageSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import TaskCard from './task-card'
 import CreateTaskDialog from './create-task-dialog'
 import { TaskDetailModal } from './task-detail-modal'
@@ -45,6 +45,7 @@ interface BoardViewProps {
 const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(id, full_name, email), task_assignees(user_id), task_tags(tag:tags(*)))'
 
 export default function BoardView({ board, columns: initialColumns, users, isAdmin, currentUserId }: BoardViewProps) {
+  const router = useRouter()
   const [columns, setColumns] = useState(initialColumns)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [selectedColumn, setSelectedColumn] = useState<any>(null)
@@ -371,7 +372,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           assigneeNames.length ? assigneeNames.join('; ') : 'Unassigned',
           task.priority || '',
           getTaskStatusLabel(task),
-          task.due_date ? new Date(task.due_date).toLocaleDateString() : '',
+          task.due_date ? new Date(task.due_date).toLocaleDateString('en-US') : '',
           tags,
         ]
       })
@@ -398,12 +399,20 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         <div className="container mx-auto px-4 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex min-w-0 flex-1 items-start gap-4">
-              <Link href={isAdmin ? '/admin' : '/dashboard'}>
-                <Button variant="outline" size="sm">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back
-                </Button>
-              </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (window.history.length > 1) {
+                    router.back()
+                  } else {
+                    router.push(isAdmin ? '/admin' : '/dashboard')
+                  }
+                }}
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Button>
               {editingBoardTitle && isAdmin ? (
                 <div className="flex-1 max-w-xl space-y-2">
                   <Input
@@ -447,52 +456,52 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             <div className="flex flex-wrap items-center gap-2 lg:justify-end">
               {/* View Toggle */}
               <div className="flex items-center border rounded-md">
-                <Button 
-                  onClick={() => setViewMode('tile')} 
+                <Button
+                  onClick={() => setViewMode('tile')}
                   variant={viewMode === 'tile' ? 'default' : 'ghost'}
-                  size="sm" 
+                  size="sm"
                   className="gap-2 rounded-r-none"
                 >
                   <LayoutGrid className="w-4 h-4" />
-                  Tile
+                  <span className="hidden sm:inline">Tile</span>
                 </Button>
-                <Button 
-                  onClick={() => setViewMode('list')} 
+                <Button
+                  onClick={() => setViewMode('list')}
                   variant={viewMode === 'list' ? 'default' : 'ghost'}
-                  size="sm" 
+                  size="sm"
                   className="gap-2 rounded-l-none"
                 >
                   <List className="w-4 h-4" />
-                  List
+                  <span className="hidden sm:inline">List</span>
                 </Button>
               </div>
-              
-              <Button 
-                onClick={() => setShowFilters(!showFilters)} 
+
+              <Button
+                onClick={() => setShowFilters(!showFilters)}
                 variant={activeFiltersCount > 0 ? "default" : "outline"}
-                size="sm" 
+                size="sm"
                 className="gap-2 relative"
               >
                 <Filter className="w-4 h-4" />
-                Filters
+                <span className="hidden sm:inline">Filters</span>
                 {activeFiltersCount > 0 && (
                   <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center">
                     {activeFiltersCount}
                   </Badge>
                 )}
               </Button>
-              <Button onClick={() => setChatDialogOpen(true)} variant="outline" size="sm" className="gap-2">
+              <Button onClick={() => setChatDialogOpen(true)} variant="outline" size="sm" className="hidden md:flex gap-2">
                 <MessageSquare className="w-4 h-4" />
                 Chat
               </Button>
               <Button onClick={exportVisibleTasksToCSV} variant="outline" size="sm" className="gap-2">
                 <Download className="w-4 h-4" />
-                Export CSV
+                <span className="hidden sm:inline">Export CSV</span>
               </Button>
               {isAdmin && (
                 <Button onClick={() => setNewColumnDialogOpen(true)} size="sm" className="gap-2">
                   <Plus className="w-4 h-4" />
-                  Add Column
+                  <span className="hidden sm:inline">Add Column</span>
                 </Button>
               )}
             </div>
@@ -587,7 +596,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       <main className="mx-auto w-full max-w-[1800px] px-4 py-6">
         {viewMode === 'tile' ? (
           <DragDropContext onDragEnd={onDragEnd}>
-            <div className="-mx-4 overflow-x-auto px-4 pb-6">
+            <div className="-mx-4 overflow-x-auto px-4 pb-6 snap-x snap-mandatory md:snap-none scroll-pl-4">
               <div className="flex items-start gap-4">
                 {columns.map((column) => {
                   const visibleTasks = filterTasks((column.tasks || []).filter((task: any) => !task.deleted_at))
@@ -596,7 +605,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   return (
                     <section
                       key={column.id}
-                      className="w-[min(360px,calc(100vw-2rem))] flex-shrink-0 rounded-lg border bg-muted/20"
+                      className="w-[min(360px,calc(100vw-2rem))] flex-shrink-0 rounded-lg border bg-muted/20 snap-start"
                     >
                       <div
                         className="rounded-t-lg border-t-4 px-4 py-3"
@@ -742,7 +751,20 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="overflow-x-auto">
+                    <div className="space-y-3 md:hidden">
+                      {sortTasks(columnTasks).map((task: any) => (
+                        <TaskCard
+                          key={task.id}
+                          task={task}
+                          isAdmin={isAdmin}
+                          currentUserId={currentUserId}
+                          users={users}
+                          board={board}
+                          onUpdate={refreshColumns}
+                        />
+                      ))}
+                    </div>
+                    <div className="hidden overflow-x-auto md:block">
                       <table className="w-full">
                         <thead>
                           <tr className="border-b">
@@ -919,7 +941,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                   {task.due_date ? (
                                     <div className="flex items-center gap-2 text-sm">
                                       <Calendar className="w-4 h-4" />
-                                      {new Date(task.due_date).toLocaleDateString()}
+                                      {new Date(task.due_date).toLocaleDateString('en-US')}
                                     </div>
                                   ) : (
                                     <span className="text-sm text-muted-foreground">No date</span>
