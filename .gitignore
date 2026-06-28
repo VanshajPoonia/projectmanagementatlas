@@ -26,3 +26,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Source spreadsheets with sensitive business data — never commit
+*.xlsx
+*.xls
+*.csv
