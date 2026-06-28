@@ -131,7 +131,7 @@ export default function PersonalTasks({ userId }: PersonalTasksProps) {
                   isOverdue(task) ? 'text-red-600 font-medium' : 'text-muted-foreground'
                 }`}>
                   <Calendar className="w-3 h-3" />
-                  {new Date(task.due_date).toLocaleDateString()}
+                  {new Date(task.due_date).toLocaleDateString('en-US')}
                 </span>
               )}
 
