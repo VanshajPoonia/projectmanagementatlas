@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getAssigneeIds, getAssignees } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
@@ -15,13 +17,16 @@ import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 interface CalendarViewProps {
   tasks: any[]
   users: any[]
+  isAdmin?: boolean
 }
 
-export default function CalendarView({ tasks, users }: CalendarViewProps) {
+export default function CalendarView({ tasks, users, isAdmin = false }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [expandedTasks, setExpandedTasks] = useState<any[]>([])
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({})
   const supabase = createClient()
+  const router = useRouter()
 
   const daysInMonth = new Date(
     currentDate.getFullYear(),
@@ -102,11 +107,32 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
     setExpandedTasks([])
   }
 
+  const handleToggleComplete = async (task: any) => {
+    const currentStatus = statusOverrides[task.id] ?? task.status
+    const isDone = getNormalizedTaskStatus({ ...task, status: currentStatus }) === 'done'
+    const newStatus = isDone ? 'to_do' : 'done'
+
+    setStatusOverrides((prev) => ({ ...prev, [task.id]: newStatus }))
+
+    const updateData: Record<string, any> = { status: newStatus }
+    if (newStatus === 'done') updateData.entry_date = new Date().toISOString()
+
+    const { error } = await supabase.from('tasks').update(updateData).eq('id', task.id)
+
+    if (error) {
+      setStatusOverrides((prev) => ({ ...prev, [task.id]: currentStatus }))
+      toast.error('Could not update task', { description: error.message })
+      return
+    }
+
+    router.refresh()
+  }
+
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-2xl">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-lg sm:text-2xl">
             {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
           </CardTitle>
           <div className="flex items-center gap-2">
@@ -136,11 +162,11 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-7 gap-2">
+        <div className="grid grid-cols-7 gap-1 sm:gap-2">
           {/* Day headers */}
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-            <div key={day} className="text-center font-semibold text-sm py-2">
-              {day}
+            <div key={day} className="text-center font-semibold text-[11px] sm:text-sm py-2">
+              {day.slice(0, 3)}
             </div>
           ))}
 
@@ -159,18 +185,35 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
               <div
                 key={day}
                 onClick={() => handleDateClick(day)}
-                className={`aspect-square border rounded-lg p-2 ${
+                className={`aspect-square border rounded-lg p-1 sm:p-2 ${
                   today ? 'bg-primary/10 border-primary' : 'hover:bg-accent'
                 } transition-colors ${dayTasks.length > 0 ? 'cursor-pointer' : ''}`}
               >
-                <div className={`text-sm font-medium mb-1 ${today ? 'text-primary' : ''}`}>
+                <div className={`text-xs sm:text-sm font-medium mb-1 ${today ? 'text-primary' : ''}`}>
                   {day}
                 </div>
-                <div className="space-y-1">
+
+                {/* Mobile: dots only */}
+                <div className="flex flex-wrap gap-0.5 sm:hidden">
+                  {dayTasks.slice(0, 4).map(task => {
+                    const firstAssigneeId = getAssigneeIds(task)[0]
+                    const color = firstAssigneeId ? getUserColor(firstAssigneeId) : '#475569'
+                    return (
+                      <span
+                        key={task.id}
+                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                    )
+                  })}
+                </div>
+
+                {/* Larger screens: truncated title chips */}
+                <div className="hidden sm:block space-y-1">
                   {dayTasks.slice(0, 3).map(task => {
                     const firstAssigneeId = getAssigneeIds(task)[0]
                     const color = firstAssigneeId ? getUserColor(firstAssigneeId) : '#475569'
-                    
+
                     return (
                       <div
                         key={task.id}
@@ -216,68 +259,83 @@ export default function CalendarView({ tasks, users }: CalendarViewProps) {
               const taskAssignees = getAssignees(task, users)
               const firstAssigneeId = getAssigneeIds(task)[0]
               const color = firstAssigneeId ? getUserColor(firstAssigneeId) : '#475569'
-              const taskStatus = getNormalizedTaskStatus(task)
-              
+              const effectiveStatus = statusOverrides[task.id] ?? task.status
+              const taskWithEffectiveStatus = { ...task, status: effectiveStatus }
+              const taskStatus = getNormalizedTaskStatus(taskWithEffectiveStatus)
+              const isDone = taskStatus === 'done'
+
               return (
-                <Link key={task.id} href={`/admin/board/${task.board_id}`}>
-                  <Card className="hover:shadow-md transition-all cursor-pointer hover:border-primary">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div 
-                              className="w-3 h-3 rounded-full flex-shrink-0" 
-                              style={{ backgroundColor: color }}
-                            />
-                            <h3 className="break-words text-base font-semibold line-clamp-2 [overflow-wrap:anywhere]">{task.title}</h3>
-                          </div>
-                          
-                          {cleanTaskDescription(task.description) && (
-                            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                              {cleanTaskDescription(task.description)}
-                            </p>
-                          )}
-                          
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline" className="text-xs">
-                              {taskAssignees.length ? taskAssignees.map((u: any) => u.full_name || u.email).join(', ') : 'Unassigned'}
-                            </Badge>
-                            
-                            {task.priority && (
-                              <Badge 
-                                variant="outline" 
+                <div key={task.id} className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleComplete(task)}
+                    aria-label={isDone ? 'Mark as not done' : 'Mark as done'}
+                    className={`mt-4 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors ${
+                      isDone ? 'bg-primary border-primary' : 'border-muted-foreground hover:border-primary'
+                    }`}
+                  >
+                    {isDone && <Check className="h-3 w-3 text-primary-foreground" />}
+                  </button>
+                  <Link href={`/${isAdmin ? 'admin' : 'dashboard'}/board/${task.board_id}`} className="flex-1 min-w-0">
+                    <Card className="hover:shadow-md transition-all cursor-pointer hover:border-primary">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div
+                                className="w-3 h-3 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: color }}
+                              />
+                              <h3 className={`break-words text-base font-semibold line-clamp-2 [overflow-wrap:anywhere] ${isDone ? 'line-through text-muted-foreground' : ''}`}>{task.title}</h3>
+                            </div>
+
+                            {cleanTaskDescription(task.description) && (
+                              <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                                {cleanTaskDescription(task.description)}
+                              </p>
+                            )}
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline" className="text-xs">
+                                {taskAssignees.length ? taskAssignees.map((u: any) => u.full_name || u.email).join(', ') : 'Unassigned'}
+                              </Badge>
+
+                              {task.priority && (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs ${
+                                    task.priority >= 4
+                                      ? 'border-red-500 text-red-500 bg-red-50'
+                                      : task.priority === 3
+                                      ? 'border-orange-500 text-orange-500 bg-orange-50'
+                                      : 'border-blue-500 text-blue-500 bg-blue-50'
+                                  }`}
+                                >
+                                  Priority: {task.priority}
+                                </Badge>
+                              )}
+
+                              <Badge
+                                variant={isDone ? 'default' : taskStatus === 'in_progress' ? 'secondary' : 'outline'}
                                 className={`text-xs ${
-                                  task.priority >= 4
-                                    ? 'border-red-500 text-red-500 bg-red-50' 
-                                    : task.priority === 3
-                                    ? 'border-orange-500 text-orange-500 bg-orange-50' 
-                                    : 'border-blue-500 text-blue-500 bg-blue-50'
+                                  isDone
+                                    ? 'bg-green-600'
+                                    : taskStatus === 'in_progress'
+                                    ? 'bg-yellow-600'
+                                    : ''
                                 }`}
                               >
-                                Priority: {task.priority}
+                                {getTaskStatusLabel(taskWithEffectiveStatus)}
                               </Badge>
-                            )}
-                            
-                            <Badge
-                              variant={taskStatus === 'done' ? 'default' : taskStatus === 'in_progress' ? 'secondary' : 'outline'}
-                              className={`text-xs ${
-                                taskStatus === 'done'
-                                  ? 'bg-green-600'
-                                  : taskStatus === 'in_progress'
-                                  ? 'bg-yellow-600'
-                                  : ''
-                              }`}
-                            >
-                              {getTaskStatusLabel(task)}
-                            </Badge>
+                            </div>
                           </div>
+
+                          <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
                         </div>
-                        
-                        <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                </div>
               )
             })}
           </div>
