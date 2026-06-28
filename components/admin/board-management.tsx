@@ -355,7 +355,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                 <CardContent>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="w-4 h-4" />
-                    Created {new Date(board.created_at).toLocaleDateString()}
+                    Created {new Date(board.created_at).toLocaleDateString('en-US')}
                   </div>
                 </CardContent>
               </div>
@@ -424,7 +424,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                   <p className="truncate font-medium">{board.title}</p>
                   {board.archived_at && (
                     <p className="text-xs text-muted-foreground">
-                      Archived {new Date(board.archived_at).toLocaleDateString()}
+                      Archived {new Date(board.archived_at).toLocaleDateString('en-US')}
                     </p>
                   )}
                 </div>
