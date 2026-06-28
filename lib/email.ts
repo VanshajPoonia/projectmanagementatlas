@@ -41,6 +41,28 @@ async function requireSession() {
   return user
 }
 
+type NotificationColumn =
+  | 'notify_email_assignment'
+  | 'notify_email_update'
+  | 'notify_email_comment'
+  | 'notify_email_due_soon'
+
+// Centralized here (rather than at each call site) so every send path is
+// covered by one check and a new caller can't accidentally skip it.
+async function isNotificationEnabled(recipientEmail: string, column: NotificationColumn) {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('profiles')
+    .select(column)
+    .eq('email', recipientEmail)
+    .single()
+
+  // A lookup failure (e.g. unrecognized email) should never silently
+  // swallow a real notification, so default to enabled.
+  if (!data) return true
+  return (data as Record<string, boolean>)[column] !== false
+}
+
 async function sendEmail(to: string, subject: string, html: string) {
   if (!process.env.RESEND_API_KEY) {
     console.error('[email] RESEND_API_KEY is not set; skipping email to', to)
@@ -69,6 +91,10 @@ export async function sendTaskAssignmentEmail(
   assignedBy: string
 ) {
   if (!(await requireSession())) return
+  if (!(await isNotificationEnabled(recipientEmail, 'notify_email_assignment'))) {
+    console.log('[email] Skipped (preference off): assignment to', recipientEmail)
+    return
+  }
 
   const html = renderEmail(
     '🔔 New Task Assigned',
@@ -94,6 +120,10 @@ export async function sendTaskUpdateEmail(
   changes: string
 ) {
   if (!(await requireSession())) return
+  if (!(await isNotificationEnabled(recipientEmail, 'notify_email_update'))) {
+    console.log('[email] Skipped (preference off): update to', recipientEmail)
+    return
+  }
 
   const html = renderEmail(
     '📝 Task Updated',
@@ -116,6 +146,10 @@ export async function sendCommentEmail(
   commentText: string
 ) {
   if (!(await requireSession())) return
+  if (!(await isNotificationEnabled(recipientEmail, 'notify_email_comment'))) {
+    console.log('[email] Skipped (preference off): comment to', recipientEmail)
+    return
+  }
 
   const html = renderEmail(
     '💬 New Comment',
@@ -137,6 +171,11 @@ export async function sendTaskDueSoonEmail(
   dueDate: string,
   daysRemaining: number
 ) {
+  if (!(await isNotificationEnabled(recipientEmail, 'notify_email_due_soon'))) {
+    console.log('[email] Skipped (preference off): due-soon to', recipientEmail)
+    return
+  }
+
   const html = renderEmail(
     '⏰ Task Due Soon',
     [
