@@ -28,6 +28,8 @@ const ICON_NAMES = Object.keys(ICONS)
 interface BookmarksSectionProps {
   userId: string
   isAdmin: boolean
+  /** When true, render without the outer Card chrome (a parent window provides it). */
+  embedded?: boolean
 }
 
 function faviconUrl(url: string) {
@@ -79,7 +81,7 @@ function BookmarkTile({ bookmark, canManage, onEdit, onDelete }: any) {
   )
 }
 
-export default function BookmarksSection({ userId, isAdmin }: BookmarksSectionProps) {
+export default function BookmarksSection({ userId, isAdmin, embedded = false }: BookmarksSectionProps) {
   const [bookmarks, setBookmarks] = useState<any[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
@@ -165,20 +167,16 @@ export default function BookmarksSection({ userId, isAdmin }: BookmarksSectionPr
   const companyBookmarks = bookmarks.filter(b => b.scope === 'company')
   const personalBookmarks = bookmarks.filter(b => b.scope === 'personal')
 
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <div>
-          <CardTitle>Bookmarks</CardTitle>
-          <CardDescription>Quick links to the things you use every day</CardDescription>
-        </div>
-        <Button size="sm" onClick={openCreateDialog} className="gap-2">
-          <Plus className="w-4 h-4" />
-          Add Bookmark
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {companyBookmarks.length > 0 && (
+  const addButton = (
+    <Button size="sm" onClick={openCreateDialog} className="gap-2">
+      <Plus className="w-4 h-4" />
+      Add Bookmark
+    </Button>
+  )
+
+  const grids = (
+    <div className="space-y-5">
+      {companyBookmarks.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Building2 className="w-3.5 h-3.5" />
@@ -219,8 +217,10 @@ export default function BookmarksSection({ userId, isAdmin }: BookmarksSectionPr
             <p className="text-sm text-muted-foreground">No personal bookmarks yet. Add one above.</p>
           )}
         </div>
-      </CardContent>
+    </div>
+  )
 
+  const dialog = (
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -290,6 +290,29 @@ export default function BookmarksSection({ userId, isAdmin }: BookmarksSectionPr
           </form>
         </DialogContent>
       </Dialog>
+  )
+
+  if (embedded) {
+    return (
+      <>
+        <div className="mb-4 flex justify-end">{addButton}</div>
+        {grids}
+        {dialog}
+      </>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <div>
+          <CardTitle>Bookmarks</CardTitle>
+          <CardDescription>Quick links to the things you use every day</CardDescription>
+        </div>
+        {addButton}
+      </CardHeader>
+      <CardContent>{grids}</CardContent>
+      {dialog}
     </Card>
   )
 }
