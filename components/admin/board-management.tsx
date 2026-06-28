@@ -2,14 +2,14 @@
 
 import React from "react"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette } from 'lucide-react'
+import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette, Archive, ArchiveRestore } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import Link from 'next/link'
@@ -21,6 +21,7 @@ interface BoardManagementProps {
 
 export default function BoardManagement({ boards: initialBoards }: BoardManagementProps) {
   const [boards, setBoards] = useState(initialBoards)
+  const [archivedBoards, setArchivedBoards] = useState<any[]>([])
   const [open, setOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editingBoard, setEditingBoard] = useState<any>(null)
@@ -121,30 +122,66 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
     }
   }
 
-  const handleDeleteBoard = async (boardId: string, boardTitle: string, e: React.MouseEvent) => {
-    e.preventDefault() // Prevent navigation
-    e.stopPropagation() // Stop event bubbling
+  // Archived boards are kept forever (never deleted) and visible only to admins.
+  useEffect(() => {
+    const loadArchived = async () => {
+      const { data } = await supabase
+        .from('boards')
+        .select('*')
+        .not('archived_at', 'is', null)
+        .order('archived_at', { ascending: false })
+      if (data) setArchivedBoards(data)
+    }
+    loadArchived()
+  }, [])
+
+  const handleArchiveBoard = async (boardId: string, boardTitle: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
 
     const confirmed = window.confirm(
-      `Are you sure you want to delete "${boardTitle}"?\n\nThis will permanently delete the board and all its tasks, columns, and data. This action cannot be undone.`
+      `Archive "${boardTitle}"?\n\nThe board and all its data are kept — it's just hidden from everyone except admins. You can restore it any time.`
     )
-    
     if (!confirmed) return
 
     try {
-      // Delete the board (cascade will handle related data)
-      const { error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data, error } = await supabase
         .from('boards')
-        .delete()
+        .update({ archived_at: new Date().toISOString(), archived_by: user?.id ?? null })
         .eq('id', boardId)
+        .select()
+        .single()
 
       if (error) throw error
 
-      // Update local state
       setBoards(boards.filter(b => b.id !== boardId))
+      if (data) setArchivedBoards((prev) => [data, ...prev])
     } catch (err) {
-      alert('Failed to delete board. Please try again.')
-      console.error('Delete board error:', err)
+      alert('Failed to archive board. Please try again.')
+      console.error('Archive board error:', err)
+    }
+  }
+
+  const handleRestoreBoard = async (boardId: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    try {
+      const { data, error } = await supabase
+        .from('boards')
+        .update({ archived_at: null, archived_by: null })
+        .eq('id', boardId)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setArchivedBoards((prev) => prev.filter(b => b.id !== boardId))
+      if (data) setBoards((prev) => [data, ...prev])
+    } catch (err) {
+      alert('Failed to restore board. Please try again.')
+      console.error('Restore board error:', err)
     }
   }
 
@@ -349,11 +386,11 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                     Edit Board
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    className="text-destructive focus:text-destructive cursor-pointer"
-                    onClick={(e) => handleDeleteBoard(board.id, board.title, e)}
+                    className="cursor-pointer"
+                    onClick={(e) => handleArchiveBoard(board.id, board.title, e)}
                   >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Board
+                    <Archive className="w-4 h-4 mr-2" />
+                    Archive Board
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -372,6 +409,33 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
             Create Board
           </Button>
         </Card>
+      )}
+
+      {archivedBoards.length > 0 && (
+        <div className="space-y-3 pt-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Archive className="w-4 h-4" />
+            Archived boards ({archivedBoards.length}) — only admins can see these
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {archivedBoards.map((board) => (
+              <Card key={board.id} className="flex items-center justify-between gap-3 p-4 bg-muted/40">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{board.title}</p>
+                  {board.archived_at && (
+                    <p className="text-xs text-muted-foreground">
+                      Archived {new Date(board.archived_at).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+                <Button variant="outline" size="sm" className="gap-2 flex-shrink-0" onClick={(e) => handleRestoreBoard(board.id, e)}>
+                  <ArchiveRestore className="w-4 h-4" />
+                  Restore
+                </Button>
+              </Card>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )
