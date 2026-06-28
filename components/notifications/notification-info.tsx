@@ -57,10 +57,13 @@ export default function NotificationInfo() {
           </div>
         </div>
 
-        <div className="pt-3 border-t">
+        <div className="pt-3 border-t space-y-2">
           <Badge variant="secondary" className="text-xs">
             Powered by Resend
           </Badge>
+          <p className="text-xs text-muted-foreground">
+            Manage which of these you receive anytime from Account settings.
+          </p>
         </div>
       </CardContent>
     </Card>
