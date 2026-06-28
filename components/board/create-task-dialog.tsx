@@ -1,7 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,8 @@ import { createClient } from '@/lib/supabase/client'
 import { sendTaskAssignmentEmail } from '@/lib/email'
 import { LinkIcon, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTaskStatuses } from '@/lib/use-task-statuses'
+import { getNormalizedTaskStatus } from '@/lib/task-status'
 
 interface CreateTaskDialogProps {
   board?: any
@@ -28,7 +30,9 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
   const [description, setDescription] = useState('')
   const [assignees, setAssignees] = useState<string[]>([])
   const [visibility, setVisibility] = useState<'assigned' | 'board'>('assigned')
-  const [priority, setPriority] = useState<number>(3)
+  // Per the PM portal spec: priority/status must be explicitly chosen, not silently defaulted.
+  const [priority, setPriority] = useState<number | null>(null)
+  const [status, setStatus] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [isRecurring, setIsRecurring] = useState(false)
   const [recurrencePattern, setRecurrencePattern] = useState<'daily' | 'weekly' | 'monthly'>('daily')
@@ -39,6 +43,15 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
+  const taskStatuses = useTaskStatuses()
+
+  // Surface the column's implied status (normalized to a real status key) when the dialog
+  // opens so the user can confirm it, and so the default always matches a managed status.
+  useEffect(() => {
+    if (open && column?.title) {
+      setStatus(getNormalizedTaskStatus({ column: { title: column.title } }))
+    }
+  }, [open, column])
 
   const addLink = () => {
     const trimmedUrl = linkUrl.trim()
@@ -60,14 +73,24 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
     setLoading(true)
     setError(null)
 
+    // Required fields must be explicitly completed before a task can be created.
+    if (priority === null) {
+      setError('Please select a priority before creating this task.')
+      setLoading(false)
+      return
+    }
+    if (!status) {
+      setError('Please select a status before creating this task.')
+      setLoading(false)
+      return
+    }
+
     try {
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (userError) throw userError
       if (!user) throw new Error('User not authenticated')
 
-      const status = column.title.toLowerCase().replace(' ', '_')
-      
       const taskData = {
         title,
         description,
@@ -162,7 +185,8 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
       setDescription('')
       setAssignees([])
       setVisibility('assigned')
-      setPriority(3)
+      setPriority(null)
+      setStatus('')
       setDueDate('')
       setIsRecurring(false)
       setRecurrencePattern('daily')
@@ -323,14 +347,14 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <label htmlFor="priority" className="text-sm font-medium">
-                Priority (1-5)
+                Priority <span className="text-destructive">*</span>
               </label>
-              <Select value={priority.toString()} onValueChange={(val) => setPriority(parseInt(val))} disabled={loading}>
-                <SelectTrigger>
-                  <SelectValue />
+              <Select value={priority === null ? '' : priority.toString()} onValueChange={(val) => setPriority(parseInt(val))} disabled={loading}>
+                <SelectTrigger id="priority">
+                  <SelectValue placeholder="Select priority" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="1">1 - Lowest</SelectItem>
@@ -338,6 +362,22 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
                   <SelectItem value="3">3 - Medium</SelectItem>
                   <SelectItem value="4">4 - High</SelectItem>
                   <SelectItem value="5">5 - Highest</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="status" className="text-sm font-medium">
+                Status <span className="text-destructive">*</span>
+              </label>
+              <Select value={status} onValueChange={setStatus} disabled={loading}>
+                <SelectTrigger id="status">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {taskStatuses.map((s) => (
+                    <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -410,7 +450,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
             )}
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || !title.trim() || priority === null || !status}>
             {loading ? 'Creating Task...' : 'Create Task'}
           </Button>
         </form>
