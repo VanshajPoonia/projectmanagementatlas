@@ -6,3 +6,5 @@
 -- references in the codebase before dropping.
 --
 -- Already applied directly to production.
+
+DROP TABLE IF EXISTS public.allowed_emails;
