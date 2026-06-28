@@ -9,9 +9,8 @@ const _inter = Inter({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'TaskFlow - Project Management Dashboard',
-  description: 'Modern project management platform with kanban boards, real-time collaboration, and team communication',
-  generator: 'v0.app',
+  title: 'Project Manager',
+  description: 'Internal project management dashboard for task boards, collaboration, and team communication.',
   icons: {
     icon: '/favicon.ico',
   },
