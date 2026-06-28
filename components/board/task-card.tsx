@@ -196,7 +196,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, i
             {task.due_date && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Calendar className="w-3 h-3" />
-                <span>{new Date(task.due_date).toLocaleDateString()}</span>
+                <span>{new Date(task.due_date).toLocaleDateString('en-US')}</span>
               </div>
             )}
           </div>
