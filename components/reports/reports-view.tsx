@@ -9,16 +9,21 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Filter, X, Download, Calendar as CalendarIcon, Users, Tag } from 'lucide-react'
+import { Filter, X, Download, Calendar as CalendarIcon, Users, Tag, Printer, ExternalLink } from 'lucide-react'
 import { format } from 'date-fns'
+import Link from 'next/link'
 import { getAssigneeIds, getAssigneeNames } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
+import { getTaskStatusLabel } from '@/lib/task-status'
+import { useTaskStatuses } from '@/lib/use-task-statuses'
 
 interface ReportsViewProps {
   tasks: any[]
   users: any[]
   boards: any[]
 }
+
+const UNASSIGNED_FILTER_VALUE = '__unassigned__'
 
 export default function ReportsView({ tasks, users, boards }: ReportsViewProps) {
   const [filteredTasks, setFilteredTasks] = useState(tasks)
@@ -33,6 +38,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
   const [dueDateTo, setDueDateTo] = useState<Date>()
   const [allTags, setAllTags] = useState<any[]>([])
   const supabase = createClient()
+  const taskStatuses = useTaskStatuses({ includeArchived: true })
 
   useEffect(() => {
     loadTags()
@@ -51,7 +57,11 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
     let filtered = [...tasks]
 
     if (filterUser.length > 0) {
-      filtered = filtered.filter(task => getAssigneeIds(task).some(id => filterUser.includes(id)))
+      filtered = filtered.filter(task => {
+        const ids = getAssigneeIds(task)
+        const matchesUnassigned = filterUser.includes(UNASSIGNED_FILTER_VALUE) && ids.length === 0
+        return matchesUnassigned || ids.some(id => filterUser.includes(id))
+      })
     }
 
     if (filterTags.length > 0) {
@@ -140,6 +150,51 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
     a.click()
   }
 
+  // Open a clean, printable table in a new window — no file download required.
+  const printReport = () => {
+    const escapeHtml = (value: string) =>
+      value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+    const bodyRows = filteredTasks
+      .map(task => {
+        const assigneeNames = getAssigneeNames(task, users)
+        const board = boards.find(b => b.id === task.board_id)
+        const tags = task.task_tags?.map((tt: any) => tt.tag.name).join(', ') || ''
+        const cells = [
+          task.title,
+          assigneeNames.length ? assigneeNames.join(', ') : 'Unassigned',
+          String(task.priority ?? ''),
+          getTaskStatusLabel(task),
+          board?.title || 'Unknown',
+          task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No date',
+          tags,
+        ]
+        return `<tr>${cells.map(c => `<td>${escapeHtml(String(c))}</td>`).join('')}</tr>`
+      })
+      .join('')
+
+    const win = window.open('', '_blank')
+    if (!win) return
+    win.document.write(`<!doctype html><html><head><title>Task Report</title>
+      <style>
+        body { font-family: -apple-system, system-ui, sans-serif; padding: 24px; color: #111; }
+        h1 { font-size: 18px; margin: 0 0 4px; }
+        p { color: #666; margin: 0 0 16px; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; vertical-align: top; }
+        th { background: #f5f5f5; }
+        @media print { body { padding: 0; } button { display: none; } }
+      </style></head><body>
+      <h1>Task Report</h1>
+      <p>${filteredTasks.length} tasks &middot; generated ${new Date().toLocaleString()}</p>
+      <table><thead><tr>
+        <th>Title</th><th>Assigned</th><th>Priority</th><th>Status</th><th>Board</th><th>Due Date</th><th>Tags</th>
+      </tr></thead><tbody>${bodyRows}</tbody></table>
+      <script>window.onload = () => window.print()</script>
+      </body></html>`)
+    win.document.close()
+  }
+
   const activeFiltersCount = filterUser.length + filterTags.length + filterPriority.length + 
     filterStatus.length + filterBoard.length + 
     (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) + (dueDateFrom ? 1 : 0) + (dueDateTo ? 1 : 0)
@@ -158,6 +213,10 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
               Clear Filters ({activeFiltersCount})
             </Button>
           )}
+          <Button variant="outline" onClick={printReport} className="gap-2 bg-transparent">
+            <Printer className="w-4 h-4" />
+            Print
+          </Button>
           <Button onClick={exportToCSV} className="gap-2">
             <Download className="w-4 h-4" />
             Export CSV
@@ -192,6 +251,14 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
                   {filterUser.includes(user.id) && <X className="w-3 h-3 ml-1" />}
                 </Badge>
               ))}
+              <Badge
+                variant={filterUser.includes(UNASSIGNED_FILTER_VALUE) ? 'default' : 'outline'}
+                className="cursor-pointer border-dashed"
+                onClick={() => toggleFilter(filterUser, setFilterUser, UNASSIGNED_FILTER_VALUE)}
+              >
+                Unassigned
+                {filterUser.includes(UNASSIGNED_FILTER_VALUE) && <X className="w-3 h-3 ml-1" />}
+              </Badge>
             </div>
           </div>
 
@@ -236,19 +303,19 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
               </div>
             </div>
 
-            {/* Status Filter */}
+            {/* Status Filter — includes archived statuses so older tasks stay searchable */}
             <div>
               <label className="text-sm font-medium mb-2 block">Status</label>
               <div className="flex flex-wrap gap-2">
-                {['todo', 'in_progress', 'done'].map(status => (
+                {taskStatuses.map(status => (
                   <Badge
-                    key={status}
-                    variant={filterStatus.includes(status) ? 'default' : 'outline'}
+                    key={status.key}
+                    variant={filterStatus.includes(status.key) ? 'default' : 'outline'}
                     className="cursor-pointer"
-                    onClick={() => toggleFilter(filterStatus, setFilterStatus, status)}
+                    onClick={() => toggleFilter(filterStatus, setFilterStatus, status.key)}
                   >
-                    {status.replace('_', ' ')}
-                    {filterStatus.includes(status) && <X className="w-3 h-3 ml-1" />}
+                    {status.label}{status.is_archived ? ' (archived)' : ''}
+                    {filterStatus.includes(status.key) && <X className="w-3 h-3 ml-1" />}
                   </Badge>
                 ))}
               </div>
@@ -357,7 +424,19 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
                   const assigneeNames = getAssigneeNames(task, users)
                   return (
                     <tr key={task.id} className="border-b hover:bg-accent/50">
-                      <td className="py-3 px-4 font-medium">{task.title}</td>
+                      <td className="py-3 px-4 font-medium">
+                        {task.board_id ? (
+                          <Link
+                            href={`/admin/board/${task.board_id}`}
+                            className="inline-flex items-center gap-1.5 text-left hover:text-primary hover:underline"
+                          >
+                            <span className="break-words [overflow-wrap:anywhere]">{task.title}</span>
+                            <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                          </Link>
+                        ) : (
+                          task.title
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-sm">{assigneeNames.length ? assigneeNames.join(', ') : 'Unassigned'}</td>
                       <td className="py-3 px-4">
                         <Badge variant={task.priority >= 4 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'}>
@@ -365,7 +444,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
                         </Badge>
                       </td>
                       <td className="py-3 px-4">
-                        <Badge>{task.status.replace('_', ' ')}</Badge>
+                        <Badge>{getTaskStatusLabel(task)}</Badge>
                       </td>
                       <td className="py-3 px-4 text-sm">
                         {task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No date'}
