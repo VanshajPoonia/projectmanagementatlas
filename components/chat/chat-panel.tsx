@@ -22,6 +22,7 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
   const [selectedUser, setSelectedUser] = useState<string>('')
   const [users, setUsers] = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
+  const [unreadBySender, setUnreadBySender] = useState<Record<string, number>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
@@ -46,6 +47,18 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
     ))
   }, [currentUserId, supabase])
 
+  // How many unread messages I have from each other member ("who it was from").
+  const loadUnread = useCallback(async () => {
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('sender_id')
+      .eq('recipient_id', currentUserId)
+      .is('read_at', null)
+    const counts: Record<string, number> = {}
+    for (const row of data || []) counts[row.sender_id] = (counts[row.sender_id] || 0) + 1
+    setUnreadBySender(counts)
+  }, [currentUserId, supabase])
+
   const loadMessages = useCallback(async () => {
     if (!selectedUser) {
       setMessages([])
@@ -61,11 +74,21 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
       .order('created_at', { ascending: true })
 
     if (data) setMessages(data)
-  }, [currentUserId, selectedUser, supabase])
+
+    // Opening a conversation marks its incoming messages as read.
+    await supabase
+      .from('chat_messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('recipient_id', currentUserId)
+      .eq('sender_id', selectedUser)
+      .is('read_at', null)
+    loadUnread()
+  }, [currentUserId, selectedUser, supabase, loadUnread])
 
   useEffect(() => {
     loadUsers()
-  }, [loadUsers])
+    loadUnread()
+  }, [loadUsers, loadUnread])
 
   useEffect(() => {
     loadMessages()
@@ -167,11 +190,21 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
               <SelectValue placeholder="Choose a member" />
             </SelectTrigger>
             <SelectContent>
-              {users.map((user) => (
-                <SelectItem key={user.id} value={user.id}>
-                  {user.full_name || user.email}
-                </SelectItem>
-              ))}
+              {users.map((user) => {
+                const unread = unreadBySender[user.id] || 0
+                return (
+                  <SelectItem key={user.id} value={user.id}>
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <span>{user.full_name || user.email}</span>
+                      {unread > 0 && (
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] font-semibold text-white">
+                          {unread > 99 ? '99+' : unread}
+                        </span>
+                      )}
+                    </span>
+                  </SelectItem>
+                )
+              })}
             </SelectContent>
           </Select>
         </div>
