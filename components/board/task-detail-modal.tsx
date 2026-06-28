@@ -20,6 +20,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { toast } from 'sonner'
+import { useTaskStatuses } from '@/lib/use-task-statuses'
 
 interface TaskDetailModalProps {
   board?: any
@@ -33,6 +34,7 @@ interface TaskDetailModalProps {
 
 export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId }: TaskDetailModalProps) {
   const supabase = createClient()
+  const taskStatuses = useTaskStatuses()
   const [task, setTask] = useState<any>(null)
   const [tags, setTags] = useState<any[]>([])
   const [allTags, setAllTags] = useState<any[]>([])
@@ -41,7 +43,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<number>(3)
-  const [status, setStatus] = useState('todo')
+  const [status, setStatus] = useState('to_do')
   const [visibility, setVisibility] = useState<'assigned' | 'board'>('assigned')
   const [dueDate, setDueDate] = useState<Date>()
   const [assignees, setAssignees] = useState<string[]>([])
@@ -76,6 +78,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     || assignees.includes(currentUserId)
   )
   const canDelete = Boolean(isAdmin || task?.created_by === currentUserId)
+  // Per the PM portal spec: the due date can only be changed by the task's creator (or an admin).
+  const canEditDueDate = Boolean(isAdmin || task?.created_by === currentUserId)
 
   const loadAssignees = async () => {
     const { data } = await supabase
@@ -631,9 +635,13 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todo">To Do</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="done">Done</SelectItem>
+                  {taskStatuses.map((s) => (
+                    <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                  ))}
+                  {/* Keep the task's current status selectable even if it has since been archived. */}
+                  {status && !taskStatuses.some((s) => s.key === status) && (
+                    <SelectItem value={status}>{status.replace(/_/g, ' ')}</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -652,13 +660,14 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             </Select>
           </div>
 
-          {/* Due Date */}
+          {/* Due Date — only the creator (or an admin) can change it */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <CalendarIcon className="w-4 h-4" />
               Due Date
+              {!canEditDueDate && <span className="text-xs font-normal text-muted-foreground">(Creator only)</span>}
             </Label>
-            {canEdit ? (
+            {canEditDueDate ? (
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent">
