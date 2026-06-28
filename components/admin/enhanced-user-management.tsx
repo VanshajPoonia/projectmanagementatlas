@@ -265,7 +265,7 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Calendar className="w-4 h-4" />
-                  Joined {new Date(user.created_at).toLocaleDateString()}
+                  Joined {new Date(user.created_at).toLocaleDateString('en-US')}
                 </div>
                 <Badge variant={user.is_active === false ? 'destructive' : 'default'} className="text-xs">
                   {user.is_active === false ? 'Inactive' : 'Active'}
