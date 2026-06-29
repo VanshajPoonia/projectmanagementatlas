@@ -618,11 +618,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">1 - Lowest</SelectItem>
-                  <SelectItem value="2">2 - Low</SelectItem>
+                  <SelectItem value="1">1 - Highest</SelectItem>
+                  <SelectItem value="2">2 - High</SelectItem>
                   <SelectItem value="3">3 - Medium</SelectItem>
-                  <SelectItem value="4">4 - High</SelectItem>
-                  <SelectItem value="5">5 - Highest</SelectItem>
+                  <SelectItem value="4">4 - Low</SelectItem>
+                  <SelectItem value="5">5 - Lowest</SelectItem>
                 </SelectContent>
               </Select>
             </div>
