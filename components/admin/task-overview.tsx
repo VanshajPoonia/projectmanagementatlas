@@ -87,8 +87,8 @@ export default function TaskOverview({ tasks, users }: TaskOverviewProps) {
                       </Badge>
                       {task.priority && (
                         <Badge variant="outline" className={
-                          task.priority >= 4
-                            ? 'border-red-500 text-red-500' 
+                          task.priority <= 2
+                            ? 'border-red-500 text-red-500'
                             : task.priority === 3
                             ? 'border-orange-500 text-orange-500' 
                             : 'border-blue-500 text-blue-500'
