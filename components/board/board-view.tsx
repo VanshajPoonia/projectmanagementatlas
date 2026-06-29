@@ -564,11 +564,11 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Priorities</SelectItem>
-                      <SelectItem value="1">1 - Lowest</SelectItem>
-                      <SelectItem value="2">2 - Low</SelectItem>
+                      <SelectItem value="1">1 - Highest</SelectItem>
+                      <SelectItem value="2">2 - High</SelectItem>
                       <SelectItem value="3">3 - Medium</SelectItem>
-                      <SelectItem value="4">4 - High</SelectItem>
-                      <SelectItem value="5">5 - Highest</SelectItem>
+                      <SelectItem value="4">4 - Low</SelectItem>
+                      <SelectItem value="5">5 - Lowest</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -933,7 +933,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                   </Button>
                                 </td>
                                 <td className="py-3 px-4">
-                                  <Badge variant={task.priority >= 4 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'}>
+                                  <Badge variant={task.priority <= 2 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'}>
                                     {task.priority}
                                   </Badge>
                                 </td>
