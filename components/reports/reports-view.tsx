@@ -426,7 +426,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
                     )}
                     <Badge
                       className="shrink-0"
-                      variant={task.priority >= 4 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'}
+                      variant={task.priority <= 2 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'}
                     >
                       P{task.priority}
                     </Badge>
@@ -486,7 +486,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
                       </td>
                       <td className="py-3 px-4 text-sm">{assigneeNames.length ? assigneeNames.join(', ') : 'Unassigned'}</td>
                       <td className="py-3 px-4">
-                        <Badge variant={task.priority >= 4 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'}>
+                        <Badge variant={task.priority <= 2 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'}>
                           {task.priority}
                         </Badge>
                       </td>
