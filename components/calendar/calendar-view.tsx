@@ -304,7 +304,7 @@ export default function CalendarView({ tasks, users, isAdmin = false }: Calendar
                                 <Badge
                                   variant="outline"
                                   className={`text-xs ${
-                                    task.priority >= 4
+                                    task.priority <= 2
                                       ? 'border-red-500 text-red-500 bg-red-50'
                                       : task.priority === 3
                                       ? 'border-orange-500 text-orange-500 bg-orange-50'
