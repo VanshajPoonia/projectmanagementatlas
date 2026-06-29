@@ -21,6 +21,7 @@ import AccountSettings from '../account/account-settings'
 import ThemeToggle from '../theme-toggle'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
 import MobileBottomNav, { type NavItem } from '../dashboard/mobile-bottom-nav'
+import GlobalSearch from '../search/global-search'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 
@@ -35,7 +36,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const [activeTab, setActiveTabState] = useState('tasks')
   const router = useRouter()
   const supabase = createClient()
-  const isAdmin = user.role === 'admin'
+  const isAdmin = user.role === 'admin' || user.role === 'super_admin'
 
   // Restores whichever tab was active before navigating away (e.g. into a board),
   // so the in-app Back button returns here instead of resetting to Home.
@@ -120,6 +121,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
               <span className="hidden sm:inline">Sign Out</span>
             </Button>
           </div>
+        </div>
+        <div className="container mx-auto px-4 pb-3">
+          <GlobalSearch isAdmin={isAdmin} />
         </div>
       </header>
 
@@ -255,9 +259,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                             <Badge
                               variant="outline"
                               className={
-                                task.priority === 'high'
+                                task.priority <= 2
                                   ? 'border-red-500 text-red-500'
-                                  : task.priority === 'medium'
+                                  : task.priority === 3
                                   ? 'border-orange-500 text-orange-500'
                                   : 'border-blue-500 text-blue-500'
                               }
