@@ -36,5 +36,5 @@ export default async function BoardPage({ params }: { params: Promise<{ id: stri
     supabase.from('profiles').select('id, full_name, email'),
   ])
 
-  return <BoardView board={board} columns={columns || []} users={users || []} isAdmin={profile?.role === 'admin'} currentUserId={user.id} />
+  return <BoardView board={board} columns={columns || []} users={users || []} isAdmin={profile?.role === 'admin' || profile?.role === 'super_admin'} currentUserId={user.id} />
 }
