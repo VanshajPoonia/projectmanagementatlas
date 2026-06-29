@@ -2,6 +2,10 @@
 
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Calendar as CalendarPicker } from '@/components/ui/calendar'
 import { Calendar, User, MoreVertical, Tag, Clock, Repeat } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -13,9 +17,11 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
-import { getAssignees } from '@/lib/assignees'
+import { getAssignees, getAssigneeIds } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus } from '@/lib/task-status'
+import { sendTaskAssignmentEmail } from '@/lib/email'
+import { format } from 'date-fns'
 import { toast } from 'sonner'
 
 interface TaskCardProps {
@@ -30,10 +36,105 @@ interface TaskCardProps {
 
 export default function TaskCard({ task, isAdmin, currentUserId, users, board, isDragging, onUpdate }: TaskCardProps) {
   const [detailOpen, setDetailOpen] = useState(false)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(task.title)
+  const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false)
   const supabase = createClient()
   const taskAssignees = getAssignees(task, users)
+  const assigneeIds = getAssigneeIds(task)
   const taskDescription = cleanTaskDescription(task.description)
   const canDelete = isAdmin || task.created_by === currentUserId
+  // Mirrors TaskDetailModal's canEdit/canEditDueDate rules, so inline edits on the
+  // tile follow the same permissions as the full modal.
+  const canEdit = isAdmin || task.created_by === currentUserId || assigneeIds.includes(currentUserId)
+  const canEditDueDate = isAdmin || task.created_by === currentUserId
+  const currentUser = users.find((u: any) => u.id === currentUserId)
+
+  const handleSaveTitle = async () => {
+    const trimmed = titleDraft.trim()
+    setEditingTitle(false)
+    if (!trimmed || trimmed === task.title) {
+      setTitleDraft(task.title)
+      return
+    }
+    const { error } = await supabase.from('tasks').update({ title: trimmed }).eq('id', task.id)
+    if (error) {
+      toast.error('Could not update title', { description: error.message })
+      setTitleDraft(task.title)
+      return
+    }
+    onUpdate?.()
+  }
+
+  const handlePriorityChange = async (value: string) => {
+    const { error } = await supabase.from('tasks').update({ priority: parseInt(value) }).eq('id', task.id)
+    if (error) {
+      toast.error('Could not update priority', { description: error.message })
+      return
+    }
+    onUpdate?.()
+  }
+
+  const handleDueDateChange = async (date: Date | undefined) => {
+    const { error } = await supabase.from('tasks').update({ due_date: date ? date.toISOString() : null }).eq('id', task.id)
+    if (error) {
+      toast.error('Could not update due date', { description: error.message })
+      return
+    }
+    onUpdate?.()
+  }
+
+  const handleToggleAssignee = async (userId: string) => {
+    const isAssigned = assigneeIds.includes(userId)
+    const newAssignees = isAssigned ? assigneeIds.filter((id) => id !== userId) : [...assigneeIds, userId]
+
+    if (isAssigned) {
+      const { error } = await supabase.from('task_assignees').delete().eq('task_id', task.id).eq('user_id', userId)
+      if (error) {
+        toast.error('Could not remove assignee', { description: error.message })
+        return
+      }
+    } else {
+      const { error } = await supabase.from('task_assignees').insert({ task_id: task.id, user_id: userId })
+      if (error) {
+        toast.error('Could not add assignee', { description: error.message })
+        return
+      }
+    }
+
+    // Keep the assigned_to mirror in sync with the first assignee.
+    await supabase.from('tasks').update({ assigned_to: newAssignees[0] || null }).eq('id', task.id)
+
+    if (!isAssigned) {
+      const assignedUser = users.find((u: any) => u.id === userId)
+      if (assignedUser) {
+        if (userId !== currentUserId) {
+          await supabase.from('task_notifications').insert({
+            recipient_id: userId,
+            task_id: task.id,
+            actor_id: currentUserId,
+            type: 'assignment',
+            message: `${currentUser?.full_name || currentUser?.email || 'Someone'} assigned you "${task.title}"`,
+          })
+        }
+        await sendTaskAssignmentEmail(
+          assignedUser.email,
+          assignedUser.full_name || assignedUser.email,
+          task.title,
+          taskDescription,
+          (task.priority ?? 3).toString(),
+          task.due_date || null,
+          board?.title || 'Project Board',
+          currentUser?.full_name || currentUser?.email || 'Admin'
+        )
+        toast.success('Assignee notified', {
+          description: `${assignedUser.full_name || assignedUser.email} was added to this task.`,
+        })
+      }
+    }
+
+    onUpdate?.()
+  }
 
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this task?')) {
@@ -68,7 +169,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, i
   }
 
   const getPriorityColor = (priority: number) => {
-    if (priority >= 4) return 'border-red-500 text-red-500 bg-red-50'
+    if (priority <= 2) return 'border-red-500 text-red-500 bg-red-50'
     if (priority === 3) return 'border-orange-500 text-orange-500 bg-orange-50'
     return 'border-blue-500 text-blue-500 bg-blue-50'
   }
@@ -107,9 +208,39 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, i
       >
         <div className="space-y-2.5">
           <div className="flex min-w-0 items-start justify-between gap-2">
-            <h4 className="min-w-0 flex-1 break-words text-sm font-semibold leading-tight text-pretty line-clamp-4 [overflow-wrap:anywhere]">
-              {task.title}
-            </h4>
+            {editingTitle ? (
+              <Input
+                autoFocus
+                value={titleDraft}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={handleSaveTitle}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleSaveTitle()
+                  } else if (e.key === 'Escape') {
+                    setTitleDraft(task.title)
+                    setEditingTitle(false)
+                  }
+                }}
+                className="h-7 min-w-0 flex-1 text-sm font-semibold"
+              />
+            ) : (
+              <h4
+                className={`min-w-0 flex-1 break-words text-sm font-semibold leading-tight text-pretty line-clamp-4 [overflow-wrap:anywhere] ${
+                  canEdit ? 'rounded hover:bg-accent' : ''
+                }`}
+                onClick={(e) => {
+                  if (!canEdit) return
+                  e.stopPropagation()
+                  setTitleDraft(task.title)
+                  setEditingTitle(true)
+                }}
+              >
+                {task.title}
+              </h4>
+            )}
             {canDelete && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -155,11 +286,29 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, i
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {task.priority && (
-              <Badge variant="outline" className={`text-xs ${getPriorityColor(task.priority)}`}>
-                Priority: {task.priority}
-              </Badge>
+              canEdit ? (
+                <Select value={task.priority.toString()} onValueChange={handlePriorityChange}>
+                  <SelectTrigger
+                    onClick={(e) => e.stopPropagation()}
+                    className={`h-6 w-auto gap-1 border px-2 text-xs ${getPriorityColor(task.priority)}`}
+                  >
+                    <SelectValue>{`Priority: ${task.priority}`}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent onClick={(e) => e.stopPropagation()}>
+                    <SelectItem value="1">1 - Highest</SelectItem>
+                    <SelectItem value="2">2 - High</SelectItem>
+                    <SelectItem value="3">3 - Medium</SelectItem>
+                    <SelectItem value="4">4 - Low</SelectItem>
+                    <SelectItem value="5">5 - Lowest</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Badge variant="outline" className={`text-xs ${getPriorityColor(task.priority)}`}>
+                  Priority: {task.priority}
+                </Badge>
+              )
             )}
             {task.is_recurring && (
               <Badge variant="outline" className="text-xs bg-purple-50 border-purple-200 text-purple-600 gap-1">
@@ -183,21 +332,93 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, i
           )}
 
           <div className="space-y-1 border-t pt-2">
-            {taskAssignees.length > 0 && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <User className="w-3 h-3" />
-                <span className="truncate">
-                  {taskAssignees.length === 1
-                    ? (taskAssignees[0].full_name || taskAssignees[0].email)
-                    : `${taskAssignees[0].full_name || taskAssignees[0].email} +${taskAssignees.length - 1}`}
-                </span>
-              </div>
+            {canEdit ? (
+              <Popover open={assigneePopoverOpen} onOpenChange={setAssigneePopoverOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex w-full items-center gap-2 rounded text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <User className="w-3 h-3 shrink-0" />
+                    <span className="truncate">
+                      {taskAssignees.length === 0
+                        ? 'Unassigned'
+                        : taskAssignees.length === 1
+                        ? (taskAssignees[0].full_name || taskAssignees[0].email)
+                        : `${taskAssignees[0].full_name || taskAssignees[0].email} +${taskAssignees.length - 1}`}
+                    </span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2" align="start" onClick={(e) => e.stopPropagation()}>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">Assignees</p>
+                  <div className="max-h-48 space-y-1 overflow-y-auto">
+                    {users.map((u: any) => {
+                      const isAssigned = assigneeIds.includes(u.id)
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => handleToggleAssignee(u.id)}
+                          className={`flex w-full items-center gap-2 rounded p-1.5 text-left text-sm transition-colors ${
+                            isAssigned ? 'bg-primary/10' : 'hover:bg-accent'
+                          }`}
+                        >
+                          <div
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                              isAssigned ? 'bg-primary border-primary' : 'border-muted-foreground'
+                            }`}
+                          >
+                            {isAssigned && <span className="text-[10px] text-primary-foreground">✓</span>}
+                          </div>
+                          <span className="truncate">{u.full_name || u.email}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            ) : (
+              taskAssignees.length > 0 && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <User className="w-3 h-3" />
+                  <span className="truncate">
+                    {taskAssignees.length === 1
+                      ? (taskAssignees[0].full_name || taskAssignees[0].email)
+                      : `${taskAssignees[0].full_name || taskAssignees[0].email} +${taskAssignees.length - 1}`}
+                  </span>
+                </div>
+              )
             )}
-            {task.due_date && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Calendar className="w-3 h-3" />
-                <span>{new Date(task.due_date).toLocaleDateString('en-US')}</span>
-              </div>
+
+            {canEditDueDate ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex w-full items-center gap-2 rounded text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <Calendar className="w-3 h-3 shrink-0" />
+                    <span>{task.due_date ? format(new Date(task.due_date), 'PP') : 'Set due date'}</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start" onClick={(e) => e.stopPropagation()}>
+                  <CalendarPicker
+                    mode="single"
+                    selected={task.due_date ? new Date(task.due_date) : undefined}
+                    onSelect={handleDueDateChange}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            ) : (
+              task.due_date && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Calendar className="w-3 h-3" />
+                  <span>{new Date(task.due_date).toLocaleDateString('en-US')}</span>
+                </div>
+              )
             )}
           </div>
         </div>
