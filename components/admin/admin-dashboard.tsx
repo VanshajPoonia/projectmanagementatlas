@@ -22,6 +22,7 @@ import AccountSettings from '../account/account-settings'
 import ThemeToggle from '../theme-toggle'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
 import MobileBottomNav, { type NavItem } from '../dashboard/mobile-bottom-nav'
+import GlobalSearch from '../search/global-search'
 import { gsap } from 'gsap'
 
 interface AdminDashboardProps {
@@ -32,6 +33,7 @@ interface AdminDashboardProps {
 }
 
 export default function AdminDashboard({ user, users, boards, tasks }: AdminDashboardProps) {
+  const isSuperAdmin = user.role === 'super_admin'
   const [activeTab, setActiveTabState] = useState('overview')
   const router = useRouter()
   const supabase = createClient()
@@ -92,7 +94,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   const moreNavItems: NavItem[] = [
     { value: 'calendar', label: 'Calendar', icon: Calendar },
     { value: 'marketing', label: 'Marketing', icon: Megaphone },
-    { value: 'users', label: 'Users', icon: Users },
+    ...(isSuperAdmin ? [{ value: 'users', label: 'Users', icon: Users }] : []),
     { value: 'statuses', label: 'Statuses', icon: SlidersHorizontal },
     { value: 'personal', label: 'Personal', icon: Lock },
   ]
@@ -129,13 +131,16 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </Button>
           </div>
         </div>
+        <div className="container mx-auto px-4 pb-3">
+          <GlobalSearch isAdmin />
+        </div>
       </header>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8 pb-24 md:pb-8">
         <div ref={tabsRef}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="hidden md:grid w-full max-w-6xl grid-cols-9 h-12">
+            <TabsList className={isSuperAdmin ? "hidden md:grid w-full max-w-6xl grid-cols-9 h-12" : "hidden md:grid w-full max-w-6xl grid-cols-8 h-12"}>
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <Home className="w-4 h-4" />
                 <span className="hidden sm:inline">Home</span>
@@ -152,10 +157,12 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
                 <FileBarChart className="w-4 h-4" />
                 <span className="hidden sm:inline">Reports</span>
               </TabsTrigger>
-              <TabsTrigger value="users" className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                <span className="hidden sm:inline">Users</span>
-              </TabsTrigger>
+              {isSuperAdmin && (
+                <TabsTrigger value="users" className="flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  <span className="hidden sm:inline">Users</span>
+                </TabsTrigger>
+              )}
               <TabsTrigger value="boards" className="flex items-center gap-2">
                 <ClipboardList className="w-4 h-4" />
                 <span className="hidden sm:inline">Boards</span>
@@ -196,9 +203,11 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
               <ReportsView tasks={tasks} users={users} boards={boards} />
             </TabsContent>
 
-            <TabsContent value="users">
-              <EnhancedUserManagement users={users} currentUserId={user.id} />
-            </TabsContent>
+            {isSuperAdmin && (
+              <TabsContent value="users">
+                <EnhancedUserManagement users={users} currentUserId={user.id} />
+              </TabsContent>
+            )}
 
             <TabsContent value="boards">
               <BoardManagement boards={boards} />
