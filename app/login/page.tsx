@@ -51,7 +51,7 @@ export default function LoginPage() {
           .eq('id', data.user.id)
           .single()
 
-        router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')
+        router.push((profile?.role === 'admin' || profile?.role === 'super_admin') ? '/admin' : '/dashboard')
       }
     } catch (err) {
       setError('An unexpected error occurred. Please try again.')
