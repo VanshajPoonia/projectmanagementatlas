@@ -223,6 +223,7 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
                   <SelectContent>
                     <SelectItem value="user">User</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="super_admin">Super Admin</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -251,7 +252,12 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
                     </CardDescription>
                   </div>
                 </div>
-                {user.role === 'admin' ? (
+                {user.role === 'super_admin' ? (
+                  <Badge variant="default" className="bg-purple-600 gap-1">
+                    <Shield className="w-3 h-3" />
+                    Super Admin
+                  </Badge>
+                ) : user.role === 'admin' ? (
                   <Badge variant="default" className="bg-blue-600 gap-1">
                     <Shield className="w-3 h-3" />
                     Admin
@@ -372,6 +378,7 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
                   <SelectContent>
                     <SelectItem value="user">User</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="super_admin">Super Admin</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
