@@ -102,7 +102,7 @@ export async function sendTaskAssignmentEmail(
       { label: 'Recipient', value: recipientName },
       { label: 'Task', value: taskTitle },
       { label: 'Description', value: taskDescription || 'No description provided' },
-      { label: 'Priority', value: `${priority} (1-5 scale)` },
+      { label: 'Priority', value: `${priority} (1=highest, 5=lowest)` },
       { label: 'Due Date', value: dueDate ? new Date(dueDate).toLocaleDateString() : 'No due date' },
       { label: 'Board', value: boardTitle },
       { label: 'Assigned By', value: assignedBy },
