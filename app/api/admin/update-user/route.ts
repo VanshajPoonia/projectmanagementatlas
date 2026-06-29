@@ -18,8 +18,8 @@ export async function PUT(request: Request) {
     .eq('id', user.id)
     .single()
 
-  if (profile?.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden - Admin only' }, { status: 403 })
+  if (profile?.role !== 'super_admin') {
+    return NextResponse.json({ error: 'Forbidden - Super Admin only' }, { status: 403 })
   }
 
   if (!checkRateLimit(`update-user:${user.id}`, 10, 60_000)) {
