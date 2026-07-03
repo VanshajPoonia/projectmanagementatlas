@@ -20,6 +20,7 @@ import { useState } from 'react'
 import { getAssignees, getAssigneeIds } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus } from '@/lib/task-status'
+import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { sendTaskAssignmentEmail } from '@/lib/email'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
@@ -49,6 +50,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, i
   const canEdit = isAdmin || task.created_by === currentUserId || assigneeIds.includes(currentUserId)
   const canEditDueDate = isAdmin || task.created_by === currentUserId
   const currentUser = users.find((u: any) => u.id === currentUserId)
+  const statuses = useTaskStatuses()
 
   const handleSaveTitle = async () => {
     const trimmed = titleDraft.trim()
@@ -70,6 +72,15 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, i
     const { error } = await supabase.from('tasks').update({ priority: parseInt(value) }).eq('id', task.id)
     if (error) {
       toast.error('Could not update priority', { description: error.message })
+      return
+    }
+    onUpdate?.()
+  }
+
+  const handleStatusChange = async (value: string) => {
+    const { error } = await supabase.from('tasks').update({ status: value }).eq('id', task.id)
+    if (error) {
+      toast.error('Could not update status', { description: error.message })
       return
     }
     onUpdate?.()
@@ -310,6 +321,34 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, i
                 </Badge>
               )
             )}
+            {(() => {
+              const normalizedStatus = getNormalizedTaskStatus(task)
+              const statusDef = statuses.find(s => s.key === normalizedStatus)
+              const statusColor = statusDef?.color || '#64748b'
+              if (canEdit) {
+                return (
+                  <Select value={normalizedStatus} onValueChange={handleStatusChange}>
+                    <SelectTrigger
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-6 w-auto gap-1 border px-2 text-xs"
+                      style={{ borderColor: statusColor, color: statusColor, backgroundColor: `${statusColor}18` }}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent onClick={(e) => e.stopPropagation()}>
+                      {statuses.map(s => (
+                        <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )
+              }
+              return (
+                <Badge variant="outline" className="text-xs" style={{ borderColor: statusColor, color: statusColor }}>
+                  {statusDef?.label || normalizedStatus}
+                </Badge>
+              )
+            })()}
             {task.is_recurring && (
               <Badge variant="outline" className="text-xs bg-purple-50 border-purple-200 text-purple-600 gap-1">
                 <Repeat className="w-3 h-3" />

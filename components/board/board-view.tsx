@@ -142,18 +142,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     }
 
     // Update task column and position
-    const newStatus = destColumn.title.toLowerCase().replace(' ', '_')
-    
-    await supabase
-      .from('tasks')
-      .update({ 
-        column_id: destColumn.id,
-        status: newStatus,
-        position: destination.index 
-      })
-      .eq('id', draggableId)
+    const newStatus = destColumn.title.toLowerCase().replace(/ /g, '_')
 
     // Optimistic update
+    const prevColumns = columns
     const newColumns = columns.map(col => {
       if (col.id === source.droppableId) {
         return {
@@ -171,8 +163,21 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       }
       return col
     })
-
     setColumns(newColumns)
+
+    const { error } = await supabase
+      .from('tasks')
+      .update({
+        column_id: destColumn.id,
+        status: newStatus,
+        position: destination.index
+      })
+      .eq('id', draggableId)
+
+    if (error) {
+      setColumns(prevColumns)
+      toast.error('Could not move task', { description: error.message })
+    }
   }
 
   const handleOpenCreateDialog = (column: any) => {
