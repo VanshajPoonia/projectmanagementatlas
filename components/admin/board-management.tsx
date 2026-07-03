@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette, Archive, ArchiveRestore } from 'lucide-react'
+import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette, Archive, ArchiveRestore, Globe, Lock, Users } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import Link from 'next/link'
@@ -28,9 +28,20 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [boardColor, setBoardColor] = useState('#3b82f6')
+  const [isPrivate, setIsPrivate] = useState(false)
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
+  const [allUsers, setAllUsers] = useState<{ id: string; full_name: string | null; email: string | null }[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
+
+  useEffect(() => {
+    supabase.from('profiles').select('id,full_name,email').order('full_name').then(
+      ({ data }: { data: { id: string; full_name: string | null; email: string | null }[] | null }) => {
+        if (data) setAllUsers(data)
+      }
+    )
+  }, [])
 
   const handleCreateBoard = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,10 +55,11 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
 
       const { data: board, error: boardError } = await supabase
         .from('boards')
-        .insert({ 
-          title, 
+        .insert({
+          title,
           description,
-          created_by: user.id 
+          created_by: user.id,
+          is_private: isPrivate,
         })
         .select()
         .single()
@@ -63,9 +75,18 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
 
       await supabase.from('columns').insert(columns)
 
+      // Add explicit members for private boards
+      if (isPrivate && selectedMembers.length > 0) {
+        await supabase.from('board_members').insert(
+          selectedMembers.map(userId => ({ board_id: board.id, user_id: userId }))
+        )
+      }
+
       setBoards([board, ...boards])
       setTitle('')
       setDescription('')
+      setIsPrivate(false)
+      setSelectedMembers([])
       setOpen(false)
     } catch (err) {
       setError('Failed to create board. Please try again.')
@@ -74,13 +95,18 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
     }
   }
 
-  const handleEditBoard = (board: any, e: React.MouseEvent) => {
+  const handleEditBoard = async (board: any, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setEditingBoard(board)
     setTitle(board.title)
     setDescription(board.description || '')
     setBoardColor(board.color || '#3b82f6')
+    setIsPrivate(board.is_private ?? false)
+    // Load existing members
+    const { data: memberRows } = await supabase
+      .from('board_members').select('user_id').eq('board_id', board.id)
+    setSelectedMembers((memberRows ?? []).map((r: any) => r.user_id))
     setEditOpen(true)
   }
 
@@ -98,23 +124,34 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
           title: title.trim(),
           description: description.trim() || null,
           color: boardColor,
+          is_private: isPrivate,
         })
         .eq('id', editingBoard.id)
 
       if (error) throw error
 
+      // Sync members: delete all then re-insert
+      await supabase.from('board_members').delete().eq('board_id', editingBoard.id)
+      if (isPrivate && selectedMembers.length > 0) {
+        await supabase.from('board_members').insert(
+          selectedMembers.map(userId => ({ board_id: editingBoard.id, user_id: userId }))
+        )
+      }
+
       // Update local state
-      setBoards(boards.map(b => 
-        b.id === editingBoard.id 
-          ? { ...b, title: title.trim(), description: description.trim(), color: boardColor }
+      setBoards(boards.map(b =>
+        b.id === editingBoard.id
+          ? { ...b, title: title.trim(), description: description.trim(), color: boardColor, is_private: isPrivate }
           : b
       ))
-      
+
       setEditOpen(false)
       setEditingBoard(null)
       setTitle('')
       setDescription('')
       setBoardColor('#3b82f6')
+      setIsPrivate(false)
+      setSelectedMembers([])
     } catch (err) {
       setError('Failed to update board. Please try again.')
     } finally {
@@ -256,6 +293,35 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                 </div>
               </div>
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Visibility</label>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setIsPrivate(false)}
+                  className={`flex items-center gap-1.5 rounded border px-3 py-2 text-sm transition-colors ${!isPrivate ? 'bg-foreground text-background border-foreground' : 'hover:bg-accent'}`}>
+                  <Globe className="w-4 h-4" /> Everyone
+                </button>
+                <button type="button" onClick={() => setIsPrivate(true)}
+                  className={`flex items-center gap-1.5 rounded border px-3 py-2 text-sm transition-colors ${isPrivate ? 'bg-foreground text-background border-foreground' : 'hover:bg-accent'}`}>
+                  <Lock className="w-4 h-4" /> Private
+                </button>
+              </div>
+              {isPrivate && (
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Who can see this board (admins always have access)</p>
+                  <div className="max-h-40 overflow-y-auto rounded border divide-y">
+                    {allUsers.map(u => (
+                      <label key={u.id} className="flex items-center gap-2 px-3 py-2 hover:bg-accent cursor-pointer text-sm">
+                        <input type="checkbox" checked={selectedMembers.includes(u.id)}
+                          onChange={ev => setSelectedMembers(prev => ev.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id))}
+                          className="rounded"
+                        />
+                        <span className="truncate">{u.full_name || u.email}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="flex gap-2 justify-end pt-4">
               <Button type="button" variant="outline" onClick={() => setEditOpen(false)} disabled={loading}>
                 Cancel
@@ -319,6 +385,35 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                   rows={3}
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Visibility</label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setIsPrivate(false)}
+                    className={`flex items-center gap-1.5 rounded border px-3 py-2 text-sm transition-colors ${!isPrivate ? 'bg-foreground text-background border-foreground' : 'hover:bg-accent'}`}>
+                    <Globe className="w-4 h-4" /> Everyone
+                  </button>
+                  <button type="button" onClick={() => setIsPrivate(true)}
+                    className={`flex items-center gap-1.5 rounded border px-3 py-2 text-sm transition-colors ${isPrivate ? 'bg-foreground text-background border-foreground' : 'hover:bg-accent'}`}>
+                    <Lock className="w-4 h-4" /> Private
+                  </button>
+                </div>
+                {isPrivate && (
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Who can see this board (admins always have access)</p>
+                    <div className="max-h-40 overflow-y-auto rounded border divide-y">
+                      {allUsers.map(u => (
+                        <label key={u.id} className="flex items-center gap-2 px-3 py-2 hover:bg-accent cursor-pointer text-sm">
+                          <input type="checkbox" checked={selectedMembers.includes(u.id)}
+                            onChange={ev => setSelectedMembers(prev => ev.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id))}
+                            className="rounded"
+                          />
+                          <span className="truncate">{u.full_name || u.email}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? 'Creating Board...' : 'Create Board'}
               </Button>
@@ -343,7 +438,10 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                       <Kanban className="w-5 h-5 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-lg truncate">{board.title}</CardTitle>
+                      <div className="flex items-center gap-1.5">
+                        <CardTitle className="text-lg truncate">{board.title}</CardTitle>
+                        {board.is_private && <Lock className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
+                      </div>
                       {cleanBoardDescription(board.description) && (
                         <CardDescription className="text-sm line-clamp-2">
                           {cleanBoardDescription(board.description)}

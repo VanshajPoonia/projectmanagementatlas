@@ -30,6 +30,8 @@ interface BookmarksSectionProps {
   isAdmin: boolean
   /** When true, render without the outer Card chrome (a parent window provides it). */
   embedded?: boolean
+  /** When true, force single-column grid (for narrow sidebar placement). */
+  sidebar?: boolean
 }
 
 function faviconUrl(url: string) {
@@ -81,7 +83,7 @@ function BookmarkTile({ bookmark, canManage, onEdit, onDelete }: any) {
   )
 }
 
-export default function BookmarksSection({ userId, isAdmin, embedded = false }: BookmarksSectionProps) {
+export default function BookmarksSection({ userId, isAdmin, embedded = false, sidebar = false }: BookmarksSectionProps) {
   const [bookmarks, setBookmarks] = useState<any[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
@@ -182,7 +184,7 @@ export default function BookmarksSection({ userId, isAdmin, embedded = false }: 
               <Building2 className="w-3.5 h-3.5" />
               Company
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className={`grid gap-2 ${sidebar ? 'grid-cols-1' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
               {companyBookmarks.map((bookmark) => (
                 <BookmarkTile
                   key={bookmark.id}
@@ -202,7 +204,7 @@ export default function BookmarksSection({ userId, isAdmin, embedded = false }: 
             Personal
           </div>
           {personalBookmarks.length > 0 ? (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className={`grid gap-2 ${sidebar ? 'grid-cols-1' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
               {personalBookmarks.map((bookmark) => (
                 <BookmarkTile
                   key={bookmark.id}

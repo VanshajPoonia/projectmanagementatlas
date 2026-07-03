@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home, Megaphone, Bookmark, Bell, ListTodo, CheckCircle2 } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home, Megaphone, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -22,6 +22,7 @@ import ThemeToggle from '../theme-toggle'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
 import MobileBottomNav, { type NavItem } from '../dashboard/mobile-bottom-nav'
 import GlobalSearch from '../search/global-search'
+import { cn } from '@/lib/utils'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 
@@ -34,6 +35,16 @@ interface UserDashboardProps {
 
 export default function UserDashboard({ user, tasks, boards, users }: UserDashboardProps) {
   const [activeTab, setActiveTabState] = useState('tasks')
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true
+    const saved = localStorage.getItem('bookmarks_sidebar_open')
+    return saved === null ? true : saved === 'true'
+  })
+  const toggleSidebar = () => setSidebarOpen(prev => {
+    const next = !prev
+    localStorage.setItem('bookmarks_sidebar_open', String(next))
+    return next
+  })
   const router = useRouter()
   const supabase = createClient()
   const isAdmin = user.role === 'admin' || user.role === 'super_admin'
@@ -91,7 +102,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   ]
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <TaskNotificationToasts userId={user.id} />
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
@@ -127,8 +138,33 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8 pb-24 md:pb-8">
+      {/* Body: sidebar + main */}
+      <div className="flex flex-1 min-h-0">
+        {/* Bookmarks sidebar — hidden on mobile */}
+        <aside className={cn(
+          "hidden md:flex flex-col flex-shrink-0 border-r bg-muted/10 overflow-hidden transition-[width] duration-200 ease-in-out",
+          sidebarOpen ? "w-64" : "w-10"
+        )}>
+          <div className={cn("flex items-center border-b px-2 py-2.5 min-h-11 flex-shrink-0", sidebarOpen ? "justify-between" : "justify-center")}>
+            {sidebarOpen && (
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 pl-1">
+                <Bookmark className="h-3.5 w-3.5" />
+                Bookmarks
+              </span>
+            )}
+            <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" onClick={toggleSidebar} aria-label={sidebarOpen ? 'Collapse bookmarks' : 'Expand bookmarks'}>
+              {sidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+            </Button>
+          </div>
+          {sidebarOpen && (
+            <div className="flex-1 overflow-y-auto p-3">
+              <BookmarksSection userId={user.id} isAdmin={isAdmin} embedded sidebar />
+            </div>
+          )}
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 min-w-0 px-4 py-8 pb-24 md:pb-8 overflow-x-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className={`hidden md:grid w-full ${canUseMarketingCalendar ? 'max-w-4xl grid-cols-6' : 'max-w-3xl grid-cols-5'} h-12`}>
             <TabsTrigger value="tasks" className="flex items-center gap-2">
@@ -161,10 +197,6 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
           </TabsList>
 
           <TabsContent value="tasks" className="space-y-6">
-            <DashboardWindow id="bookmarks" title="Bookmarks" description="Quick links you use every day" icon={<Bookmark className="h-4 w-4" />}>
-              <BookmarksSection userId={user.id} isAdmin={false} embedded />
-            </DashboardWindow>
-
             <DashboardWindow id="notifications" title="Notifications" icon={<Bell className="h-4 w-4" />}>
               <NotificationInfo />
             </DashboardWindow>
@@ -381,7 +413,8 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
             <ChatPanel currentUserId={user.id} isAdmin={false} />
           </TabsContent>
         </Tabs>
-      </main>
+        </main>
+      </div>
 
       <MobileBottomNav items={navItems} activeTab={activeTab} onChange={setActiveTab} />
     </div>

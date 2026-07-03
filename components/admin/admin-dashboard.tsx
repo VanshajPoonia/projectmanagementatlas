@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone, Bookmark, SlidersHorizontal } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone, Bookmark, SlidersHorizontal, ChevronLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import EnhancedUserManagement from './enhanced-user-management'
@@ -24,6 +24,7 @@ import ChatUnreadBadge from '../chat/chat-unread-badge'
 import MobileBottomNav, { type NavItem } from '../dashboard/mobile-bottom-nav'
 import GlobalSearch from '../search/global-search'
 import { gsap } from 'gsap'
+import { cn } from '@/lib/utils'
 
 interface AdminDashboardProps {
   user: any
@@ -35,6 +36,16 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ user, users, boards, tasks }: AdminDashboardProps) {
   const isSuperAdmin = user.role === 'super_admin'
   const [activeTab, setActiveTabState] = useState('overview')
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true
+    const saved = localStorage.getItem('bookmarks_sidebar_open')
+    return saved === null ? true : saved === 'true'
+  })
+  const toggleSidebar = () => setSidebarOpen(prev => {
+    const next = !prev
+    localStorage.setItem('bookmarks_sidebar_open', String(next))
+    return next
+  })
   const router = useRouter()
   const supabase = createClient()
   const headerRef = useRef<HTMLDivElement>(null)
@@ -100,7 +111,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   ]
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       <TaskNotificationToasts userId={user.id} />
       {/* Header */}
       <header ref={headerRef} className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
@@ -136,8 +147,33 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8 pb-24 md:pb-8">
+      {/* Body: sidebar + main */}
+      <div className="flex flex-1 min-h-0">
+        {/* Bookmarks sidebar — hidden on mobile */}
+        <aside className={cn(
+          "hidden md:flex flex-col flex-shrink-0 border-r bg-muted/10 overflow-hidden transition-[width] duration-200 ease-in-out",
+          sidebarOpen ? "w-64" : "w-10"
+        )}>
+          <div className={cn("flex items-center border-b px-2 py-2.5 min-h-11 flex-shrink-0", sidebarOpen ? "justify-between" : "justify-center")}>
+            {sidebarOpen && (
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 pl-1">
+                <Bookmark className="h-3.5 w-3.5" />
+                Bookmarks
+              </span>
+            )}
+            <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" onClick={toggleSidebar} aria-label={sidebarOpen ? 'Collapse bookmarks' : 'Expand bookmarks'}>
+              {sidebarOpen ? <ChevronLeft className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+            </Button>
+          </div>
+          {sidebarOpen && (
+            <div className="flex-1 overflow-y-auto p-3">
+              <BookmarksSection userId={user.id} isAdmin={true} embedded sidebar />
+            </div>
+          )}
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 min-w-0 px-4 py-8 pb-24 md:pb-8 overflow-x-hidden">
         <div ref={tabsRef}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className={isSuperAdmin ? "hidden md:grid w-full max-w-6xl grid-cols-9 h-12" : "hidden md:grid w-full max-w-6xl grid-cols-8 h-12"}>
@@ -183,9 +219,6 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
-              <DashboardWindow id="admin-bookmarks" title="Bookmarks" description="Quick links you use every day" icon={<Bookmark className="h-4 w-4" />}>
-                <BookmarksSection userId={user.id} isAdmin={true} embedded />
-              </DashboardWindow>
               <DashboardWindow id="admin-overview" title="Overview" description="Quick overview of your project management" icon={<LayoutDashboard className="h-4 w-4" />}>
                 <TaskOverview tasks={tasks} users={users} />
               </DashboardWindow>
@@ -226,7 +259,8 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsContent>
           </Tabs>
         </div>
-      </main>
+        </main>
+      </div>
 
       <MobileBottomNav
         items={primaryNavItems}
