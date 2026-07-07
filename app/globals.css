@@ -123,6 +123,33 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Marketing calendar is built around fixed light-mode surfaces (white cards,
+     off-white panels). Pin its theme tokens to the light palette so text that
+     relies on --foreground/--muted-foreground never turns white-on-white when
+     the app is in dark mode. */
+  .force-light-theme {
+    color-scheme: light;
+    --background: #ffffff;
+    --foreground: #111111;
+    --card: #ffffff;
+    --card-foreground: #111111;
+    --popover: #ffffff;
+    --popover-foreground: #111111;
+    --primary: #111111;
+    --primary-foreground: #ffffff;
+    --secondary: #f5f5f5;
+    --secondary-foreground: #111111;
+    --muted: #f8f9fa;
+    --muted-foreground: #6b7280;
+    --accent: #f3f4f6;
+    --accent-foreground: #111111;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #e5e7eb;
+    --input: #e5e7eb;
+    --ring: #111111;
+  }
   
   /* Mobile optimizations */
   @media (max-width: 768px) {

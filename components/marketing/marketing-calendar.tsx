@@ -11,6 +11,7 @@ import {
   Loader2,
   Megaphone,
   Palette,
+  Pencil,
   Plus,
   RefreshCw,
   Repeat,
@@ -27,11 +28,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { autoTextColor as autoText, withAlpha } from '@/lib/color'
 import { toast } from 'sonner'
 
 type MarketingSection = 'SRG' | 'AGC' | 'BOTH'
 type SectionFilter = MarketingSection | 'ALL'
-type RecurrencePattern = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly'
+type RecurrencePattern = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly'
 
 interface MarketingCalendarItem {
   id: string
@@ -103,26 +105,10 @@ const RECURRENCE_LABELS: Record<RecurrencePattern, string> = {
   weekly:    'Weekly',
   biweekly:  'Every 2 weeks',
   monthly:   'Monthly',
+  quarterly: 'Quarterly',
 }
 
 /* ─── colour helpers ──────────────────────────────────────────────────── */
-
-function hexToRgb(hex: string) {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return { r, g, b }
-}
-function luminance({ r, g, b }: { r: number; g: number; b: number }) {
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
-function autoText(hex: string) {
-  return luminance(hexToRgb(hex)) > 160 ? '#111111' : '#ffffff'
-}
-function withAlpha(hex: string, a: number) {
-  const { r, g, b } = hexToRgb(hex)
-  return `rgba(${r},${g},${b},${a})`
-}
 
 function loadColors(): Record<MarketingSection, SectionColor> {
   if (typeof window === 'undefined') return DEFAULT_SECTION_COLORS
@@ -173,12 +159,87 @@ function generateDates(start: Date, pattern: RecurrencePattern, endDate: Date): 
   const limit = new Date(endDate)
   while (cur <= limit && dates.length < 104) {
     dates.push(new Date(cur))
-    if (pattern === 'daily')    cur = addDays(cur, 1)
-    if (pattern === 'weekly')   cur = addDays(cur, 7)
-    if (pattern === 'biweekly') cur = addDays(cur, 14)
-    if (pattern === 'monthly')  cur = addMonths(cur, 1)
+    if (pattern === 'daily')     cur = addDays(cur, 1)
+    if (pattern === 'weekly')    cur = addDays(cur, 7)
+    if (pattern === 'biweekly')  cur = addDays(cur, 14)
+    if (pattern === 'monthly')   cur = addMonths(cur, 1)
+    if (pattern === 'quarterly') cur = addMonths(cur, 3)
   }
   return dates
+}
+
+/* ─── shared create/edit form fields ────────────────────────────────── */
+
+interface EventFormFieldsProps {
+  date: string
+  onDateChange: (v: string) => void
+  section: MarketingSection
+  onSectionChange: (v: MarketingSection) => void
+  channel: string
+  onChannelChange: (v: string) => void
+  content: string
+  onContentChange: (v: string) => void
+  highlighted: boolean
+  onToggleHighlighted: () => void
+  sectionColors: Record<MarketingSection, SectionColor>
+}
+
+function EventFormFields({
+  date, onDateChange, section, onSectionChange, channel, onChannelChange,
+  content, onContentChange, highlighted, onToggleHighlighted, sectionColors,
+}: EventFormFieldsProps) {
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>Date</Label>
+          <Input type="date" value={date} onChange={e => onDateChange(e.target.value)} required />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Section</Label>
+          <div className="flex gap-1.5">
+            {(['SRG', 'AGC', 'BOTH'] as MarketingSection[]).map(s => (
+              <button key={s} type="button"
+                onClick={() => onSectionChange(s)}
+                className={cn('flex-1 rounded border px-2 py-1.5 text-xs font-bold transition-colors',
+                  section === s ? 'text-white' : 'bg-background text-foreground hover:bg-accent')}
+                style={section === s ? { backgroundColor: sectionColors[s].headerBg } : {}}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Channel</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {CHANNELS.filter(c => c.section === section).map(c => (
+            <button key={c.channel} type="button" onClick={() => onChannelChange(c.channel)}
+              className={cn('rounded border px-2.5 py-1 text-xs font-medium transition-colors',
+                channel === c.channel ? 'bg-foreground text-background border-foreground' : 'bg-background hover:bg-accent')}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Content</Label>
+        <Textarea value={content} onChange={e => onContentChange(e.target.value)}
+          placeholder="What's being posted?" rows={2} required />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={onToggleHighlighted}
+          className={cn('flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors',
+            highlighted ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-background hover:bg-accent')}>
+          <Sparkles className="h-3.5 w-3.5" />
+          {highlighted ? 'Campaign block' : 'Mark as campaign block'}
+        </button>
+      </div>
+    </>
+  )
 }
 
 /* ─── component ──────────────────────────────────────────────────────── */
@@ -215,6 +276,19 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const [newRecurrence,   setNewRecurrence]   = useState<RecurrencePattern>('none')
   const [newEndDate,      setNewEndDate]      = useState(toInputDate(addDays(new Date(), 28)))
   const [creating,        setCreating]        = useState(false)
+
+  // Edit-event dialog
+  const [editItem,        setEditItem]        = useState<MarketingCalendarItem | null>(null)
+  const [editDate,        setEditDate]        = useState('')
+  const [editSection,     setEditSection]     = useState<MarketingSection>('SRG')
+  const [editChannel,     setEditChannel]     = useState('')
+  const [editContent,     setEditContent]     = useState('')
+  const [editHighlighted, setEditHighlighted] = useState(false)
+  const [savingEdit,      setSavingEdit]      = useState(false)
+
+  // Drag-and-drop reschedule
+  const [draggingId,  setDraggingId]  = useState<string | null>(null)
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
 
   // Agenda "show past" toggle
   const [showPast, setShowPast] = useState(false)
@@ -266,6 +340,15 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     const channelsForSection = CHANNELS.filter(c => c.section === newSection)
     if (channelsForSection.length) setNewChannel(channelsForSection[0].channel)
   }, [newSection])
+
+  // Sync channel list when section changes in edit dialog (only when the current
+  // channel doesn't belong to the newly-selected section)
+  useEffect(() => {
+    const channelsForSection = CHANNELS.filter(c => c.section === editSection)
+    if (channelsForSection.length && !channelsForSection.some(c => c.channel === editChannel)) {
+      setEditChannel(channelsForSection[0].channel)
+    }
+  }, [editSection]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── computed views ─────────────────────────────────────────────── */
 
@@ -396,6 +479,110 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     toast.success('Event deleted')
   }
 
+  /* ── edit user-created item ───────────────────────────────────── */
+  const isEditable = (item: MarketingCalendarItem) => item.source_sheet === null || item.source_sheet === undefined
+
+  const openEditDialog = (item: MarketingCalendarItem) => {
+    if (!isEditable(item)) {
+      toast.error('Imported events cannot be edited here')
+      return
+    }
+    setEditItem(item)
+    setEditDate(item.date)
+    setEditSection(item.section)
+    setEditChannel(item.channel)
+    setEditContent(item.content)
+    setEditHighlighted(item.is_highlighted)
+  }
+
+  const findSlotConflict = (date: string, section: MarketingSection, channel: string, excludeId: string) =>
+    items.find(i => i.id !== excludeId && i.date === date && i.section === section && i.channel === channel)
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editItem || !editContent.trim()) return
+
+    const conflict = findSlotConflict(editDate, editSection, editChannel, editItem.id)
+    if (conflict) {
+      toast.error('That slot is already taken', { description: 'Move or delete the other event first.' })
+      return
+    }
+
+    setSavingEdit(true)
+    const dayLabel = ['SUN','MON','TUE','WED','THU','FRI','SAT'][parseDate(editDate).getDay()]
+    const { error: e2 } = await supabase.from('marketing_calendar_items').update({
+      date:           editDate,
+      day_label:      dayLabel,
+      section:        editSection,
+      channel:        editChannel,
+      content:        editContent.trim(),
+      is_highlighted: editHighlighted,
+    }).eq('id', editItem.id)
+    setSavingEdit(false)
+
+    if (e2) {
+      toast.error('Could not update event', { description: e2.message })
+    } else {
+      toast.success('Event updated')
+      setEditItem(null)
+      loadCalendar()
+    }
+  }
+
+  const handleDeleteFromEdit = async () => {
+    if (!editItem) return
+    await handleDeleteItem(editItem)
+    setEditItem(null)
+  }
+
+  /* ── drag-and-drop reschedule ────────────────────────────────────── */
+  const handleDragStart = (item: MarketingCalendarItem) => (e: React.DragEvent) => {
+    if (!isEditable(item)) { e.preventDefault(); return }
+    e.dataTransfer.setData('text/plain', item.id)
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggingId(item.id)
+  }
+
+  const handleDragEnd = () => {
+    setDraggingId(null)
+    setDragOverKey(null)
+  }
+
+  const handleCellDragOver = (cellKey: string) => (e: React.DragEvent) => {
+    if (!draggingId) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverKey(cellKey)
+  }
+
+  const handleCellDrop = (date: string, section: MarketingSection, channel: string) => async (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOverKey(null)
+    const itemId = e.dataTransfer.getData('text/plain')
+    const item = items.find(i => i.id === itemId)
+    if (!item || !isEditable(item)) return
+    setDraggingId(null)
+
+    if (item.date === date && item.section === section && item.channel === channel) return
+    if (findSlotConflict(date, section, channel, item.id)) {
+      toast.error('That slot is already taken', { description: 'Drop it on an empty slot instead.' })
+      return
+    }
+
+    const dayLabel = ['SUN','MON','TUE','WED','THU','FRI','SAT'][parseDate(date).getDay()]
+    const previous = items
+    setItems(prev => prev.map(i => i.id === itemId ? { ...i, date, section, channel, day_label: dayLabel } : i))
+
+    const { error: e3 } = await supabase.from('marketing_calendar_items')
+      .update({ date, section, channel, day_label: dayLabel }).eq('id', itemId)
+    if (e3) {
+      setItems(previous)
+      toast.error('Could not move event', { description: e3.message })
+    } else {
+      toast.success('Event moved')
+    }
+  }
+
   const resetToToday = () => setWeekStart(startOfWeek(new Date()))
 
   /* ── section style helpers ──────────────────────────────────────── */
@@ -411,7 +598,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   /* ── loading ────────────────────────────────────────────────────── */
   if (loading) {
     return (
-      <section className="rounded-lg border bg-background">
+      <section className="force-light-theme rounded-lg border bg-background">
         <div className="flex items-center gap-3 p-6">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="text-sm font-medium">Loading marketing calendar…</span>
@@ -421,7 +608,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border bg-background shadow-sm">
+    <section className="force-light-theme overflow-hidden rounded-lg border bg-background shadow-sm">
 
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="bg-[#070707] px-4 py-4 text-white sm:px-6">
@@ -575,40 +762,71 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                         </div>
                       </td>
                       {visibleChannels.map(ch => {
-                        const item    = itemsByDateChannel.get(itemKey(dateKey, ch.section, ch.channel))
-                        const checked = item ? checkedByItem.has(item.id) : false
-                        const busy    = item?.id === busyItemId
-                        const col     = sectionStyle(ch.section)
+                        const item      = itemsByDateChannel.get(itemKey(dateKey, ch.section, ch.channel))
+                        const checked   = item ? checkedByItem.has(item.id) : false
+                        const busy      = item?.id === busyItemId
+                        const col       = sectionStyle(ch.section)
+                        const cellKey   = itemKey(dateKey, ch.section, ch.channel)
+                        const isDragOver = dragOverKey === cellKey
+                        const editable  = item ? isEditable(item) : false
 
                         return (
-                          <td key={`${dateKey}-${ch.section}-${ch.channel}`}
-                            className="h-[96px] border-b border-r bg-background p-1.5">
+                          <td key={cellKey}
+                            className={cn('h-[96px] border-b border-r bg-background p-1.5 transition-colors',
+                              isDragOver && 'bg-primary/10 ring-2 ring-inset ring-primary/40')}
+                            onDragOver={handleCellDragOver(cellKey)}
+                            onDragLeave={() => setDragOverKey(cur => cur === cellKey ? null : cur)}
+                            onDrop={handleCellDrop(dateKey, ch.section, ch.channel)}>
                             {item ? (
-                              <button type="button" disabled={busy} onClick={() => toggleItem(item)}
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                draggable={editable}
+                                onDragStart={handleDragStart(item)}
+                                onDragEnd={handleDragEnd}
+                                onClick={() => editable ? openEditDialog(item) : toggleItem(item)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault()
+                                    editable ? openEditDialog(item) : toggleItem(item)
+                                  }
+                                }}
+                                title={editable ? 'Click to edit, drag to reschedule' : 'Click the status pill to toggle posted'}
                                 className={cn(
-                                  'flex h-full min-h-[78px] w-full flex-col justify-between rounded-md border-l-4 p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                  'flex h-full min-h-[78px] w-full cursor-pointer flex-col justify-between rounded-md border-l-4 p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                   checked ? 'border-l-[#111] bg-[#f3f4f6] text-muted-foreground'
-                                          : item.is_highlighted ? 'border-y-border border-r-border bg-white hover:bg-accent'
-                                          : 'border-y-border border-r-border bg-white hover:bg-accent'
+                                          : item.is_highlighted ? 'border-y-amber-200 border-r-amber-200 bg-amber-50 hover:bg-amber-100'
+                                                                 : 'border-y-border border-r-border bg-white hover:bg-accent',
+                                  draggingId === item.id && 'opacity-40'
                                 )}
                                 style={{ borderLeftColor: checked ? '#111' : col.borderLeft }}>
                                 <span className="flex items-center justify-between gap-2">
-                                  <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold',
-                                    checked ? 'bg-[#111] text-white border-[#111]' : 'bg-background text-foreground')}
+                                  <button type="button" disabled={busy} onClick={e => { e.stopPropagation(); toggleItem(item) }}
+                                    className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                                      checked ? 'bg-[#111] text-white border-[#111]' : 'bg-background text-foreground')}
                                     style={checked ? {} : col.chipStyle}>
                                     {busy ? <Loader2 className="h-3 w-3 animate-spin" />
                                            : checked ? <CheckCircle2 className="h-3 w-3" />
                                                      : <Circle className="h-3 w-3" />}
                                     {checked ? 'Posted' : 'Open'}
+                                  </button>
+                                  <span className="flex items-center gap-1">
+                                    {item.is_highlighted && <Sparkles className="h-3.5 w-3.5" style={{ color: col.borderLeft }} />}
+                                    {editable && (
+                                      <button type="button" onClick={e => { e.stopPropagation(); handleDeleteItem(item) }}
+                                        aria-label="Delete event" className="text-muted-foreground/70 transition-colors hover:text-destructive">
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    )}
                                   </span>
-                                  {item.is_highlighted && <Sparkles className="h-3.5 w-3.5" style={{ color: col.borderLeft }} />}
                                 </span>
                                 <span className={cn('mt-2 line-clamp-3 break-words text-[13px] font-semibold leading-snug [overflow-wrap:anywhere]', checked && 'line-through decoration-2')}>
                                   {item.content}
                                 </span>
-                              </button>
+                              </div>
                             ) : (
-                              <div className="h-full min-h-[78px] rounded-md border border-dashed bg-[#fafafa]" />
+                              <div className={cn('h-full min-h-[78px] rounded-md border border-dashed bg-[#fafafa] transition-colors',
+                                isDragOver && 'border-primary/50 bg-primary/5')} />
                             )}
                           </td>
                         )
@@ -676,12 +894,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                       {/* Event rows */}
                       <div className="ml-[52px] divide-y rounded-lg border bg-background overflow-hidden">
                         {dayItems.map(item => {
-                          const checked = checkedByItem.has(item.id)
-                          const col     = sectionStyle(item.section)
-                          const isUserCreated = !item.source_sheet
+                          const checked  = checkedByItem.has(item.id)
+                          const col      = sectionStyle(item.section)
+                          const editable = isEditable(item)
 
                           return (
-                            <div key={item.id} className={cn('flex items-center gap-3 px-3 py-2.5 transition-colors',
+                            <div key={item.id} className={cn('group flex items-center gap-3 px-3 py-2.5 transition-colors',
                               checked ? 'bg-muted/40' : 'hover:bg-accent/40')}>
                               {/* Status toggle */}
                               <button type="button" disabled={busyItemId === item.id} onClick={() => toggleItem(item)}
@@ -701,18 +919,29 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                               </span>
 
                               {/* Content */}
-                              <span className={cn('min-w-0 flex-1 truncate text-sm', checked && 'text-muted-foreground line-through decoration-2')}>
+                              <span
+                                onClick={() => editable && openEditDialog(item)}
+                                className={cn('min-w-0 flex-1 truncate text-sm', editable && 'cursor-pointer hover:underline',
+                                  checked && 'text-muted-foreground line-through decoration-2')}>
                                 {item.content}
                               </span>
 
                               {/* Badges */}
                               <div className="flex flex-shrink-0 items-center gap-1.5">
                                 {item.is_highlighted && <Sparkles className="h-3.5 w-3.5" style={{ color: col.borderLeft }} />}
-                                {isUserCreated && (
-                                  <button type="button" onClick={() => handleDeleteItem(item)}
-                                    className="text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100">
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
+                                {editable && (
+                                  <>
+                                    <button type="button" onClick={() => openEditDialog(item)}
+                                      aria-label="Edit event"
+                                      className="text-muted-foreground opacity-0 transition-colors hover:text-foreground group-hover:opacity-100">
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button type="button" onClick={() => handleDeleteItem(item)}
+                                      aria-label="Delete event"
+                                      className="text-muted-foreground opacity-0 transition-colors hover:text-destructive group-hover:opacity-100">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -738,54 +967,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
           </DialogHeader>
           <form onSubmit={handleCreateEvent} className="space-y-4">
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Date</Label>
-                <Input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} required />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Section</Label>
-                <div className="flex gap-1.5">
-                  {(['SRG','AGC','BOTH'] as MarketingSection[]).map(s => (
-                    <button key={s} type="button"
-                      onClick={() => setNewSection(s)}
-                      className={cn('flex-1 rounded border px-2 py-1.5 text-xs font-bold transition-colors',
-                        newSection === s ? 'text-white' : 'bg-background text-foreground hover:bg-accent')}
-                      style={newSection === s ? { backgroundColor: sectionColors[s].headerBg } : {}}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Channel</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {CHANNELS.filter(c => c.section === newSection).map(c => (
-                  <button key={c.channel} type="button" onClick={() => setNewChannel(c.channel)}
-                    className={cn('rounded border px-2.5 py-1 text-xs font-medium transition-colors',
-                      newChannel === c.channel ? 'bg-foreground text-background border-foreground' : 'bg-background hover:bg-accent')}>
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Content</Label>
-              <Textarea value={newContent} onChange={e => setNewContent(e.target.value)}
-                placeholder="What's being posted?" rows={2} required />
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button type="button" onClick={() => setNewHighlighted(h => !h)}
-                className={cn('flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors',
-                  newHighlighted ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-background hover:bg-accent')}>
-                <Sparkles className="h-3.5 w-3.5" />
-                {newHighlighted ? 'Campaign block' : 'Mark as campaign block'}
-              </button>
-            </div>
+            <EventFormFields
+              date={newDate} onDateChange={setNewDate}
+              section={newSection} onSectionChange={setNewSection}
+              channel={newChannel} onChannelChange={setNewChannel}
+              content={newContent} onContentChange={setNewContent}
+              highlighted={newHighlighted} onToggleHighlighted={() => setNewHighlighted(h => !h)}
+              sectionColors={sectionColors}
+            />
 
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
@@ -822,6 +1011,42 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit Event Dialog ───────────────────────────────────────── */}
+      <Dialog open={!!editItem} onOpenChange={open => !open && setEditItem(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4" /> Edit Marketing Event
+            </DialogTitle>
+          </DialogHeader>
+          {editItem && (
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <EventFormFields
+                date={editDate} onDateChange={setEditDate}
+                section={editSection} onSectionChange={setEditSection}
+                channel={editChannel} onChannelChange={setEditChannel}
+                content={editContent} onContentChange={setEditContent}
+                highlighted={editHighlighted} onToggleHighlighted={() => setEditHighlighted(h => !h)}
+                sectionColors={sectionColors}
+              />
+
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="outline" size="icon" className="shrink-0 text-destructive hover:text-destructive"
+                  onClick={handleDeleteFromEdit} aria-label="Delete event">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditItem(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" className="flex-1" disabled={savingEdit || !editContent.trim()}>
+                  {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                </Button>
+              </div>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </section>

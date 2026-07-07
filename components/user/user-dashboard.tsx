@@ -19,6 +19,7 @@ import MarketingCalendar from '../marketing/marketing-calendar'
 import DashboardWindow from '../dashboard/dashboard-window'
 import AccountSettings from '../account/account-settings'
 import ThemeToggle from '../theme-toggle'
+import AccentThemePicker, { useAccentTheme } from '../theme/accent-theme-picker'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
 import MobileBottomNav, { type NavItem } from '../dashboard/mobile-bottom-nav'
 import GlobalSearch from '../search/global-search'
@@ -62,6 +63,8 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   }
   const isKaylaMarketingUser = String(user.email ?? '').trim().toLowerCase() === 'kayla@goatlasgo.us'
   const canUseMarketingCalendar = isKaylaMarketingUser || isAdmin
+  const defaultAccentColor = isKaylaMarketingUser ? '#e91e8c' : '#111111'
+  const { color: accentColor, setColor: setAccentColor, reset: resetAccentColor, style: accentStyle } = useAccentTheme(user.id, defaultAccentColor)
   const myTasks = useMemo(() => {
     return tasks.filter((task) => {
       const assignedToId = typeof task.assigned_to === 'string' ? task.assigned_to : task.assigned_to?.id
@@ -102,7 +105,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   ]
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col" style={accentStyle}>
       <TaskNotificationToasts userId={user.id} />
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
@@ -117,6 +120,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <AccentThemePicker color={accentColor} onChange={setAccentColor} onReset={resetAccentColor} />
             <ThemeToggle />
             <AccountSettings
               userId={user.id}
