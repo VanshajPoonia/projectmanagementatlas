@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download, LinkIcon, ExternalLink, Plus } from 'lucide-react'
+import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download, LinkIcon, ExternalLink, Plus, History } from 'lucide-react'
 import { format } from 'date-fns'
 import { sendTaskAssignmentEmail, sendCommentEmail, sendTaskUpdateEmail } from '@/lib/email'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -21,6 +21,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
+import { logTaskActivity } from '@/lib/task-activity'
 
 interface TaskDetailModalProps {
   board?: any
@@ -30,12 +31,15 @@ interface TaskDetailModalProps {
   onUpdate: () => void
   isAdmin?: boolean
   currentUserId: string
+  initialTab?: 'comments' | 'attachments' | 'links' | 'activity'
 }
 
-export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId }: TaskDetailModalProps) {
+export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId, initialTab = 'comments' }: TaskDetailModalProps) {
   const supabase = createClient()
   const taskStatuses = useTaskStatuses()
   const [task, setTask] = useState<any>(null)
+  const [activeTab, setActiveTab] = useState(initialTab)
+  const [activity, setActivity] = useState<any[]>([])
   const [tags, setTags] = useState<any[]>([])
   const [allTags, setAllTags] = useState<any[]>([])
   const [users, setUsers] = useState<any[]>([])
@@ -60,6 +64,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
   useEffect(() => {
     if (open && taskId) {
+      setActiveTab(initialTab)
       loadTaskDetails()
       loadAllTags()
       loadAttachments()
@@ -68,6 +73,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       loadCurrentUser()
       loadAssignees()
       loadUsers()
+      loadActivity()
     }
   }, [open, taskId])
 
@@ -143,6 +149,19 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     if (data) setComments(data)
   }
 
+  const loadActivity = async () => {
+    const { data, error } = await supabase
+      .from('task_activity')
+      .select('*, actor:profiles(full_name, email)')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: false })
+    if (error) {
+      console.error('[v0] Failed to load activity:', error)
+      return
+    }
+    if (data) setActivity(data)
+  }
+
   const loadLinks = async () => {
     const { data } = await supabase
       .from('task_links')
@@ -155,7 +174,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const loadTaskDetails = async () => {
     const { data: taskData } = await supabase
       .from('tasks')
-      .select('*, assigned_user:profiles!tasks_assigned_to_fkey(id, full_name, email), task_tags(tag:tags(*))')
+      .select('*, assigned_user:profiles!tasks_assigned_to_fkey(id, full_name, email), creator:profiles!tasks_created_by_fkey(full_name, email), task_tags(tag:tags(*))')
       .eq('id', taskId)
       .single()
 
@@ -224,16 +243,45 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
         .single()
       const actorId = currentUserProfile?.id || user?.id
 
+      // Diff against the task as it was before this save, once, for both the
+      // assignee notification text and the task's activity log.
+      const changes: string[] = []
+      const activityMessages: string[] = []
+      const dueDateISO = dueDate?.toISOString() || null
+      if (task?.title !== title) {
+        changes.push(`Title updated to "${title}"`)
+        activityMessages.push(`renamed the task from "${task?.title}" to "${title}"`)
+      }
+      if (cleanTaskDescription(task?.description) !== description) {
+        changes.push('Description updated')
+        activityMessages.push('updated the description')
+      }
+      if (task?.priority !== priority) {
+        changes.push(`Priority changed to ${priority}`)
+        activityMessages.push(`changed priority from ${task?.priority} to ${priority}`)
+      }
+      if (task?.status !== status) {
+        const oldLabel = taskStatuses.find((s) => s.key === task?.status)?.label || task?.status
+        const newLabel = taskStatuses.find((s) => s.key === status)?.label || status
+        changes.push(`Status changed to ${newLabel}`)
+        activityMessages.push(`changed status from "${oldLabel}" to "${newLabel}"`)
+      }
+      if ((task?.visibility || 'assigned') !== visibility) {
+        const visLabel = visibility === 'board' ? 'board visible' : 'assigned only'
+        changes.push(`Visibility changed to ${visLabel}`)
+        activityMessages.push(`changed visibility to ${visLabel}`)
+      }
+      if ((task?.due_date || null) !== dueDateISO) {
+        changes.push('Due date updated')
+        activityMessages.push(dueDate ? `set the due date to ${format(dueDate, 'PP')}` : 'removed the due date')
+      }
+
+      if (actorId) {
+        activityMessages.forEach((message) => logTaskActivity(supabase, taskId, actorId, message))
+      }
+
       // Send update notification to all assignees if task details changed
       if (assignees.length > 0) {
-        const changes: string[] = []
-        if (task?.title !== title) changes.push(`Title updated to "${title}"`)
-        if (cleanTaskDescription(task?.description) !== description) changes.push('Description updated')
-        if (task?.priority !== priority) changes.push(`Priority changed to ${priority}`)
-        if (task?.status !== status) changes.push(`Status changed to ${status}`)
-        if ((task?.visibility || 'assigned') !== visibility) changes.push(`Visibility changed to ${visibility === 'board' ? 'board visible' : 'assigned only'}`)
-        if (task?.due_date !== dueDate?.toISOString()) changes.push('Due date updated')
-
         if (changes.length > 0) {
           const notificationRows = assignees
             .filter((userId) => userId !== actorId)
@@ -286,6 +334,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       .insert({ task_id: taskId, tag_id: tagId })
 
     if (!error) {
+      const tag = allTags.find((t) => t.id === tagId)
+      logTaskActivity(supabase, taskId, currentUser?.id, `added tag "${tag?.name || 'Unknown'}"`)
       loadTaskDetails()
     }
   }
@@ -297,6 +347,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       .eq('task_id', taskId)
       .eq('tag_id', tagId)
 
+    const tag = allTags.find((t) => t.id === tagId)
+    logTaskActivity(supabase, taskId, currentUser?.id, `removed tag "${tag?.name || 'Unknown'}"`)
     loadTaskDetails()
   }
 
@@ -399,8 +451,9 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
         })
 
       if (error) throw error
-      
+
       console.log('[v0] Comment added successfully')
+      logTaskActivity(supabase, taskId, currentUser.id, 'added a comment')
       await loadComments()
 
       // Send email notifications to all assignees
@@ -471,6 +524,14 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       .from('tasks')
       .update({ assigned_to: newAssignees[0] || null })
       .eq('id', taskId)
+
+    const toggledUser = users.find((u) => u.id === userId)
+    logTaskActivity(
+      supabase,
+      taskId,
+      currentUser?.id,
+      `${isAssigned ? 'removed' : 'added'} assignee ${toggledUser?.full_name || toggledUser?.email || 'Unknown'}`
+    )
 
     // Notify a newly added assignee
     if (!isAssigned) {
@@ -587,6 +648,12 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Task Details</DialogTitle>
+          {task?.created_at && (
+            <p className="text-xs text-muted-foreground">
+              Created by {task.creator?.full_name || task.creator?.email || 'Unknown'} on{' '}
+              {new Date(task.created_at).toLocaleString('en-US')}
+            </p>
+          )}
         </DialogHeader>
 
         <div className="space-y-6">
@@ -858,9 +925,16 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             )}
           </div>
 
-          {/* Attachments and Comments */}
-          <Tabs defaultValue="comments" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+          {/* Attachments, Comments, and Activity */}
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              setActiveTab(value as typeof activeTab)
+              if (value === 'activity') loadActivity()
+            }}
+            className="w-full"
+          >
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="comments" className="gap-2">
                 <MessageSquare className="w-4 h-4" />
                 Comments ({comments.length})
@@ -872,6 +946,10 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               <TabsTrigger value="links" className="gap-2">
                 <LinkIcon className="w-4 h-4" />
                 Links ({links.length})
+              </TabsTrigger>
+              <TabsTrigger value="activity" className="gap-2">
+                <History className="w-4 h-4" />
+                Activity
               </TabsTrigger>
             </TabsList>
 
@@ -1092,6 +1170,59 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   </Button>
                 </div>
               )}
+            </TabsContent>
+
+            <TabsContent value="activity" className="space-y-4">
+              <ScrollArea className="h-[300px] pr-4">
+                <div className="space-y-4">
+                  {activity.length === 0 && !task?.created_at ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">No activity yet</p>
+                  ) : (
+                    <>
+                      {activity.map((entry) => (
+                        <div key={entry.id} className="flex gap-3 p-3 bg-muted/50 rounded-lg">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback>
+                              {entry.actor?.full_name?.[0] || entry.actor?.email?.[0] || '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-medium">
+                                {entry.actor?.full_name || entry.actor?.email || 'Unknown'}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(entry.created_at).toLocaleString('en-US')}
+                              </span>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{entry.action}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {task?.created_at && (
+                        <div className="flex gap-3 p-3 bg-muted/50 rounded-lg">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback>
+                              {task.creator?.full_name?.[0] || task.creator?.email?.[0] || '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-medium">
+                                {task.creator?.full_name || task.creator?.email || 'Unknown'}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(task.created_at).toLocaleString('en-US')}
+                              </span>
+                            </div>
+                            <p className="text-sm text-muted-foreground">created the task</p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </ScrollArea>
             </TabsContent>
           </Tabs>
 
