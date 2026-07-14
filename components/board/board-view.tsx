@@ -24,7 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, Download, MessageSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import TaskCard from './task-card'
 import CreateTaskDialog from './create-task-dialog'
 import { TaskDetailModal } from './task-detail-modal'
@@ -46,6 +46,7 @@ const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profi
 
 export default function BoardView({ board, columns: initialColumns, users, isAdmin, currentUserId }: BoardViewProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [columns, setColumns] = useState(initialColumns)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [selectedColumn, setSelectedColumn] = useState<any>(null)
@@ -69,6 +70,18 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const supabase = useMemo(() => createClient(), [])
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
+
+  // Deep link support: global search links here with ?task=<id> so it can open
+  // the specific task, not just land on the board.
+  useEffect(() => {
+    const taskParam = searchParams.get('task')
+    if (taskParam) {
+      setSelectedTaskId(taskParam)
+      setTaskDetailOpen(true)
+      router.replace(`/${isAdmin ? 'admin' : 'dashboard'}/board/${board.id}`)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const canManageTask = useCallback((task: any) => {
     const assignedToId = typeof task?.assigned_to === 'string' ? task.assigned_to : task?.assigned_to?.id
