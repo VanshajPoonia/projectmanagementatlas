@@ -131,11 +131,15 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   }
 
   const loadComments = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('task_comments')
-      .select('*, author:profiles(full_name, email)')
+      .select('*, author:profiles!task_comments_author_id_fkey(full_name, email)')
       .eq('task_id', taskId)
       .order('created_at', { ascending: true })
+    if (error) {
+      console.error('[v0] Failed to load comments:', error)
+      return
+    }
     if (data) setComments(data)
   }
 

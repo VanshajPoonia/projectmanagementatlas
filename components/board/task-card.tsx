@@ -79,7 +79,17 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
   }
 
   const handleStatusChange = async (value: string) => {
-    const { error } = await supabase.from('tasks').update({ status: value }).eq('id', task.id)
+    // Board columns are the source of truth for where a card sits, so changing
+    // status here also relocates the card into whichever column represents that
+    // status (mirrors the status drag-and-drop between columns already sets).
+    const matchingColumn = columns?.find((c: any) => c.title.toLowerCase().replace(/ /g, '_') === value)
+    const updates: Record<string, any> = { status: value }
+    if (matchingColumn && matchingColumn.id !== task.column_id) {
+      updates.column_id = matchingColumn.id
+      updates.position = matchingColumn.tasks?.length || 0
+    }
+
+    const { error } = await supabase.from('tasks').update(updates).eq('id', task.id)
     if (error) {
       toast.error('Could not update status', { description: error.message })
       return

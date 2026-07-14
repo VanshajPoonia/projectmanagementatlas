@@ -25,7 +25,7 @@ export async function checkDueDateReminders() {
       .neq('status', 'done')
       .gte('due_date', today.toISOString())
       .lte('due_date', twoDaysFromNow.toISOString())
-    
+
     // Skip tasks whose board has been archived
     const tasks = (taskRows || []).filter(task => task.column?.board && !task.column.board.archived_at)
 
