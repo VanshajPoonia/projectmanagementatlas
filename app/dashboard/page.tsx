@@ -40,11 +40,14 @@ export default async function DashboardPage() {
     .from('profiles')
     .select('id, full_name, email')
 
-  // Flatten board_id from nested structure for proper linking
-  const tasksWithBoardId = tasks?.map(task => ({
-    ...task,
-    board_id: task.column?.board_id
-  })) || []
+  // Flatten board_id from nested structure for proper linking, dropping tasks
+  // whose board is archived (or missing/inaccessible)
+  const tasksWithBoardId = tasks
+    .filter(task => task.column?.board && !task.column.board.archived_at)
+    .map(task => ({
+      ...task,
+      board_id: task.column?.board_id
+    }))
 
   return <UserDashboard user={profile} tasks={tasksWithBoardId} boards={boards || []} users={users || []} />
 }
