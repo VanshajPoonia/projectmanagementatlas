@@ -23,6 +23,7 @@ import { getNormalizedTaskStatus, type NormalizedTaskStatus } from '@/lib/task-s
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { sendTaskAssignmentEmail } from '@/lib/email'
 import { logTaskActivity } from '@/lib/task-activity'
+import { getContrastTextColor } from '@/lib/utils'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 
@@ -336,8 +337,8 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
               {task.task_tags.slice(0, 3).map((tt: any) => (
                 <Badge
                   key={tt.tag.id}
-                  style={{ backgroundColor: tt.tag.color }}
-                  className="text-white text-xs px-2 py-0"
+                  style={{ backgroundColor: tt.tag.color, color: getContrastTextColor(tt.tag.color) }}
+                  className="text-xs px-2 py-0"
                 >
                   {tt.tag.name}
                 </Badge>

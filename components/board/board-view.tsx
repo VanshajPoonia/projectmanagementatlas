@@ -660,22 +660,14 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                       key={column.id}
                       className="w-[min(360px,calc(100vw-2rem))] flex-shrink-0 rounded-lg border bg-muted/20 snap-start"
                     >
-                      <div
-                        className="rounded-t-lg border-t-4 px-4 py-3"
-                        style={{
-                          borderTopColor: column.color || '#3b82f6',
-                          backgroundColor: column.color ? `${column.color}10` : undefined,
-                        }}
-                      >
+                      <div className="rounded-t-lg border-b px-4 py-3">
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              {column.color && (
-                                <div
-                                  className="h-2.5 w-2.5 rounded-full"
-                                  style={{ backgroundColor: column.color }}
-                                />
-                              )}
+                              <div
+                                className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                                style={{ backgroundColor: column.color || '#3b82f6' }}
+                              />
                               <h2 className="truncate text-base font-semibold">{column.title}</h2>
                             </div>
                             <p className="mt-1 text-xs text-muted-foreground">
@@ -795,11 +787,9 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
               
               return (
                 <Card key={column.id} className="shadow-sm">
-                  <CardHeader className="pb-3" style={{ backgroundColor: column.color ? `${column.color}10` : undefined }}>
+                  <CardHeader className="pb-3 border-b">
                     <div className="flex items-center gap-3">
-                      {column.color && (
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: column.color }} />
-                      )}
+                      <div className="w-3 h-3 flex-shrink-0 rounded-full" style={{ backgroundColor: column.color || '#3b82f6' }} />
                       <CardTitle>{column.title}</CardTitle>
                       <Badge variant="secondary">{columnTasks.length}</Badge>
                     </div>
