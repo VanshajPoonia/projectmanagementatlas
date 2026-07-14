@@ -23,7 +23,7 @@ export default async function DashboardPage() {
 
   const { data: tasksData } = await supabase
     .from('tasks')
-    .select('*, task_assignees(user_id), column:columns(title, board_id, board:boards(id, title))')
+    .select('*, task_assignees(user_id), column:columns(title, board_id, board:boards(id, title, archived_at))')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
   const tasks = tasksData ?? []
