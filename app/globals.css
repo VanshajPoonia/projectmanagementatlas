@@ -130,6 +130,10 @@
      the app is in dark mode. */
   .force-light-theme {
     color-scheme: light;
+    /* Re-anchor inherited text color: body resolves `color: var(--foreground)`
+       once (white in dark mode) and descendants inherit that resolved value,
+       so overriding the variable alone leaves un-classed text white-on-white. */
+    color: var(--foreground);
     --background: #ffffff;
     --foreground: #111111;
     --card: #ffffff;

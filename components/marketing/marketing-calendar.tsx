@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Circle,
+  Columns3,
   Loader2,
   Megaphone,
   Palette,
@@ -16,6 +17,7 @@ import {
   RefreshCw,
   Repeat,
   Sparkles,
+  Table2,
   Trash2,
   X,
 } from 'lucide-react'
@@ -72,6 +74,10 @@ interface SectionColor {
 
 const KAYLA_EMAIL = 'kayla@goatlasgo.us'
 const LS_COLORS_KEY = 'marketing_calendar_colors_v2'
+const LS_VIEW_KEY = 'marketing_calendar_view'
+
+type ViewMode = 'week' | 'grid'
+const SECTION_ORDER: Record<MarketingSection, number> = { SRG: 0, BOTH: 1, AGC: 2 }
 
 const DEFAULT_SECTION_COLORS: Record<MarketingSection, SectionColor> = {
   SRG:  { headerBg: '#e91e8c', headerText: '#ffffff' },
@@ -117,6 +123,15 @@ function loadColors(): Record<MarketingSection, SectionColor> {
     if (raw) return { ...DEFAULT_SECTION_COLORS, ...JSON.parse(raw) }
   } catch { /* ignore */ }
   return DEFAULT_SECTION_COLORS
+}
+
+function loadViewMode(): ViewMode {
+  if (typeof window === 'undefined') return 'week'
+  try {
+    const raw = localStorage.getItem(LS_VIEW_KEY)
+    if (raw === 'week' || raw === 'grid') return raw
+  } catch { /* ignore */ }
+  return 'week'
 }
 
 /* ─── date utilities ──────────────────────────────────────────────────── */
@@ -261,6 +276,13 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const [sectionColors, setSectionColorsState] = useState<Record<MarketingSection, SectionColor>>(loadColors)
   const [colorPickerOpen, setColorPickerOpen]  = useState(false)
 
+  // Week board vs channel grid (localStorage)
+  const [viewMode, setViewModeState] = useState<ViewMode>(loadViewMode)
+  const setViewMode = (next: ViewMode) => {
+    setViewModeState(next)
+    try { localStorage.setItem(LS_VIEW_KEY, next) } catch { /* ignore */ }
+  }
+
   const saveSectionColors = (next: Record<MarketingSection, SectionColor>) => {
     setSectionColorsState(next)
     try { localStorage.setItem(LS_COLORS_KEY, JSON.stringify(next)) } catch { /* ignore */ }
@@ -368,6 +390,23 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     const m = new Map<string, MarketingCalendarItem>()
     for (const item of visibleItems) {
       if (weekKeys.has(item.date)) m.set(itemKey(item.date, item.section, item.channel), item)
+    }
+    return m
+  }, [visibleItems, weekKeys])
+
+  const weekItemsByDate = useMemo(() => {
+    const m = new Map<string, MarketingCalendarItem[]>()
+    for (const item of visibleItems) {
+      if (!weekKeys.has(item.date)) continue
+      const arr = m.get(item.date) ?? []
+      arr.push(item)
+      m.set(item.date, arr)
+    }
+    for (const arr of m.values()) {
+      arr.sort((a, b) =>
+        SECTION_ORDER[a.section] - SECTION_ORDER[b.section]
+        || a.channel.localeCompare(b.channel)
+        || a.position - b.position)
     }
     return m
   }, [visibleItems, weekKeys])
@@ -555,14 +594,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     setDragOverKey(cellKey)
   }
 
-  const handleCellDrop = (date: string, section: MarketingSection, channel: string) => async (e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOverKey(null)
-    const itemId = e.dataTransfer.getData('text/plain')
-    const item = items.find(i => i.id === itemId)
-    if (!item || !isEditable(item)) return
-    setDraggingId(null)
-
+  const moveItem = async (item: MarketingCalendarItem, date: string, section: MarketingSection, channel: string) => {
     if (item.date === date && item.section === section && item.channel === channel) return
     if (findSlotConflict(date, section, channel, item.id)) {
       toast.error('That slot is already taken', { description: 'Drop it on an empty slot instead.' })
@@ -571,16 +603,37 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
     const dayLabel = ['SUN','MON','TUE','WED','THU','FRI','SAT'][parseDate(date).getDay()]
     const previous = items
-    setItems(prev => prev.map(i => i.id === itemId ? { ...i, date, section, channel, day_label: dayLabel } : i))
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, date, section, channel, day_label: dayLabel } : i))
 
     const { error: e3 } = await supabase.from('marketing_calendar_items')
-      .update({ date, section, channel, day_label: dayLabel }).eq('id', itemId)
+      .update({ date, section, channel, day_label: dayLabel }).eq('id', item.id)
     if (e3) {
       setItems(previous)
       toast.error('Could not move event', { description: e3.message })
     } else {
       toast.success('Event moved')
     }
+  }
+
+  const handleCellDrop = (date: string, section: MarketingSection, channel: string) => async (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOverKey(null)
+    const itemId = e.dataTransfer.getData('text/plain')
+    const item = items.find(i => i.id === itemId)
+    if (!item || !isEditable(item)) return
+    setDraggingId(null)
+    await moveItem(item, date, section, channel)
+  }
+
+  // Week-board drop: reschedule to another day, keeping section + channel.
+  const handleDayDrop = (date: string) => async (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOverKey(null)
+    const itemId = e.dataTransfer.getData('text/plain')
+    const item = items.find(i => i.id === itemId)
+    if (!item || !isEditable(item)) return
+    setDraggingId(null)
+    await moveItem(item, date, item.section, item.channel)
   }
 
   const resetToToday = () => setWeekStart(startOfWeek(new Date()))
@@ -654,6 +707,20 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               <ChevronRight className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="sm" onClick={resetToToday}>Today</Button>
+
+            <div className="ml-1 flex overflow-hidden rounded-md border">
+              {([
+                { mode: 'week' as ViewMode, label: 'Week',     Icon: Columns3 },
+                { mode: 'grid' as ViewMode, label: 'Channels', Icon: Table2 },
+              ]).map(({ mode, label, Icon }) => (
+                <button key={mode} type="button" onClick={() => setViewMode(mode)}
+                  className={cn('flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-colors',
+                    viewMode === mode ? 'bg-foreground text-background' : 'bg-background text-muted-foreground hover:text-foreground')}>
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -674,7 +741,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                   <Palette className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-72 p-4 space-y-4">
+              <PopoverContent align="end" className="force-light-theme w-72 space-y-4 bg-background p-4">
                 <p className="text-sm font-semibold">Section colours</p>
                 {(['SRG', 'AGC', 'BOTH'] as MarketingSection[]).map(s => (
                   <div key={s} className="flex items-center justify-between gap-3">
@@ -718,7 +785,111 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
         <div className="p-6 text-sm text-muted-foreground">Marketing calendar is empty. Add an event to get started.</div>
       ) : (
         <>
-          {/* ── Grid table ───────────────────────────────────────────── */}
+          {/* ── Week board ───────────────────────────────────────────── */}
+          {viewMode === 'week' && (
+            <div className="overflow-x-auto">
+              <div className="grid min-w-[1080px] grid-cols-7 divide-x">
+                {weekDays.map(date => {
+                  const dateKey    = toDateKey(date)
+                  const dayItems   = weekItemsByDate.get(dateKey) ?? []
+                  const dayDone    = dayItems.filter(i => checkedByItem.has(i.id)).length
+                  const isToday    = dateKey === todayKey
+                  const dayKey     = `day::${dateKey}`
+                  const isDragOver = dragOverKey === dayKey
+
+                  return (
+                    <div key={dateKey}
+                      className={cn('flex min-h-[360px] flex-col border-b transition-colors', isDragOver && 'bg-primary/5')}
+                      onDragOver={handleCellDragOver(dayKey)}
+                      onDragLeave={() => setDragOverKey(cur => cur === dayKey ? null : cur)}
+                      onDrop={handleDayDrop(dateKey)}>
+
+                      <div className={cn('flex items-baseline justify-between border-b px-3 py-2',
+                        isToday ? 'bg-[#111] text-white' : 'bg-[#fbfbfb]')}>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-[11px] font-bold uppercase">
+                            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()]}
+                          </span>
+                          <span className="text-lg font-black leading-none">{date.getDate()}</span>
+                          {isToday && <span className="rounded-full bg-[#fff842] px-1.5 text-[10px] font-bold text-[#111]">Today</span>}
+                        </div>
+                        <span className={cn('text-[11px] font-medium', isToday ? 'text-white/70' : 'text-muted-foreground')}>
+                          {dayItems.length ? `${dayDone}/${dayItems.length} posted` : '—'}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-1 flex-col gap-1.5 p-1.5">
+                        {dayItems.map(item => {
+                          const checked  = checkedByItem.has(item.id)
+                          const busy     = item.id === busyItemId
+                          const col      = sectionStyle(item.section)
+                          const editable = isEditable(item)
+                          const chLabel  = CHANNELS.find(c => c.section === item.section && c.channel === item.channel)?.label ?? item.channel
+
+                          return (
+                            <div key={item.id}
+                              role="button"
+                              tabIndex={0}
+                              draggable={editable}
+                              onDragStart={handleDragStart(item)}
+                              onDragEnd={handleDragEnd}
+                              onClick={() => editable ? openEditDialog(item) : toggleItem(item)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault()
+                                  editable ? openEditDialog(item) : toggleItem(item)
+                                }
+                              }}
+                              title={editable ? 'Click to edit, drag to another day' : 'Click the circle to toggle posted'}
+                              className={cn(
+                                'cursor-pointer rounded-md border border-l-4 p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                checked ? 'bg-[#f3f4f6] text-muted-foreground'
+                                        : item.is_highlighted ? 'border-y-amber-200 border-r-amber-200 bg-amber-50 hover:bg-amber-100'
+                                                              : 'bg-white shadow-xs hover:bg-accent',
+                                draggingId === item.id && 'opacity-40'
+                              )}
+                              style={{ borderLeftColor: checked ? '#111' : col.borderLeft }}>
+                              <div className="flex items-center justify-between gap-1.5">
+                                <span className="truncate rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                                  style={checked ? {} : col.chipStyle}>
+                                  {chLabel}
+                                </span>
+                                <span className="flex flex-shrink-0 items-center gap-1">
+                                  {item.is_highlighted && <Sparkles className="h-3 w-3" style={{ color: col.borderLeft }} />}
+                                  <button type="button" disabled={busy}
+                                    onClick={e => { e.stopPropagation(); toggleItem(item) }}
+                                    aria-label={checked ? 'Mark as not posted' : 'Mark as posted'}
+                                    className={cn('rounded-full transition-colors',
+                                      checked ? 'text-green-600' : 'text-muted-foreground/60 hover:text-foreground')}>
+                                    {busy ? <Loader2 className="h-4 w-4 animate-spin" />
+                                          : checked ? <CheckCircle2 className="h-4 w-4" />
+                                                    : <Circle className="h-4 w-4" />}
+                                  </button>
+                                </span>
+                              </div>
+                              <p className={cn('mt-1.5 break-words text-[13px] font-semibold leading-snug [overflow-wrap:anywhere]',
+                                checked && 'line-through decoration-2')}>
+                                {item.content}
+                              </p>
+                            </div>
+                          )
+                        })}
+                        {dayItems.length === 0 && (
+                          <div className={cn('flex flex-1 items-center justify-center rounded-md border border-dashed bg-[#fafafa] text-[11px] text-muted-foreground/60 transition-colors',
+                            isDragOver && 'border-primary/50 bg-primary/5')}>
+                            No posts
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Channel grid ─────────────────────────────────────────── */}
+          {viewMode === 'grid' && (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
@@ -837,6 +1008,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               </tbody>
             </table>
           </div>
+          )}
 
           {/* ── Agenda panel ─────────────────────────────────────────── */}
           <div className="border-t bg-[#f8f8f8] px-4 py-5 sm:px-6">
@@ -959,7 +1131,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
       {/* ── Create Event Dialog ──────────────────────────────────────── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="force-light-theme max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="h-4 w-4" /> New Marketing Event
@@ -1016,7 +1188,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
       {/* ── Edit Event Dialog ───────────────────────────────────────── */}
       <Dialog open={!!editItem} onOpenChange={open => !open && setEditItem(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="force-light-theme max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-4 w-4" /> Edit Marketing Event
