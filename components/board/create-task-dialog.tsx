@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { createClient } from '@/lib/supabase/client'
 import { sendTaskAssignmentEmail } from '@/lib/email'
-import { LinkIcon, Plus, X } from 'lucide-react'
+import { LinkIcon, Plus, X, Tag } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { getNormalizedTaskStatus } from '@/lib/task-status'
+import { logTaskActivity } from '@/lib/task-activity'
 
 interface CreateTaskDialogProps {
   board?: any
@@ -40,6 +41,9 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
   const [links, setLinks] = useState<Array<{ title: string; url: string }>>([])
   const [linkTitle, setLinkTitle] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
+  const [allTags, setAllTags] = useState<any[]>([])
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
+  const [initialComment, setInitialComment] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
@@ -52,6 +56,15 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
       setStatus(getNormalizedTaskStatus({ column: { title: column.title } }))
     }
   }, [open, column])
+
+  // Tags (company tags like SRG/AGC included) can't be created here, only picked from
+  // the admin-managed list, so load it whenever the dialog opens.
+  useEffect(() => {
+    if (!open) return
+    supabase.from('tags').select('*').order('name').then(({ data }: { data: any[] | null }) => {
+      if (data) setAllTags(data)
+    })
+  }, [open])
 
   const addLink = () => {
     const trimmedUrl = linkUrl.trim()
@@ -129,6 +142,25 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
         if (linksError) throw linksError
       }
 
+      if (selectedTagIds.length > 0) {
+        const { error: tagsError } = await supabase
+          .from('task_tags')
+          .insert(selectedTagIds.map((tagId) => ({ task_id: task.id, tag_id: tagId })))
+        if (tagsError) throw tagsError
+        for (const tagId of selectedTagIds) {
+          const tag = allTags.find((t) => t.id === tagId)
+          logTaskActivity(supabase, task.id, user.id, `added tag "${tag?.name || 'Unknown'}"`)
+        }
+      }
+
+      if (initialComment.trim()) {
+        const { error: commentError } = await supabase
+          .from('task_comments')
+          .insert({ task_id: task.id, comment: initialComment.trim(), user_id: user.id, author_id: user.id })
+        if (commentError) throw commentError
+        logTaskActivity(supabase, task.id, user.id, 'added a comment')
+      }
+
       // Record every assignee in the join table (source of truth) and notify each
       if (assignees.length > 0) {
         const { error: assigneeError } = await supabase
@@ -194,6 +226,8 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
       setLinks([])
       setLinkTitle('')
       setLinkUrl('')
+      setSelectedTagIds([])
+      setInitialComment('')
       onOpenChange(false)
       
       // Trigger callback to refresh board data
@@ -345,6 +379,54 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
                 Add
               </Button>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <Tag className="h-4 w-4" />
+              Tags
+            </label>
+            {allTags.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No tags yet — create one from a task&apos;s details after saving.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {allTags.map((tag) => {
+                  const isSelected = selectedTagIds.includes(tag.id)
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      disabled={loading}
+                      onClick={() =>
+                        setSelectedTagIds((current) =>
+                          isSelected ? current.filter((id) => id !== tag.id) : [...current, tag.id]
+                        )
+                      }
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                        isSelected ? 'text-white' : 'text-muted-foreground hover:border-foreground/40'
+                      }`}
+                      style={isSelected ? { backgroundColor: tag.color, borderColor: tag.color } : undefined}
+                    >
+                      {tag.name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="initial-comment" className="text-sm font-medium">
+              Comment (optional)
+            </label>
+            <Textarea
+              id="initial-comment"
+              placeholder="Add a comment..."
+              value={initialComment}
+              onChange={(e) => setInitialComment(e.target.value)}
+              disabled={loading}
+              rows={2}
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
