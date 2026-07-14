@@ -32,11 +32,14 @@ export default async function AdminPage() {
     supabase.from('tasks').select('*, column:columns(board_id), task_assignees(user_id), task_tags(tag:tags(*))').is('deleted_at', null).order('created_at', { ascending: false }),
   ])
 
-  // Flatten board_id from nested column object
-  const tasksWithBoardId = tasks?.map(task => ({
-    ...task,
-    board_id: task.column?.board_id
-  })) || []
+  // Flatten board_id from nested column object, dropping tasks whose board is archived
+  const activeBoardIds = new Set((boards || []).map(board => board.id))
+  const tasksWithBoardId = (tasks || [])
+    .filter(task => activeBoardIds.has(task.column?.board_id))
+    .map(task => ({
+      ...task,
+      board_id: task.column?.board_id
+    }))
 
   return <AdminDashboard user={profile} users={users || []} boards={boards || []} tasks={tasksWithBoardId} />
 }
