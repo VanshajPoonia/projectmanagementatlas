@@ -66,11 +66,19 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
 
       if (boardError) throw boardError
 
-      // Create default columns
+      // Create default columns, using the current labels for the built-in statuses so a
+      // renamed status (e.g. "Done" -> "Completed") is reflected on every new board too.
+      const { data: defaultStatuses } = await supabase
+        .from('task_statuses')
+        .select('key, label')
+        .in('key', ['to_do', 'in_progress', 'done'])
+      const labelFor = (key: string, fallback: string) =>
+        defaultStatuses?.find((s: { key: string; label: string }) => s.key === key)?.label || fallback
+
       const columns = [
-        { title: 'To Do', position: 0, board_id: board.id },
-        { title: 'In Progress', position: 1, board_id: board.id },
-        { title: 'Done', position: 2, board_id: board.id },
+        { title: labelFor('to_do', 'To Do'), position: 0, board_id: board.id },
+        { title: labelFor('in_progress', 'In Progress'), position: 1, board_id: board.id },
+        { title: labelFor('done', 'Done'), position: 2, board_id: board.id },
       ]
 
       await supabase.from('columns').insert(columns)
@@ -454,6 +462,9 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="w-4 h-4" />
                     Created {new Date(board.created_at).toLocaleDateString('en-US')}
+                    {(board.creator?.full_name || board.creator?.email) && (
+                      <span className="truncate">by {board.creator.full_name || board.creator.email}</span>
+                    )}
                   </div>
                 </CardContent>
               </div>

@@ -31,7 +31,7 @@ export default async function DashboardPage() {
   // Fetch all boards (archived boards are hidden from non-admins)
   const { data: boards } = await supabase
     .from('boards')
-    .select('*')
+    .select('*, creator:profiles!boards_created_by_fkey(full_name, email)')
     .is('archived_at', null)
     .order('created_at', { ascending: false })
 

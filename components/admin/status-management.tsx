@@ -103,6 +103,15 @@ export default function StatusManagement() {
       toast.error('Could not save status')
       return
     }
+
+    // Board columns are seeded with the status label as their literal title (e.g. "Done"),
+    // so a status rename here would otherwise only show up in dropdowns while every board's
+    // column header keeps showing the old name. Rename any column still using the old label
+    // to keep boards in sync.
+    if (label !== status.label) {
+      await supabase.from('columns').update({ title: label }).eq('title', status.label)
+    }
+
     setEditingId(null)
     toast.success('Status updated')
     load()

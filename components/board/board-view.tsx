@@ -497,6 +497,11 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   {boardDescription && (
                     <p className="text-sm text-muted-foreground">{boardDescription}</p>
                   )}
+                  {(board?.creator?.full_name || board?.creator?.email) && (
+                    <p className="text-xs text-muted-foreground">
+                      Created by {board.creator.full_name || board.creator.email}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

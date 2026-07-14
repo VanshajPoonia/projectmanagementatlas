@@ -27,6 +27,17 @@ export default function RootLayout({
       <body className={`font-sans antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           {children}
+          <footer className="py-3 text-center text-xs text-muted-foreground">
+            Powered by{' '}
+            <a
+              href="https://kreativvantage.com"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium underline-offset-2 hover:underline"
+            >
+              Kreativ Vantage
+            </a>
+          </footer>
           <Toaster richColors position="top-right" />
         </ThemeProvider>
         <Analytics />

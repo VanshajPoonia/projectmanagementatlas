@@ -402,6 +402,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                                   {cleanBoardDescription(board.description)}
                                 </CardDescription>
                               )}
+                              {(board.creator?.full_name || board.creator?.email) && (
+                                <p className="mt-1 truncate text-xs text-muted-foreground">
+                                  Created by {board.creator.full_name || board.creator.email}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </CardHeader>

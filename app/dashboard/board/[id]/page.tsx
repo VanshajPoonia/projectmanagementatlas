@@ -20,7 +20,7 @@ export default async function UserBoardPage({ params }: { params: Promise<{ id: 
 
   const { data: board } = await supabase
     .from('boards')
-    .select('*')
+    .select('*, creator:profiles!boards_created_by_fkey(full_name, email)')
     .eq('id', id)
     .single()
 
