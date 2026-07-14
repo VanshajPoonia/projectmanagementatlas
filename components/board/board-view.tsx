@@ -734,6 +734,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                       currentUserId={currentUserId}
                                       users={users}
                                       board={board}
+                                      columns={columns}
                                       isDragging={snapshot.isDragging}
                                       onUpdate={refreshColumns}
                                     />
