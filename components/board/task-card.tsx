@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar as CalendarPicker } from '@/components/ui/calendar'
-import { Calendar, User, MoreVertical, Tag, Clock, Repeat } from 'lucide-react'
+import { Calendar, User, MoreVertical, Tag, Clock, Repeat, History } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -19,9 +19,10 @@ import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
 import { getAssignees, getAssigneeIds } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
-import { getNormalizedTaskStatus } from '@/lib/task-status'
+import { getNormalizedTaskStatus, type NormalizedTaskStatus } from '@/lib/task-status'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { sendTaskAssignmentEmail } from '@/lib/email'
+import { logTaskActivity } from '@/lib/task-activity'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 
@@ -38,6 +39,7 @@ interface TaskCardProps {
 
 export default function TaskCard({ task, isAdmin, currentUserId, users, board, columns, isDragging, onUpdate }: TaskCardProps) {
   const [detailOpen, setDetailOpen] = useState(false)
+  const [detailInitialTab, setDetailInitialTab] = useState<'comments' | 'activity'>('comments')
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(task.title)
   const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false)
@@ -66,6 +68,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
       setTitleDraft(task.title)
       return
     }
+    logTaskActivity(supabase, task.id, currentUserId, `renamed the task from "${task.title}" to "${trimmed}"`)
     onUpdate?.()
   }
 
@@ -75,6 +78,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
       toast.error('Could not update priority', { description: error.message })
       return
     }
+    logTaskActivity(supabase, task.id, currentUserId, `changed priority from ${task.priority} to ${value}`)
     onUpdate?.()
   }
 
@@ -82,7 +86,11 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
     // Board columns are the source of truth for where a card sits, so changing
     // status here also relocates the card into whichever column represents that
     // status (mirrors the status drag-and-drop between columns already sets).
-    const matchingColumn = columns?.find((c: any) => c.title.toLowerCase().replace(/ /g, '_') === value)
+    // Match on the normalized to_do/in_progress/done bucket rather than the raw
+    // column title, since renaming a status (e.g. "Done" -> "Completed") only
+    // changes its label, not the status key this value carries.
+    const targetStatus: NormalizedTaskStatus = getNormalizedTaskStatus({ status: value })
+    const matchingColumn = columns?.find((c: any) => getNormalizedTaskStatus({ column: { title: c.title } }) === targetStatus)
     const updates: Record<string, any> = { status: value }
     if (matchingColumn && matchingColumn.id !== task.column_id) {
       updates.column_id = matchingColumn.id
@@ -94,6 +102,9 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
       toast.error('Could not update status', { description: error.message })
       return
     }
+    const oldLabel = statuses.find(s => s.key === task.status)?.label || task.status
+    const newLabel = statuses.find(s => s.key === value)?.label || value
+    logTaskActivity(supabase, task.id, currentUserId, `changed status from "${oldLabel}" to "${newLabel}"`)
     onUpdate?.()
   }
 
@@ -103,6 +114,12 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
       toast.error('Could not update due date', { description: error.message })
       return
     }
+    logTaskActivity(
+      supabase,
+      task.id,
+      currentUserId,
+      date ? `set the due date to ${format(date, 'PP')}` : 'removed the due date'
+    )
     onUpdate?.()
   }
 
@@ -126,6 +143,14 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
 
     // Keep the assigned_to mirror in sync with the first assignee.
     await supabase.from('tasks').update({ assigned_to: newAssignees[0] || null }).eq('id', task.id)
+
+    const toggledUser = users.find((u: any) => u.id === userId)
+    logTaskActivity(
+      supabase,
+      task.id,
+      currentUserId,
+      `${isAssigned ? 'removed' : 'added'} assignee ${toggledUser?.full_name || toggledUser?.email || 'Unknown'}`
+    )
 
     if (!isAssigned) {
       const assignedUser = users.find((u: any) => u.id === userId)
@@ -226,7 +251,10 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
         className={`group min-w-0 cursor-grab overflow-hidden p-3 active:cursor-grabbing transition-colors hover:border-primary/40 hover:shadow-md ${
           isDragging ? 'shadow-xl opacity-80 cursor-grabbing' : ''
         } ${isOverdue ? 'border-red-300 bg-red-50/30' : ''}`}
-        onClick={() => setDetailOpen(true)}
+        onClick={() => {
+          setDetailInitialTab('comments')
+          setDetailOpen(true)
+        }}
       >
         <div className="space-y-2.5">
           <div className="flex min-w-0 items-start justify-between gap-2">
@@ -263,6 +291,20 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
                 {task.title}
               </h4>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation()
+                setDetailInitialTab('activity')
+                setDetailOpen(true)
+              }}
+              aria-label="View activity"
+              title="View activity"
+            >
+              <History className="w-3.5 h-3.5" />
+            </Button>
             {canDelete && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -271,7 +313,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDetailOpen(true); }}>
+                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDetailInitialTab('comments'); setDetailOpen(true); }}>
                     Open
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDelete(); }} className="text-red-600">
@@ -485,6 +527,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
         board={board}
         isAdmin={isAdmin}
         currentUserId={currentUserId}
+        initialTab={detailInitialTab}
       />
     </>
   )
