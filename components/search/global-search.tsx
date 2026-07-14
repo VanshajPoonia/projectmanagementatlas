@@ -94,7 +94,7 @@ export default function GlobalSearch({ isAdmin }: GlobalSearchProps) {
     if (!task.board_id) return
     setOpen(false)
     setQuery('')
-    router.push(`/${isAdmin ? 'admin' : 'dashboard'}/board/${task.board_id}`)
+    router.push(`/${isAdmin ? 'admin' : 'dashboard'}/board/${task.board_id}?task=${task.id}`)
   }
 
   return (
