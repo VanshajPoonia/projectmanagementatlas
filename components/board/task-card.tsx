@@ -31,11 +31,12 @@ interface TaskCardProps {
   currentUserId: string
   users: any[]
   board?: any
+  columns?: any[]
   isDragging?: boolean
   onUpdate?: () => void
 }
 
-export default function TaskCard({ task, isAdmin, currentUserId, users, board, isDragging, onUpdate }: TaskCardProps) {
+export default function TaskCard({ task, isAdmin, currentUserId, users, board, columns, isDragging, onUpdate }: TaskCardProps) {
   const [detailOpen, setDetailOpen] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(task.title)
