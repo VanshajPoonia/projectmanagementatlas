@@ -800,18 +800,48 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3 md:hidden">
-                      {sortTasks(columnTasks).map((task: any) => (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          isAdmin={isAdmin}
-                          currentUserId={currentUserId}
-                          users={users}
-                          board={board}
-                          onUpdate={refreshColumns}
-                        />
-                      ))}
+                    <div className="space-y-2 md:hidden">
+                      {sortTasks(columnTasks).map((task: any) => {
+                        const taskAssignees = getAssignees(task, users)
+                        return (
+                          <div
+                            key={task.id}
+                            onClick={() => {
+                              setSelectedTaskId(task.id)
+                              setTaskDetailOpen(true)
+                            }}
+                            className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5 active:bg-accent/50 transition-colors"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm font-medium">{task.title}</div>
+                              {task.due_date && (
+                                <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Calendar className="w-3 h-3" />
+                                  {new Date(task.due_date).toLocaleDateString('en-US')}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-shrink-0 items-center gap-2">
+                              {taskAssignees.length > 0 && (
+                                <div className="flex -space-x-2">
+                                  {taskAssignees.slice(0, 2).map((u: any) => (
+                                    <div
+                                      key={u.id}
+                                      className="w-6 h-6 rounded-full bg-primary/10 border border-background flex items-center justify-center text-[10px] font-medium"
+                                      title={u.full_name || u.email}
+                                    >
+                                      {u.full_name?.[0] || u.email?.[0]}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              <Badge variant={task.priority <= 2 ? 'destructive' : task.priority === 3 ? 'default' : 'secondary'} className="px-1.5 text-[10px]">
+                                P{task.priority}
+                              </Badge>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                     <div className="hidden overflow-x-auto md:block">
                       <table className="w-full">
