@@ -20,15 +20,16 @@ export async function checkDueDateReminders() {
     // Get tasks due in the next 1-2 days that aren't completed
     const { data: taskRows } = await supabase
       .from('tasks')
-      .select('*, column:columns(board_id)')
+      .select('*, column:columns(board_id, board:boards(archived_at))')
       .is('deleted_at', null)
       .neq('status', 'done')
       .gte('due_date', today.toISOString())
       .lte('due_date', twoDaysFromNow.toISOString())
     
-    const tasks = taskRows || []
+    // Skip tasks whose board has been archived
+    const tasks = (taskRows || []).filter(task => task.column?.board && !task.column.board.archived_at)
 
-    if (!tasks || tasks.length === 0) return
+    if (tasks.length === 0) return
     
     // Get all assignees for these tasks
     const taskIds = tasks.map(t => t.id)
