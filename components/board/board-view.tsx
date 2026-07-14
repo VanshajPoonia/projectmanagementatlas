@@ -108,6 +108,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         { value: 'personal', label: 'Personal', icon: Lock },
       ]
     : []
+  const handleNavChange = (value: string) => {
+    sessionStorage.setItem(isAdmin ? 'admin-active-tab' : 'user-active-tab', value)
+    router.push(isAdmin ? '/admin' : '/dashboard')
+  }
 
   const canManageTask = useCallback((task: any) => {
     const assignedToId = typeof task?.assigned_to === 'string' ? task.assigned_to : task?.assigned_to?.id
