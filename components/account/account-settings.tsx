@@ -37,6 +37,7 @@ export default function AccountSettings({
 }: AccountSettingsProps) {
   const [open, setOpen] = useState(false)
   const [fullName, setFullName] = useState(currentName || '')
+  const [currentPassword, setCurrentPassword] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [saving, setSaving] = useState(false)
@@ -62,13 +63,23 @@ export default function AccountSettings({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (password && password.length < 8) {
-      toast.error('Password must be at least 8 characters')
-      return
-    }
-    if (password && password !== confirmPassword) {
-      toast.error('Passwords do not match')
-      return
+    if (password) {
+      if (!currentPassword) {
+        toast.error('Enter your current password to set a new one')
+        return
+      }
+      if (password.length < 8) {
+        toast.error('New password must be at least 8 characters')
+        return
+      }
+      if (password !== confirmPassword) {
+        toast.error('New passwords do not match')
+        return
+      }
+      if (password === currentPassword) {
+        toast.error('New password must be different from your current password')
+        return
+      }
     }
 
     setSaving(true)
@@ -83,6 +94,17 @@ export default function AccountSettings({
       }
 
       if (password) {
+        // Require the current password: re-authenticate first, then update.
+        // A failed sign-in returns an error and leaves the active session intact.
+        const { error: verifyError } = await supabase.auth.signInWithPassword({
+          email,
+          password: currentPassword,
+        })
+        if (verifyError) {
+          toast.error('Current password is incorrect')
+          return
+        }
+
         const { error: pwError } = await supabase.auth.updateUser({ password })
         if (pwError) throw pwError
       }
@@ -90,6 +112,7 @@ export default function AccountSettings({
       toast.success('Account updated', {
         description: password ? 'Your name and password were saved.' : 'Your name was saved.',
       })
+      setCurrentPassword('')
       setPassword('')
       setConfirmPassword('')
       setOpen(false)
@@ -140,17 +163,32 @@ export default function AccountSettings({
             />
           </div>
           {password && (
-            <div className="space-y-2">
-              <Label htmlFor="account-confirm">Confirm new password</Label>
-              <Input
-                id="account-confirm"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                disabled={saving}
-                autoComplete="new-password"
-              />
-            </div>
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="account-confirm">Confirm new password</Label>
+                <Input
+                  id="account-confirm"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={saving}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="account-current">Current password</Label>
+                <Input
+                  id="account-current"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Required to change your password"
+                  disabled={saving}
+                  autoComplete="current-password"
+                />
+                <p className="text-xs text-muted-foreground">For security, confirm the password you use now.</p>
+              </div>
+            </>
           )}
           <Button type="submit" className="w-full" disabled={saving}>
             {saving ? 'Saving...' : 'Save changes'}
