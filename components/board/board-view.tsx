@@ -22,13 +22,14 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, Download, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, Download, MessageSquare, Home, Lock, Kanban, ClipboardList, FileBarChart, Megaphone, SlidersHorizontal } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import TaskCard from './task-card'
 import CreateTaskDialog from './create-task-dialog'
 import { TaskDetailModal } from './task-detail-modal'
 import ChatPanel from '@/components/chat/chat-panel'
+import MobileBottomNav, { type NavItem } from '@/components/dashboard/mobile-bottom-nav'
 import { getAssigneeIds, getAssignees, getAssigneeNames } from '@/lib/assignees'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
@@ -82,6 +83,31 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
+
+  // Bottom nav items mirror the dashboard shell's tabs so navigation stays available
+  // while viewing an individual board (that page renders outside the dashboard shell).
+  const navItems: NavItem[] = isAdmin
+    ? [
+        { value: 'overview', label: 'Home', icon: Home },
+        { value: 'boards', label: 'Boards', icon: ClipboardList },
+        { value: 'reports', label: 'Reports', icon: FileBarChart },
+        { value: 'chat', label: 'Chat', icon: MessageSquare },
+      ]
+    : [
+        { value: 'tasks', label: 'Home', icon: Home },
+        { value: 'personal', label: 'Personal', icon: Lock },
+        { value: 'calendar', label: 'Calendar', icon: Calendar },
+        { value: 'boards', label: 'Boards', icon: Kanban },
+        { value: 'chat', label: 'Chat', icon: MessageSquare },
+      ]
+  const navMoreItems: NavItem[] = isAdmin
+    ? [
+        { value: 'calendar', label: 'Calendar', icon: Calendar },
+        { value: 'marketing', label: 'Marketing', icon: Megaphone },
+        { value: 'statuses', label: 'Statuses', icon: SlidersHorizontal },
+        { value: 'personal', label: 'Personal', icon: Lock },
+      ]
+    : []
 
   const canManageTask = useCallback((task: any) => {
     const assignedToId = typeof task?.assigned_to === 'string' ? task.assigned_to : task?.assigned_to?.id
