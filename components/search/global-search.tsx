@@ -38,7 +38,7 @@ export default function GlobalSearch({ isAdmin }: GlobalSearchProps) {
       const [{ data: taskRows }, { data: commentRows }] = await Promise.all([
         supabase
           .from('tasks')
-          .select('id, title, description, priority, due_date, status, column:columns(board_id, board:boards(id, title))')
+          .select('id, title, description, priority, due_date, status, column:columns(board_id, board:boards(id, title, archived_at))')
           .is('deleted_at', null),
         supabase.from('task_comments').select('task_id, comment'),
       ])
