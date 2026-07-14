@@ -50,7 +50,9 @@ export default function GlobalSearch({ isAdmin }: GlobalSearchProps) {
         commentsByTask.set(row.task_id, list)
       }
 
-      const searchable = (taskRows ?? []).map((task: any) => {
+      const searchable = (taskRows ?? [])
+        .filter((task: any) => task.column?.board && !task.column.board.archived_at)
+        .map((task: any) => {
         const description = cleanTaskDescription(task.description)
         const boardId = task.column?.board_id
         const boardTitle = task.column?.board?.title ?? ''
