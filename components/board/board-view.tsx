@@ -641,7 +641,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1800px] px-4 py-6">
+      <main className="mx-auto w-full max-w-[1800px] px-4 py-6 pb-24 md:pb-6">
         {viewMode === 'tile' ? (
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="-mx-4 overflow-x-auto px-4 pb-6 snap-x snap-mandatory md:snap-none scroll-pl-4">
@@ -1111,6 +1111,8 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           </Dialog>
         </>
       )}
+
+      <MobileBottomNav items={navItems} moreItems={navMoreItems} activeTab="boards" onChange={handleNavChange} />
     </div>
   )
 }
