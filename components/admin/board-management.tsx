@@ -71,14 +71,15 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
       const { data: defaultStatuses } = await supabase
         .from('task_statuses')
         .select('key, label')
-        .in('key', ['to_do', 'in_progress', 'done'])
+        .in('key', ['to_do', 'in_progress', 'done', 'cancelled'])
       const labelFor = (key: string, fallback: string) =>
         defaultStatuses?.find((s: { key: string; label: string }) => s.key === key)?.label || fallback
 
       const columns = [
         { title: labelFor('to_do', 'To Do'), position: 0, board_id: board.id },
         { title: labelFor('in_progress', 'In Progress'), position: 1, board_id: board.id },
-        { title: labelFor('done', 'Done'), position: 2, board_id: board.id },
+        { title: labelFor('done', 'Completed'), position: 2, board_id: board.id },
+        { title: labelFor('cancelled', 'Cancelled'), position: 3, board_id: board.id },
       ]
 
       await supabase.from('columns').insert(columns)
