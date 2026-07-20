@@ -15,7 +15,8 @@ export interface TaskStatus {
 export const DEFAULT_STATUSES: TaskStatus[] = [
   { key: 'to_do', label: 'To Do', color: '#64748b' },
   { key: 'in_progress', label: 'In Progress', color: '#ca8a04' },
-  { key: 'done', label: 'Done', color: '#16a34a' },
+  { key: 'done', label: 'Completed', color: '#16a34a' },
+  { key: 'cancelled', label: 'Cancelled', color: '#dc2626' },
 ]
 
 export function useTaskStatuses({ includeArchived = false }: { includeArchived?: boolean } = {}) {

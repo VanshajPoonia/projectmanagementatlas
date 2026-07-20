@@ -36,10 +36,16 @@ export function getNormalizedTaskStatus(task: any): NormalizedTaskStatus {
   return 'to_do'
 }
 
+function isCancelled(task: any) {
+  return text(task?.status).replace(/\s+/g, '_').includes('cancel') || text(task?.column?.title).includes('cancel')
+}
+
 export function getTaskStatusLabel(task: any) {
+  if (isCancelled(task)) return 'Cancelled'
+
   const normalized = getNormalizedTaskStatus(task)
 
-  if (normalized === 'done') return 'Done'
+  if (normalized === 'done') return 'Completed'
   if (normalized === 'in_progress') return 'In Progress'
   return 'To Do'
 }

@@ -330,7 +330,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                           <div className="flex items-center gap-2">
                             <h4 className="min-w-0 break-words font-medium text-muted-foreground line-through decoration-2 [overflow-wrap:anywhere]">{task.title}</h4>
                             <Badge className="bg-green-600">
-                              {task.column?.title || 'Done'}
+                              {task.column?.title || getTaskStatusLabel(task)}
                             </Badge>
                           </div>
                           {cleanTaskDescription(task.description) && (
