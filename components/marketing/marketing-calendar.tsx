@@ -946,10 +946,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       </div>
 
-      {items.length === 0 ? (
-        <div className="p-6 text-sm text-muted-foreground">Marketing calendar is empty. Add an event to get started.</div>
-      ) : (
-        <>
+      {items.length === 0 && (
+        <div className="border-b px-4 py-3 text-sm text-muted-foreground sm:px-6">
+          Marketing calendar is empty. Click any slot below (or &quot;New event&quot;) to add one.
+        </div>
+      )}
+      <>
           {/* ── Week board ───────────────────────────────────────────── */}
           {viewMode === 'week' && (
             <div className="overflow-x-auto">
@@ -1301,8 +1303,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               </div>
             )}
           </div>
-        </>
-      )}
+      </>
 
       {/* ── Create Event Dialog ──────────────────────────────────────── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
