@@ -248,7 +248,7 @@ function EventFormFields({
       <div className="flex items-center gap-3">
         <button type="button" onClick={onToggleHighlighted}
           className={cn('flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors',
-            highlighted ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-background hover:bg-accent')}>
+            highlighted ? 'bg-amber-100 border-amber-400 text-amber-800' : 'bg-background hover:bg-accent')}>
           <Sparkles className="h-3.5 w-3.5" />
           {highlighted ? 'Campaign block' : 'Mark as campaign block'}
         </button>
@@ -844,7 +844,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                               className={cn(
                                 'cursor-pointer rounded-md border border-l-4 p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                 checked ? 'bg-[#f3f4f6] text-muted-foreground'
-                                        : item.is_highlighted ? 'border-y-amber-200 border-r-amber-200 bg-amber-50 hover:bg-amber-100'
+                                        : item.is_highlighted ? 'border-y-amber-300 border-r-amber-300 bg-amber-100 hover:bg-amber-200'
                                                               : 'bg-white shadow-xs hover:bg-accent',
                                 draggingId === item.id && 'opacity-40'
                               )}
@@ -966,7 +966,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                                 className={cn(
                                   'flex h-full min-h-[78px] w-full cursor-pointer flex-col justify-between rounded-md border-l-4 p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                   checked ? 'border-l-[#111] bg-[#f3f4f6] text-muted-foreground'
-                                          : item.is_highlighted ? 'border-y-amber-200 border-r-amber-200 bg-amber-50 hover:bg-amber-100'
+                                          : item.is_highlighted ? 'border-y-amber-300 border-r-amber-300 bg-amber-100 hover:bg-amber-200'
                                                                  : 'border-y-border border-r-border bg-white hover:bg-accent',
                                   draggingId === item.id && 'opacity-40'
                                 )}
