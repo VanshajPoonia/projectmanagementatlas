@@ -19,7 +19,7 @@ import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
 import { getAssignees, getAssigneeIds } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
-import { getNormalizedTaskStatus, type NormalizedTaskStatus } from '@/lib/task-status'
+import { getNormalizedTaskStatus, findColumnForStatus, getEffectiveStatusKey } from '@/lib/task-status'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { sendTaskAssignmentEmail } from '@/lib/email'
 import { logTaskActivity } from '@/lib/task-activity'
@@ -87,15 +87,12 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
     // Board columns are the source of truth for where a card sits, so changing
     // status here also relocates the card into whichever column represents that
     // status (mirrors the status drag-and-drop between columns already sets).
-    // Match on the normalized to_do/in_progress/done bucket rather than the raw
-    // column title, since renaming a status (e.g. "Done" -> "Completed") only
-    // changes its label, not the status key this value carries.
-    const targetStatus: NormalizedTaskStatus = getNormalizedTaskStatus({ status: value })
-    const matchingColumn = columns?.find((c: any) => getNormalizedTaskStatus({ column: { title: c.title } }) === targetStatus)
+    const statusLabel = statuses.find(s => s.key === value)?.label
+    const matchingColumn = findColumnForStatus(value, statusLabel, columns)
     const updates: Record<string, any> = { status: value }
     if (matchingColumn && matchingColumn.id !== task.column_id) {
       updates.column_id = matchingColumn.id
-      updates.position = matchingColumn.tasks?.length || 0
+      updates.position = (matchingColumn as any).tasks?.length || 0
     }
 
     const { error } = await supabase.from('tasks').update(updates).eq('id', task.id)
@@ -376,12 +373,12 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
               )
             )}
             {(() => {
-              const normalizedStatus = getNormalizedTaskStatus(task)
-              const statusDef = statuses.find(s => s.key === normalizedStatus)
+              const effectiveStatus = getEffectiveStatusKey(task, columns, statuses)
+              const statusDef = statuses.find(s => s.key === effectiveStatus)
               const statusColor = statusDef?.color || '#64748b'
               if (canEdit) {
                 return (
-                  <Select value={normalizedStatus} onValueChange={handleStatusChange}>
+                  <Select value={effectiveStatus} onValueChange={handleStatusChange}>
                     <SelectTrigger
                       onClick={(e) => e.stopPropagation()}
                       className="h-6 w-auto gap-1 border px-2 text-xs"
@@ -399,7 +396,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
               }
               return (
                 <Badge variant="outline" className="text-xs" style={{ borderColor: statusColor, color: statusColor }}>
-                  {statusDef?.label || normalizedStatus}
+                  {statusDef?.label || effectiveStatus}
                 </Badge>
               )
             })()}

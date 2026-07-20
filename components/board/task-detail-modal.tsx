@@ -21,6 +21,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
+import { findColumnForStatus } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
 
 interface TaskDetailModalProps {
@@ -227,7 +228,26 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     if (status === 'done' && task?.status !== 'done') {
       updateData.entry_date = new Date().toISOString()
     }
-    
+
+    // Board columns are the source of truth for where a card sits, so when the
+    // status changes here, relocate the card into the column that represents it
+    // (same behaviour as the inline status dropdown on the tile).
+    if (task?.status !== status) {
+      const boardId = board?.id || task?.board_id
+      if (boardId) {
+        const { data: boardColumns } = await supabase
+          .from('columns')
+          .select('id, title, position')
+          .eq('board_id', boardId)
+          .order('position')
+        const statusLabel = taskStatuses.find((s) => s.key === status)?.label
+        const matchingColumn = findColumnForStatus(status, statusLabel, boardColumns as any)
+        if (matchingColumn && matchingColumn.id !== task?.column_id) {
+          updateData.column_id = matchingColumn.id
+        }
+      }
+    }
+
     const { error } = await supabase
       .from('tasks')
       .update(updateData)
