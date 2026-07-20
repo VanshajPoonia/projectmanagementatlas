@@ -3,10 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, Users, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone, Bookmark, SlidersHorizontal, ChevronLeft } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone, Bookmark, SlidersHorizontal, ChevronLeft, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import EnhancedUserManagement from './enhanced-user-management'
 import BoardManagement from './board-management'
 import StatusManagement from './status-management'
 import TaskOverview from './task-overview'
@@ -105,10 +104,20 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   const moreNavItems: NavItem[] = [
     { value: 'calendar', label: 'Calendar', icon: Calendar },
     { value: 'marketing', label: 'Marketing', icon: Megaphone },
-    ...(isSuperAdmin ? [{ value: 'users', label: 'Users', icon: Users }] : []),
     { value: 'statuses', label: 'Statuses', icon: SlidersHorizontal },
     { value: 'personal', label: 'Personal', icon: Lock },
+    ...(isSuperAdmin ? [{ value: 'super-admin', label: 'Super Admin', icon: ShieldCheck }] : []),
   ]
+
+  // Super Admin is a dedicated page, not a tab — intercept its nav value and
+  // navigate instead of switching tabs.
+  const handleMobileNavChange = (value: string) => {
+    if (value === 'super-admin') {
+      router.push('/admin/super-admin')
+      return
+    }
+    setActiveTab(value)
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -126,6 +135,12 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {isSuperAdmin && (
+              <Button onClick={() => router.push('/admin/super-admin')} variant="outline" size="sm" className="gap-2">
+                <ShieldCheck className="w-4 h-4" />
+                <span className="hidden sm:inline">Super Admin</span>
+              </Button>
+            )}
             <ThemeToggle />
             <AccountSettings
               userId={user.id}
@@ -176,7 +191,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
         <main className="flex-1 min-w-0 px-4 py-8 pb-24 md:pb-8 overflow-x-hidden">
         <div ref={tabsRef}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className={isSuperAdmin ? "hidden md:grid w-full max-w-6xl grid-cols-9 h-12" : "hidden md:grid w-full max-w-6xl grid-cols-8 h-12"}>
+            <TabsList className="hidden md:grid w-full max-w-6xl grid-cols-8 h-12">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <Home className="w-4 h-4" />
                 <span className="hidden sm:inline">Home</span>
@@ -193,12 +208,6 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
                 <FileBarChart className="w-4 h-4" />
                 <span className="hidden sm:inline">Reports</span>
               </TabsTrigger>
-              {isSuperAdmin && (
-                <TabsTrigger value="users" className="flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  <span className="hidden sm:inline">Users</span>
-                </TabsTrigger>
-              )}
               <TabsTrigger value="boards" className="flex items-center gap-2">
                 <ClipboardList className="w-4 h-4" />
                 <span className="hidden sm:inline">Boards</span>
@@ -236,12 +245,6 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
               <ReportsView tasks={tasks} users={users} boards={boards} />
             </TabsContent>
 
-            {isSuperAdmin && (
-              <TabsContent value="users">
-                <EnhancedUserManagement users={users} currentUserId={user.id} />
-              </TabsContent>
-            )}
-
             <TabsContent value="boards">
               <BoardManagement boards={boards} />
             </TabsContent>
@@ -266,7 +269,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
         items={primaryNavItems}
         moreItems={moreNavItems}
         activeTab={activeTab}
-        onChange={setActiveTab}
+        onChange={handleMobileNavChange}
       />
     </div>
   )
