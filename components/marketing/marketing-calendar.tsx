@@ -37,6 +37,18 @@ type MarketingSection = 'SRG' | 'AGC' | 'BOTH'
 type SectionFilter = MarketingSection | 'ALL'
 type RecurrencePattern = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly'
 
+interface Channel {
+  section: MarketingSection
+  channel: string
+  label: string
+}
+
+// Composite identity for a channel: the same channel value (e.g. "BLOG") can
+// exist under more than one section, so selection keys on both.
+function channelKey(section: MarketingSection, channel: string) {
+  return `${section}::${channel}`
+}
+
 interface MarketingCalendarItem {
   id: string
   date: string
@@ -85,7 +97,9 @@ const DEFAULT_SECTION_COLORS: Record<MarketingSection, SectionColor> = {
   BOTH: { headerBg: '#0891b2', headerText: '#ffffff' },
 }
 
-const CHANNELS: Array<{ section: MarketingSection; channel: string; label: string }> = [
+// Fallback list used before the shared channel list loads (or if the table is
+// missing). The canonical list lives in the `marketing_channels` table.
+const DEFAULT_CHANNELS: Channel[] = [
   { section: 'SRG',  channel: 'FB - Bobby',   label: 'FB Bobby' },
   { section: 'SRG',  channel: 'FB - SRG',     label: 'FB SRG'   },
   { section: 'SRG',  channel: 'IG - Bobby',   label: 'IG Bobby' },
@@ -103,7 +117,7 @@ const CHANNELS: Array<{ section: MarketingSection; channel: string; label: strin
   { section: 'AGC',  channel: 'OTHER',        label: 'Other'    },
 ]
 
-const FILTERS: SectionFilter[] = ['ALL', 'SRG', 'AGC', 'BOTH']
+const SECTION_FILTER_OPTIONS: MarketingSection[] = ['SRG', 'AGC', 'BOTH']
 
 const RECURRENCE_LABELS: Record<RecurrencePattern, string> = {
   none:      'No repeat',
@@ -188,54 +202,127 @@ function generateDates(start: Date, pattern: RecurrencePattern, endDate: Date): 
 interface EventFormFieldsProps {
   date: string
   onDateChange: (v: string) => void
-  section: MarketingSection
-  onSectionChange: (v: MarketingSection) => void
-  channel: string
-  onChannelChange: (v: string) => void
   content: string
   onContentChange: (v: string) => void
   highlighted: boolean
   onToggleHighlighted: () => void
   sectionColors: Record<MarketingSection, SectionColor>
+  channels: Channel[]
+  /** Composite `section::channel` keys currently selected. */
+  selectedKeys: string[]
+  onToggleChannel: (key: string) => void
+  /** Allow selecting more than one channel (create) vs. exactly one (edit). */
+  multi?: boolean
+  /** Section filter for the channel list ('ALL' shows every channel). */
+  channelFilter: SectionFilter
+  onChannelFilterChange: (v: SectionFilter) => void
+  /** When provided, admins can add a brand-new channel inline. */
+  onAddChannel?: (label: string, section: MarketingSection) => Promise<boolean>
 }
 
 function EventFormFields({
-  date, onDateChange, section, onSectionChange, channel, onChannelChange,
-  content, onContentChange, highlighted, onToggleHighlighted, sectionColors,
+  date, onDateChange, content, onContentChange, highlighted, onToggleHighlighted,
+  sectionColors, channels, selectedKeys, onToggleChannel, multi = false,
+  channelFilter, onChannelFilterChange, onAddChannel,
 }: EventFormFieldsProps) {
+  const [addOpen, setAddOpen] = useState(false)
+  const [addLabel, setAddLabel] = useState('')
+  const [addSection, setAddSection] = useState<MarketingSection>('SRG')
+  const [addBusy, setAddBusy] = useState(false)
+
+  const selected = new Set(selectedKeys)
+  const filtered = channels.filter(c => channelFilter === 'ALL' || c.section === channelFilter)
+  const grouped = (['SRG', 'BOTH', 'AGC'] as MarketingSection[])
+    .map(s => ({ section: s, list: filtered.filter(c => c.section === s) }))
+    .filter(g => g.list.length > 0)
+
+  const submitAdd = async () => {
+    if (!onAddChannel || !addLabel.trim()) return
+    setAddBusy(true)
+    const ok = await onAddChannel(addLabel.trim(), addSection)
+    setAddBusy(false)
+    if (ok) { setAddLabel(''); setAddOpen(false) }
+  }
+
   return (
     <>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label>Date</Label>
-          <Input type="date" value={date} onChange={e => onDateChange(e.target.value)} required />
-        </div>
-        <div className="space-y-1.5">
-          <Label>Section</Label>
-          <div className="flex gap-1.5">
-            {(['SRG', 'AGC', 'BOTH'] as MarketingSection[]).map(s => (
-              <button key={s} type="button"
-                onClick={() => onSectionChange(s)}
-                className={cn('flex-1 rounded border px-2 py-1.5 text-xs font-bold transition-colors',
-                  section === s ? 'text-white' : 'bg-background text-foreground hover:bg-accent')}
-                style={section === s ? { backgroundColor: sectionColors[s].headerBg } : {}}>
-                {s}
+      <div className="space-y-1.5">
+        <Label>Date</Label>
+        <Input type="date" value={date} onChange={e => onDateChange(e.target.value)} required />
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>{multi ? 'Channels' : 'Channel'}</Label>
+          <div className="flex items-center gap-1">
+            {(['ALL', ...SECTION_FILTER_OPTIONS] as SectionFilter[]).map(f => (
+              <button key={f} type="button" onClick={() => onChannelFilterChange(f)}
+                className={cn('rounded px-2 py-0.5 text-[11px] font-semibold transition-colors',
+                  channelFilter === f ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')}>
+                {f === 'ALL' ? 'All' : f}
               </button>
             ))}
           </div>
         </div>
-      </div>
 
-      <div className="space-y-1.5">
-        <Label>Channel</Label>
-        <div className="flex flex-wrap gap-1.5">
-          {CHANNELS.filter(c => c.section === section).map(c => (
-            <button key={c.channel} type="button" onClick={() => onChannelChange(c.channel)}
-              className={cn('rounded border px-2.5 py-1 text-xs font-medium transition-colors',
-                channel === c.channel ? 'bg-foreground text-background border-foreground' : 'bg-background hover:bg-accent')}>
-              {c.label}
-            </button>
+        <div className="space-y-2 rounded-md border p-2">
+          {grouped.map(group => (
+            <div key={group.section} className="space-y-1">
+              <div className="flex items-center gap-1.5 px-0.5">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: sectionColors[group.section].headerBg }} />
+                <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{group.section}</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {group.list.map(c => {
+                  const key = channelKey(c.section, c.channel)
+                  const isOn = selected.has(key)
+                  return (
+                    <button key={key} type="button" onClick={() => onToggleChannel(key)}
+                      className={cn('rounded border px-2.5 py-1 text-xs font-medium transition-colors',
+                        isOn ? 'bg-foreground text-background border-foreground' : 'bg-background hover:bg-accent')}>
+                      {c.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           ))}
+          {grouped.length === 0 && (
+            <p className="px-1 py-2 text-xs text-muted-foreground">No channels in this section yet.</p>
+          )}
+
+          {onAddChannel && (
+            addOpen ? (
+              <div className="space-y-2 rounded border bg-muted/40 p-2">
+                <Input autoFocus value={addLabel} onChange={e => setAddLabel(e.target.value)}
+                  placeholder="Channel name (e.g. LinkedIn)" className="h-8"
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submitAdd() } }} />
+                <div className="flex items-center gap-1.5">
+                  {SECTION_FILTER_OPTIONS.map(s => (
+                    <button key={s} type="button" onClick={() => setAddSection(s)}
+                      className={cn('flex-1 rounded border px-2 py-1 text-[11px] font-bold transition-colors',
+                        addSection === s ? 'text-white' : 'bg-background hover:bg-accent')}
+                      style={addSection === s ? { backgroundColor: sectionColors[s].headerBg } : {}}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-1.5">
+                  <Button type="button" size="sm" variant="outline" className="h-7 flex-1" onClick={() => { setAddOpen(false); setAddLabel('') }}>
+                    Cancel
+                  </Button>
+                  <Button type="button" size="sm" className="h-7 flex-1" disabled={addBusy || !addLabel.trim()} onClick={submitAdd}>
+                    {addBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setAddOpen(true)}
+                className="flex items-center gap-1 rounded border border-dashed px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                <Plus className="h-3.5 w-3.5" /> New channel
+              </button>
+            )
+          )}
         </div>
       </div>
 
@@ -266,7 +353,10 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const [checkUserId,   setCheckUserId]   = useState(userId)
   const [checkUserName, setCheckUserName] = useState(userName)
   const [kaylaId,       setKaylaId]       = useState<string | null>(null)
-  const [sectionFilter, setSectionFilter] = useState<SectionFilter>('ALL')
+  // Which sections are shown in the board/grid. Mix-and-match — e.g. SRG + BOTH.
+  const [activeSections, setActiveSections] = useState<MarketingSection[]>(['SRG', 'AGC', 'BOTH'])
+  // Shared, editable channel list (loaded from marketing_channels).
+  const [channels,      setChannels]      = useState<Channel[]>(DEFAULT_CHANNELS)
   const [weekStart,     setWeekStart]     = useState(() => startOfWeek(new Date()))
   const [loading,       setLoading]       = useState(true)
   const [busyItemId,    setBusyItemId]    = useState<string | null>(null)
@@ -288,25 +378,25 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     try { localStorage.setItem(LS_COLORS_KEY, JSON.stringify(next)) } catch { /* ignore */ }
   }
 
-  // Create-event dialog
-  const [createOpen,      setCreateOpen]      = useState(false)
-  const [newDate,         setNewDate]         = useState(toInputDate(new Date()))
-  const [newSection,      setNewSection]      = useState<MarketingSection>('SRG')
-  const [newChannel,      setNewChannel]      = useState(CHANNELS[0].channel)
-  const [newContent,      setNewContent]      = useState('')
-  const [newHighlighted,  setNewHighlighted]  = useState(false)
-  const [newRecurrence,   setNewRecurrence]   = useState<RecurrencePattern>('none')
-  const [newEndDate,      setNewEndDate]      = useState(toInputDate(addDays(new Date(), 28)))
-  const [creating,        setCreating]        = useState(false)
+  // Create-event dialog. Channels are multi-select (one event per channel).
+  const [createOpen,        setCreateOpen]        = useState(false)
+  const [newDate,           setNewDate]           = useState(toInputDate(new Date()))
+  const [newChannelKeys,    setNewChannelKeys]    = useState<string[]>([channelKey(DEFAULT_CHANNELS[0].section, DEFAULT_CHANNELS[0].channel)])
+  const [newChannelFilter,  setNewChannelFilter]  = useState<SectionFilter>('ALL')
+  const [newContent,        setNewContent]        = useState('')
+  const [newHighlighted,    setNewHighlighted]    = useState(false)
+  const [newRecurrence,     setNewRecurrence]     = useState<RecurrencePattern>('none')
+  const [newEndDate,        setNewEndDate]        = useState(toInputDate(addDays(new Date(), 28)))
+  const [creating,          setCreating]          = useState(false)
 
-  // Edit-event dialog
-  const [editItem,        setEditItem]        = useState<MarketingCalendarItem | null>(null)
-  const [editDate,        setEditDate]        = useState('')
-  const [editSection,     setEditSection]     = useState<MarketingSection>('SRG')
-  const [editChannel,     setEditChannel]     = useState('')
-  const [editContent,     setEditContent]     = useState('')
-  const [editHighlighted, setEditHighlighted] = useState(false)
-  const [savingEdit,      setSavingEdit]      = useState(false)
+  // Edit-event dialog (single channel).
+  const [editItem,          setEditItem]          = useState<MarketingCalendarItem | null>(null)
+  const [editDate,          setEditDate]          = useState('')
+  const [editChannelKey,    setEditChannelKey]    = useState('')
+  const [editChannelFilter, setEditChannelFilter] = useState<SectionFilter>('ALL')
+  const [editContent,       setEditContent]       = useState('')
+  const [editHighlighted,   setEditHighlighted]   = useState(false)
+  const [savingEdit,        setSavingEdit]        = useState(false)
 
   // Drag-and-drop reschedule
   const [draggingId,  setDraggingId]  = useState<string | null>(null)
@@ -357,30 +447,58 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
   useEffect(() => { loadCalendar() }, [loadCalendar])
 
-  // Sync channel list when section changes in create dialog
-  useEffect(() => {
-    const channelsForSection = CHANNELS.filter(c => c.section === newSection)
-    if (channelsForSection.length) setNewChannel(channelsForSection[0].channel)
-  }, [newSection])
+  // Load the shared channel list. Falls back to the built-in defaults if the
+  // table is empty or unavailable, so the picker is never blank.
+  const loadChannels = useCallback(async () => {
+    const { data, error: chErr } = await supabase
+      .from('marketing_channels')
+      .select('section,channel,label,is_archived,position')
+      .order('position', { ascending: true })
+    if (chErr || !data || data.length === 0) return
+    setChannels(
+      (data as Array<Channel & { is_archived?: boolean }>)
+        .filter(c => !c.is_archived)
+        .map(({ section, channel, label }) => ({ section, channel, label })),
+    )
+  }, [supabase])
 
-  // Sync channel list when section changes in edit dialog (only when the current
-  // channel doesn't belong to the newly-selected section)
-  useEffect(() => {
-    const channelsForSection = CHANNELS.filter(c => c.section === editSection)
-    if (channelsForSection.length && !channelsForSection.some(c => c.channel === editChannel)) {
-      setEditChannel(channelsForSection[0].channel)
+  useEffect(() => { loadChannels() }, [loadChannels])
+
+  // Add a new shared channel (admins only, enforced by RLS). Returns success so
+  // the inline form can reset itself.
+  const handleAddChannel = useCallback(async (label: string, section: MarketingSection): Promise<boolean> => {
+    const channel = label.trim()
+    if (!channel) return false
+    const position = channels.length
+    const { error: insErr } = await supabase
+      .from('marketing_channels')
+      .insert({ section, channel, label: channel, position })
+    if (insErr) {
+      toast.error('Could not add channel', {
+        description: insErr.code === '23505' ? 'That channel already exists in this section.' : insErr.message,
+      })
+      return false
     }
-  }, [editSection]) // eslint-disable-line react-hooks/exhaustive-deps
+    await loadChannels()
+    toast.success(`Added "${channel}" to ${section}`)
+    return true
+  }, [channels.length, loadChannels, supabase])
 
   /* ── computed views ─────────────────────────────────────────────── */
 
+  // Empty selection is treated as "show everything" so the board is never blank.
+  const sectionVisible = useCallback(
+    (section: MarketingSection) => activeSections.length === 0 || activeSections.includes(section),
+    [activeSections],
+  )
+
   const visibleChannels = useMemo(() =>
-    CHANNELS.filter(c => sectionFilter === 'ALL' || c.section === sectionFilter),
-  [sectionFilter])
+    channels.filter(c => sectionVisible(c.section)),
+  [channels, sectionVisible])
 
   const visibleItems = useMemo(() =>
-    items.filter(i => sectionFilter === 'ALL' || i.section === sectionFilter),
-  [items, sectionFilter])
+    items.filter(i => sectionVisible(i.section)),
+  [items, sectionVisible])
 
   const weekDays    = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
   const weekKeys    = useMemo(() => new Set(weekDays.map(toDateKey)), [weekDays])
@@ -470,26 +588,34 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   /* ── create event ───────────────────────────────────────────────── */
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newContent.trim() || !kaylaId) return
+    if (!newContent.trim() || !kaylaId || newChannelKeys.length === 0) return
     setCreating(true)
 
     const startDate = parseDate(newDate)
     const endDate   = newRecurrence === 'none' ? startDate : parseDate(newEndDate)
     const dates     = generateDates(startDate, newRecurrence, endDate)
 
-    const rows = dates.map((d, i) => ({
-      assigned_to:    kaylaId,
-      date:           toDateKey(d),
-      day_label:      ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()],
-      section:        newSection,
-      channel:        newChannel,
-      content:        newContent.trim(),
-      is_highlighted: newHighlighted,
-      position:       i,
-      source_sheet:   null,
-      source_row:     null,
-      source_column:  null,
-    }))
+    // One row per selected channel × recurrence date. Each channel carries its
+    // own section, so the grid always places the event under the right column.
+    const selected = newChannelKeys
+      .map(k => channels.find(c => channelKey(c.section, c.channel) === k))
+      .filter((c): c is Channel => Boolean(c))
+
+    const rows = dates.flatMap((d, i) =>
+      selected.map(c => ({
+        assigned_to:    kaylaId,
+        date:           toDateKey(d),
+        day_label:      ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()],
+        section:        c.section,
+        channel:        c.channel,
+        content:        newContent.trim(),
+        is_highlighted: newHighlighted,
+        position:       i,
+        source_sheet:   null,
+        source_row:     null,
+        source_column:  null,
+      })),
+    )
 
     const { error: insertErr } = await supabase.from('marketing_calendar_items').insert(rows)
     setCreating(false)
@@ -504,6 +630,27 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       setNewRecurrence('none')
       loadCalendar()
     }
+  }
+
+  // Toggle a channel in the multi-select create form.
+  const toggleNewChannel = (key: string) =>
+    setNewChannelKeys(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+
+  // Open the create dialog, optionally pre-selecting a date and channel slot
+  // (used when clicking an empty cell in the grid or an empty day column).
+  const openCreateDialog = (opts?: { date?: string; section?: MarketingSection; channel?: string }) => {
+    setNewDate(opts?.date ?? toInputDate(new Date()))
+    setNewContent('')
+    setNewHighlighted(false)
+    setNewRecurrence('none')
+    setNewChannelFilter('ALL')
+    if (opts?.section && opts?.channel) {
+      setNewChannelKeys([channelKey(opts.section, opts.channel)])
+    } else {
+      const first = channels[0]
+      setNewChannelKeys(first ? [channelKey(first.section, first.channel)] : [])
+    }
+    setCreateOpen(true)
   }
 
   /* ── delete user-created item ──────────────────────────────────── */
@@ -528,8 +675,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     }
     setEditItem(item)
     setEditDate(item.date)
-    setEditSection(item.section)
-    setEditChannel(item.channel)
+    setEditChannelKey(channelKey(item.section, item.channel))
+    setEditChannelFilter('ALL')
     setEditContent(item.content)
     setEditHighlighted(item.is_highlighted)
   }
@@ -539,7 +686,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!editItem || !editContent.trim()) return
+    if (!editItem || !editContent.trim() || !editChannelKey) return
+
+    const editChannelDef = channels.find(c => channelKey(c.section, c.channel) === editChannelKey)
+    const editSection = editChannelDef?.section ?? editItem.section
+    const editChannel = editChannelDef?.channel ?? editItem.channel
 
     const conflict = findSlotConflict(editDate, editSection, editChannel, editItem.id)
     if (conflict) {
@@ -724,13 +875,27 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {FILTERS.map(f => (
-              <Button key={f} type="button" size="sm" variant={sectionFilter === f ? 'default' : 'outline'}
-                onClick={() => setSectionFilter(f)} className="min-w-14">
-                {f === 'ALL' ? 'All' : f}
-              </Button>
-            ))}
-            <Button variant="outline" size="icon" onClick={loadCalendar} aria-label="Refresh calendar">
+            {/* Section filter — mix and match (e.g. SRG + BOTH). "All" selects every section. */}
+            <Button type="button" size="sm" variant={activeSections.length === SECTION_FILTER_OPTIONS.length ? 'default' : 'outline'}
+              onClick={() => setActiveSections([...SECTION_FILTER_OPTIONS])} className="min-w-14">
+              All
+            </Button>
+            {SECTION_FILTER_OPTIONS.map(s => {
+              const on = activeSections.includes(s)
+              return (
+                <Button key={s} type="button" size="sm"
+                  variant={on && activeSections.length < SECTION_FILTER_OPTIONS.length ? 'default' : 'outline'}
+                  onClick={() => setActiveSections(prev => {
+                    const next = prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+                    return next.length === 0 ? [...SECTION_FILTER_OPTIONS] : next
+                  })}
+                  className="min-w-14"
+                  style={on && activeSections.length < SECTION_FILTER_OPTIONS.length ? { backgroundColor: sectionColors[s].headerBg, borderColor: sectionColors[s].headerBg } : {}}>
+                  {s}
+                </Button>
+              )
+            })}
+            <Button variant="outline" size="icon" onClick={() => { loadCalendar(); loadChannels() }} aria-label="Refresh calendar">
               <RefreshCw className="h-4 w-4" />
             </Button>
 
@@ -771,7 +936,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
             </Popover>
 
             {/* New event */}
-            <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1.5">
+            <Button size="sm" onClick={() => openCreateDialog()} className="gap-1.5">
               <Plus className="h-4 w-4" />
               New event
             </Button>
@@ -824,7 +989,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                           const busy     = item.id === busyItemId
                           const col      = sectionStyle(item.section)
                           const editable = isEditable(item)
-                          const chLabel  = CHANNELS.find(c => c.section === item.section && c.channel === item.channel)?.label ?? item.channel
+                          const chLabel  = channels.find(c => c.section === item.section && c.channel === item.channel)?.label ?? item.channel
 
                           return (
                             <div key={item.id}
@@ -842,17 +1007,18 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                               }}
                               title={editable ? 'Click to edit, drag to another day' : 'Click the circle to toggle posted'}
                               className={cn(
-                                'cursor-pointer rounded-md border border-l-4 p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                                checked ? 'bg-[#f3f4f6] text-muted-foreground'
-                                        : item.is_highlighted ? 'border-y-amber-300 border-r-amber-300 bg-amber-100 hover:bg-amber-200'
-                                                              : 'bg-white shadow-xs hover:bg-accent',
+                                'cursor-pointer rounded-md border p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                checked ? 'border-transparent bg-[#f3f4f6] text-muted-foreground'
+                                        : item.is_highlighted ? 'border-amber-300 bg-amber-100 hover:bg-amber-200'
+                                                              : 'border-border bg-white shadow-xs hover:bg-accent',
                                 draggingId === item.id && 'opacity-40'
-                              )}
-                              style={{ borderLeftColor: checked ? '#111' : col.borderLeft }}>
+                              )}>
                               <div className="flex items-center justify-between gap-1.5">
-                                <span className="truncate rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-                                  style={checked ? {} : col.chipStyle}>
-                                  {chLabel}
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                  <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ backgroundColor: checked ? '#9ca3af' : col.borderLeft }} />
+                                  <span className="truncate text-[10px] font-bold uppercase tracking-wide" style={{ color: checked ? undefined : col.borderLeft }}>
+                                    {chLabel}
+                                  </span>
                                 </span>
                                 <span className="flex flex-shrink-0 items-center gap-1">
                                   {item.is_highlighted && <Sparkles className="h-3 w-3" style={{ color: col.borderLeft }} />}
@@ -874,11 +1040,17 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                             </div>
                           )
                         })}
-                        {dayItems.length === 0 && (
-                          <div className={cn('flex flex-1 items-center justify-center rounded-md border border-dashed bg-[#fafafa] text-[11px] text-muted-foreground/60 transition-colors',
+                        {dayItems.length === 0 ? (
+                          <button type="button" onClick={() => openCreateDialog({ date: dateKey })}
+                            className={cn('flex flex-1 items-center justify-center rounded-md border border-dashed bg-[#fafafa] text-[11px] text-muted-foreground/60 transition-colors hover:border-foreground/30 hover:text-foreground',
                             isDragOver && 'border-primary/50 bg-primary/5')}>
-                            No posts
-                          </div>
+                            <Plus className="mr-1 h-3.5 w-3.5" /> Add post
+                          </button>
+                        ) : (
+                          <button type="button" onClick={() => openCreateDialog({ date: dateKey })}
+                            className="mt-0.5 flex items-center justify-center gap-1 rounded-md border border-dashed py-1.5 text-[11px] font-medium text-muted-foreground/70 transition-colors hover:border-foreground/30 hover:text-foreground">
+                            <Plus className="h-3.5 w-3.5" /> Add post
+                          </button>
                         )}
                       </div>
                     </div>
@@ -964,13 +1136,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                                 }}
                                 title={editable ? 'Click to edit, drag to reschedule' : 'Click the status pill to toggle posted'}
                                 className={cn(
-                                  'flex h-full min-h-[78px] w-full cursor-pointer flex-col justify-between rounded-md border-l-4 p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                                  checked ? 'border-l-[#111] bg-[#f3f4f6] text-muted-foreground'
-                                          : item.is_highlighted ? 'border-y-amber-300 border-r-amber-300 bg-amber-100 hover:bg-amber-200'
-                                                                 : 'border-y-border border-r-border bg-white hover:bg-accent',
+                                  'flex h-full min-h-[78px] w-full cursor-pointer flex-col justify-between rounded-md border p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                  checked ? 'border-transparent bg-[#f3f4f6] text-muted-foreground'
+                                          : item.is_highlighted ? 'border-amber-300 bg-amber-100 hover:bg-amber-200'
+                                                                 : 'border-border bg-white hover:bg-accent',
                                   draggingId === item.id && 'opacity-40'
-                                )}
-                                style={{ borderLeftColor: checked ? '#111' : col.borderLeft }}>
+                                )}>
                                 <span className="flex items-center justify-between gap-2">
                                   <button type="button" disabled={busy} onClick={e => { e.stopPropagation(); toggleItem(item) }}
                                     className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold',
@@ -996,8 +1167,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                                 </span>
                               </div>
                             ) : (
-                              <div className={cn('h-full min-h-[78px] rounded-md border border-dashed bg-[#fafafa] transition-colors',
-                                isDragOver && 'border-primary/50 bg-primary/5')} />
+                              <button type="button"
+                                onClick={() => openCreateDialog({ date: dateKey, section: ch.section, channel: ch.channel })}
+                                className={cn('group flex h-full min-h-[78px] w-full items-center justify-center rounded-md border border-dashed bg-[#fafafa] text-muted-foreground/40 transition-colors hover:border-foreground/30 hover:text-foreground',
+                                isDragOver && 'border-primary/50 bg-primary/5')}>
+                                <Plus className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
+                              </button>
                             )}
                           </td>
                         )
@@ -1141,11 +1316,13 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
             <EventFormFields
               date={newDate} onDateChange={setNewDate}
-              section={newSection} onSectionChange={setNewSection}
-              channel={newChannel} onChannelChange={setNewChannel}
               content={newContent} onContentChange={setNewContent}
               highlighted={newHighlighted} onToggleHighlighted={() => setNewHighlighted(h => !h)}
               sectionColors={sectionColors}
+              channels={channels}
+              selectedKeys={newChannelKeys} onToggleChannel={toggleNewChannel} multi
+              channelFilter={newChannelFilter} onChannelFilterChange={setNewChannelFilter}
+              onAddChannel={handleAddChannel}
             />
 
             <div className="space-y-1.5">
@@ -1178,8 +1355,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               <Button type="button" variant="outline" className="flex-1" onClick={() => setCreateOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" className="flex-1" disabled={creating || !newContent.trim()}>
-                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create'}
+              <Button type="submit" className="flex-1" disabled={creating || !newContent.trim() || newChannelKeys.length === 0}>
+                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : `Create${newChannelKeys.length > 1 ? ` (${newChannelKeys.length})` : ''}`}
               </Button>
             </div>
           </form>
@@ -1198,11 +1375,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
             <form onSubmit={handleSaveEdit} className="space-y-4">
               <EventFormFields
                 date={editDate} onDateChange={setEditDate}
-                section={editSection} onSectionChange={setEditSection}
-                channel={editChannel} onChannelChange={setEditChannel}
                 content={editContent} onContentChange={setEditContent}
                 highlighted={editHighlighted} onToggleHighlighted={() => setEditHighlighted(h => !h)}
                 sectionColors={sectionColors}
+                channels={channels}
+                selectedKeys={editChannelKey ? [editChannelKey] : []}
+                onToggleChannel={key => setEditChannelKey(key)}
+                channelFilter={editChannelFilter} onChannelFilterChange={setEditChannelFilter}
+                onAddChannel={handleAddChannel}
               />
 
               <div className="flex gap-2 pt-1">
@@ -1213,7 +1393,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setEditItem(null)}>
                   Cancel
                 </Button>
-                <Button type="submit" className="flex-1" disabled={savingEdit || !editContent.trim()}>
+                <Button type="submit" className="flex-1" disabled={savingEdit || !editContent.trim() || !editChannelKey}>
                   {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
                 </Button>
               </div>
