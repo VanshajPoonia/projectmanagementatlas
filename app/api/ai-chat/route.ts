@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
     let reply: string
     try {
-      reply = await callGemini([...history, { role: 'user', content }])
+      reply = await callGemini([...history, { role: 'user', content }], { supabase, userId: user.id })
     } catch (err) {
       console.error('Gemini call failed:', err)
       const isQuota = err instanceof GeminiError && err.status === 429
