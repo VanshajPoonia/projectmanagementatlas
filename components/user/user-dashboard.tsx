@@ -13,6 +13,7 @@ import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
 import NotificationInfo from '../notifications/notification-info'
 import TaskNotificationToasts from '../notifications/task-notification-toasts'
+import AiChatWidget from '../ai-chat/ai-chat-widget'
 import PersonalTasks from '../personal/personal-tasks'
 import BookmarksSection from '../bookmarks/bookmarks-section'
 import MarketingCalendar from '../marketing/marketing-calendar'
@@ -107,6 +108,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   return (
     <div className="min-h-screen bg-background flex flex-col" style={accentStyle}>
       <TaskNotificationToasts userId={user.id} />
+      <AiChatWidget userId={user.id} />
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">

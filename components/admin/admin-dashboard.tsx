@@ -16,6 +16,7 @@ import PersonalTasks from '../personal/personal-tasks'
 import BookmarksSection from '../bookmarks/bookmarks-section'
 import MarketingCalendar from '../marketing/marketing-calendar'
 import TaskNotificationToasts from '../notifications/task-notification-toasts'
+import AiChatWidget from '../ai-chat/ai-chat-widget'
 import DashboardWindow from '../dashboard/dashboard-window'
 import AccountSettings from '../account/account-settings'
 import ThemeToggle from '../theme-toggle'
@@ -122,6 +123,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <TaskNotificationToasts userId={user.id} />
+      <AiChatWidget userId={user.id} />
       {/* Header */}
       <header ref={headerRef} className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
