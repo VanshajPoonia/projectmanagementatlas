@@ -101,7 +101,7 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
               </div>
               <div>
                 <p className="text-sm font-semibold leading-tight">Assistant</p>
-                <p className="text-xs text-muted-foreground leading-tight">General help & questions</p>
+                <p className="text-xs text-muted-foreground leading-tight">Ask about your tasks or anything else</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -135,7 +135,7 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
             )}
             {!loadingHistory && messages.length === 0 && (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                Ask me anything — I can help you use the app or answer general questions.
+                Ask me anything — what's due this week, what's on a board, or general questions.
               </div>
             )}
             {messages.map((m) => (
