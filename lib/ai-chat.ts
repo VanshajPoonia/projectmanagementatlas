@@ -1,3 +1,5 @@
+import { AI_CHAT_TOOLS, executeTool, type ToolContext } from './ai-chat-tools'
+
 // Gemini free tier: this key is shared across every user of the app, and the
 // daily request cap is shared too (not per-user). We don't pre-track that quota
 // ourselves — Gemini's own 429 is the source of truth; see the 429 handling in
@@ -8,9 +10,9 @@
 // check `GET /v1beta/models?key=...` for the current lineup before guessing.
 export const AI_CHAT_MODEL = 'gemini-3.1-flash-lite'
 
-export const AI_CHAT_SYSTEM_PROMPT = `You are the built-in assistant for "Project Manager," an internal project management web app. It has: Kanban-style task boards with customizable columns/statuses, a shared team calendar, a marketing content calendar (channels, companies, recurring events), private personal tasks, direct chat between teammates, bookmarks, and reports.
+export const AI_CHAT_SYSTEM_PROMPT = `You are the built-in assistant for "Project Manager," an internal project management web app. It has: Kanban-style task boards with customizable columns/statuses, a shared team calendar (task due dates), a marketing content calendar (channels, companies, recurring events), private personal tasks, direct chat between teammates, bookmarks, and reports.
 
-You do not have access to the current user's specific tasks, boards, or company data. If asked about their specific data, say you can't see that yet and point them to the relevant tab (Boards, Calendar, Marketing, Reports) instead of guessing. Otherwise, help with general questions, how to use the app, and everyday assistant tasks. Keep answers concise.`
+You have tools to look up the current user's real data: get_tasks (Kanban tasks across boards), get_boards, get_personal_tasks (their private to-do list), and get_marketing_calendar. Use them whenever a question is about actual tasks, due dates, boards, or the marketing calendar — don't guess or make up data. If a tool comes back empty or with an error, say so plainly rather than inventing an answer. For anything else, help with general questions and how to use the app. Keep answers concise.`
 
 export interface ChatTurn {
   role: 'user' | 'assistant'
@@ -25,48 +27,88 @@ export class GeminiError extends Error {
   }
 }
 
-export async function callGemini(history: ChatTurn[]): Promise<string> {
+const MAX_TOOL_ROUNDS = 4
+
+// Gemini's function-calling contract (verified against the live API, not just
+// docs): a functionCall part can carry a `thoughtSignature` sibling field, and
+// omitting it on the follow-up request is a hard 400 ("missing thought_signature"),
+// not a silent degradation — so we always echo the model's turn back verbatim
+// (parts, ids, signatures and all) rather than reconstructing it. Multiple
+// functionCall parts can arrive in one turn (parallel calls); their responses
+// all go back together in a single `role: 'function'` turn.
+export async function callGemini(history: ChatTurn[], toolContext: ToolContext): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new GeminiError('GEMINI_API_KEY is not configured', 500)
   }
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${AI_CHAT_MODEL}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: AI_CHAT_SYSTEM_PROMPT }] },
-        contents: history.map((turn) => ({
-          role: turn.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: turn.content }],
-        })),
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 1024,
-        },
-      }),
+  const contents: any[] = history.map((turn) => ({
+    role: turn.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: turn.content }],
+  }))
+
+  const today = new Date().toISOString().slice(0, 10)
+  const systemInstruction = {
+    parts: [{ text: `${AI_CHAT_SYSTEM_PROMPT}\n\nToday's date is ${today}.` }],
+  }
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${AI_CHAT_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction,
+          contents,
+          tools: [{ functionDeclarations: AI_CHAT_TOOLS }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 1024,
+          },
+        }),
+      }
+    )
+
+    if (!res.ok) {
+      throw new GeminiError(`Gemini request failed (${res.status})`, res.status)
     }
-  )
 
-  if (!res.ok) {
-    throw new GeminiError(`Gemini request failed (${res.status})`, res.status)
+    const data = await res.json()
+    const parts = data?.candidates?.[0]?.content?.parts ?? []
+    const functionCalls = parts.filter((part: any) => part.functionCall)
+
+    if (functionCalls.length === 0) {
+      // Skip any `thought: true` parts — thinking models can return an internal
+      // reasoning trace alongside (or instead of, part-by-part) the real answer.
+      const text = parts
+        .filter((part: any) => !part.thought && typeof part.text === 'string')
+        .map((part: any) => part.text)
+        .join('')
+        .trim()
+
+      if (!text) {
+        throw new GeminiError('Gemini returned no text', 502)
+      }
+      return text
+    }
+
+    contents.push({ role: 'model', parts })
+
+    const responseParts = await Promise.all(
+      functionCalls.map(async (part: any) => {
+        const result = await executeTool(part.functionCall.name, part.functionCall.args ?? {}, toolContext)
+        return {
+          functionResponse: {
+            name: part.functionCall.name,
+            ...(part.functionCall.id ? { id: part.functionCall.id } : {}),
+            response: result,
+          },
+        }
+      })
+    )
+    contents.push({ role: 'function', parts: responseParts })
   }
 
-  const data = await res.json()
-  const parts = data?.candidates?.[0]?.content?.parts ?? []
-  // Skip any `thought: true` parts — thinking models can return an internal
-  // reasoning trace alongside (or instead of, part-by-part) the real answer.
-  const text = parts
-    .filter((part: any) => !part.thought && typeof part.text === 'string')
-    .map((part: any) => part.text)
-    .join('')
-    .trim()
-
-  if (!text) {
-    throw new GeminiError('Gemini returned no text', 502)
-  }
-
-  return text
+  throw new GeminiError('Gemini did not produce a final answer in time', 502)
 }
