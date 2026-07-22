@@ -120,6 +120,61 @@ if the team starts scheduling at subtask level.
 
 ---
 
+## Open — private boards (admin lockdown, shipped 2026-07-23)
+
+Migration `061` removes admin/super_admin blanket access to private boards. A
+private board and everything in it is now visible/manageable only to its creator
+and to explicit `board_members`. Notes and deliberate trade-offs:
+
+### No break-glass on private boards
+
+There is intentionally no admin override. If the creator of a private board is
+deprovisioned, the board is reachable only by its remaining members or via direct
+DB access. This is the literal ask ("remove super admin and admin access"). If an
+org later needs oversight, add a scoped, audited override rather than restoring the
+blanket `is_admin_user()` bypass.
+
+### Column names of a private board are not hidden
+
+`061` gates board rows and every task/comment/attachment/link/tag (through
+`can_view_task`/`can_manage_task` plus a `task_hidden_by_board_privacy` join). It
+does **not** gate `public.columns`, so a non-member who already knows a private
+board's id could still read its column titles ("To Do", "In Progress"). No task
+content leaks — only the empty column labels. Left ungated because columns carry no
+sensitive data and gating them adds another board-privacy join to the hot board
+render path. Revisit if columns ever hold anything meaningful.
+
+### Membership management is creator-only
+
+`board_members` INSERT/DELETE is now restricted to the board's creator (the admin
+bypass is gone — otherwise "remove admin access" was bypassable by self-adding).
+The board-management edit dialog's delete-all-then-reinsert member sync therefore
+only works for the creator; other admins can't see the board to edit it anyway.
+
+## Open — marketing "missed" items (shipped 2026-07-23)
+
+Migration `062` adds `status` ('posted'|'missed') + `note` to
+`marketing_calendar_checks`. Any past item with no row shows as "Missed"
+automatically; a stored 'missed' row only exists once a reason is attached.
+
+### Auto-missed spans all history, not just recent
+
+Every past unposted item counts as missed, so a calendar with months of
+never-checked imported rows will show a large "N missed" count and a lot of red
+under "Show past". This is truthful (they genuinely weren't marked posted) and the
+default agenda hides past items, but the number can look alarming. If it becomes
+noise, scope the auto-missed window (e.g. last 30 days) or exclude pre-adoption
+dates.
+
+### Auto-missed uses the viewer's local clock
+
+The past/future cutoff is the browser's local date (`toDateKey(new Date())`),
+consistent with how the rest of the calendar computes "today". An item is missed
+the moment the viewer's local day rolls past its date — there is no server-side
+grace period or timezone normalization.
+
+---
+
 ## Resolved — kept for the reasoning
 
 ### PostgREST self-referencing embeds are ambiguous *(avoided, never shipped)*

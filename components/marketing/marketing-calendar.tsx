@@ -18,6 +18,7 @@ import {
   Sparkles,
   Table2,
   Trash2,
+  XCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,12 @@ import { autoTextColor as autoText, withAlpha } from '@/lib/color'
 import { toast } from 'sonner'
 
 type RecurrencePattern = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly'
+
+// A day's item can be posted, explicitly/automatically missed, or still pending.
+// "missed" is either stored (with an optional reason) or inferred for any past item
+// that was never posted.
+type PostState = 'posted' | 'missed' | 'pending'
+type CheckStatus = 'posted' | 'missed'
 
 interface Company {
   id: string
@@ -61,6 +68,8 @@ interface MarketingCalendarCheck {
   id: string
   item_id: string
   checked_at: string
+  status: CheckStatus
+  note: string | null
 }
 
 interface MarketingCalendarProps {
@@ -280,7 +289,8 @@ function EventFormFields({
 
 interface EventEntryProps {
   item: MarketingCalendarItem
-  checked: boolean
+  state: PostState
+  note: string | null
   busy: boolean
   editable: boolean
   dragging: boolean
@@ -288,14 +298,17 @@ interface EventEntryProps {
   channelLabel: string
   onOpen: () => void
   onToggle: () => void
+  onEditReason: () => void
   onDragStart: (e: React.DragEvent) => void
   onDragEnd: () => void
 }
 
 function EventEntry({
-  item, checked, busy, editable, dragging, showChannelLabel, channelLabel,
-  onOpen, onToggle, onDragStart, onDragEnd,
+  item, state, note, busy, editable, dragging, showChannelLabel, channelLabel,
+  onOpen, onToggle, onEditReason, onDragStart, onDragEnd,
 }: EventEntryProps) {
+  const posted = state === 'posted'
+  const missed = state === 'missed'
   const primaryColor = item.companies[0]?.color ?? '#64748b'
   const companyLabel = item.companies.length ? item.companies.map(c => c.code).join(' + ') : 'No company'
 
@@ -313,40 +326,56 @@ function EventEntry({
       title={editable ? 'Click to edit, drag to reschedule' : 'Click the circle to toggle posted'}
       className={cn(
         'cursor-pointer rounded-md border p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        checked ? 'border-transparent bg-[#f3f4f6] text-muted-foreground'
-                : item.is_highlighted ? 'border-amber-300 bg-amber-100 hover:bg-amber-200'
-                                       : 'border-border bg-white shadow-xs hover:bg-accent',
+        posted ? 'border-transparent bg-[#f3f4f6] text-muted-foreground'
+               : missed ? 'border-red-300 bg-red-50 hover:bg-red-100'
+               : item.is_highlighted ? 'border-amber-300 bg-amber-100 hover:bg-amber-200'
+                                     : 'border-border bg-white shadow-xs hover:bg-accent',
         dragging && 'opacity-40',
       )}>
       <div className="flex items-center justify-between gap-1.5">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="flex flex-shrink-0 -space-x-0.5">
             {(item.companies.length ? item.companies : [{ id: 'none', color: '#9ca3af' }]).slice(0, 3).map((c, i) => (
-              <span key={c.id ?? i} className="h-2 w-2 rounded-full ring-1 ring-white" style={{ backgroundColor: checked ? '#9ca3af' : c.color }} />
+              <span key={c.id ?? i} className="h-2 w-2 rounded-full ring-1 ring-white" style={{ backgroundColor: posted ? '#9ca3af' : c.color }} />
             ))}
           </span>
-          <span className="truncate text-[10px] font-bold uppercase tracking-wide" style={{ color: checked ? undefined : primaryColor }}>
+          <span className="truncate text-[10px] font-bold uppercase tracking-wide" style={{ color: posted ? undefined : missed ? '#dc2626' : primaryColor }}>
             {companyLabel}{showChannelLabel ? ` · ${channelLabel}` : ''}
           </span>
+          {missed && (
+            <span className="flex-shrink-0 rounded bg-red-600 px-1 text-[9px] font-bold uppercase tracking-wide text-white">
+              Missed
+            </span>
+          )}
         </span>
         <span className="flex flex-shrink-0 items-center gap-1">
           {item.recurrence_group_id && <Repeat className="h-3 w-3 text-muted-foreground" />}
           {item.is_highlighted && <Sparkles className="h-3 w-3" style={{ color: primaryColor }} />}
           <button type="button" disabled={busy}
             onClick={e => { e.stopPropagation(); onToggle() }}
-            aria-label={checked ? 'Mark as not posted' : 'Mark as posted'}
+            aria-label={posted ? 'Mark as not posted' : 'Mark as posted'}
             className={cn('rounded-full transition-colors',
-              checked ? 'text-green-600' : 'text-muted-foreground/60 hover:text-foreground')}>
+              posted ? 'text-green-600' : missed ? 'text-red-500 hover:text-green-600' : 'text-muted-foreground/60 hover:text-foreground')}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : checked ? <CheckCircle2 className="h-4 w-4" />
-                            : <Circle className="h-4 w-4" />}
+                  : posted ? <CheckCircle2 className="h-4 w-4" />
+                  : missed ? <XCircle className="h-4 w-4" />
+                           : <Circle className="h-4 w-4" />}
           </button>
         </span>
       </div>
       <p className={cn('mt-1.5 break-words text-[13px] font-semibold leading-snug [overflow-wrap:anywhere]',
-        checked && 'line-through decoration-2')}>
+        posted && 'line-through decoration-2')}>
         {item.content}
       </p>
+      {missed && (
+        <button type="button"
+          onClick={e => { e.stopPropagation(); onEditReason() }}
+          className={cn('mt-1.5 flex w-full items-start gap-1 rounded border border-red-200 bg-white/60 px-1.5 py-1 text-left text-[11px] transition-colors hover:bg-white',
+            note ? 'text-red-700' : 'text-red-500/80')}>
+          <Pencil className="mt-0.5 h-3 w-3 flex-shrink-0" />
+          <span className="break-words [overflow-wrap:anywhere]">{note ? note : 'Add reason'}</span>
+        </button>
+      )}
     </div>
   )
 }
@@ -356,7 +385,9 @@ function EventEntry({
 export default function MarketingCalendar({ userId, userName, isAdmin = false }: MarketingCalendarProps) {
   const supabase = createClient()
   const [items,         setItems]         = useState<MarketingCalendarItem[]>([])
-  const [checkedByItem, setCheckedByItem] = useState<Map<string, MarketingCalendarCheck>>(new Map())
+  // Every stored completion row (posted or missed), keyed by item id. Absence of a
+  // row means pending — or, for a past item, auto-"missed" (computed in stateOf).
+  const [statusByItem,  setStatusByItem]  = useState<Map<string, MarketingCalendarCheck>>(new Map())
   const [checkUserId,   setCheckUserId]   = useState(userId)
   const [checkUserName, setCheckUserName] = useState(userName)
   const [kaylaId,       setKaylaId]       = useState<string | null>(null)
@@ -411,6 +442,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   // Agenda "show past" toggle
   const [showPast, setShowPast] = useState(false)
 
+  // "Why was this missed?" dialog
+  const [reasonItem,   setReasonItem]   = useState<MarketingCalendarItem | null>(null)
+  const [reasonText,   setReasonText]   = useState('')
+  const [savingReason, setSavingReason] = useState(false)
+
   const loadCalendar = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -421,7 +457,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       const { data: kaylaProfile, error: profileError } = await supabase
         .from('profiles').select('id,full_name,email').ilike('email', KAYLA_EMAIL).maybeSingle()
       if (profileError || !kaylaProfile) {
-        setItems([]); setCheckedByItem(new Map()); setLoading(false)
+        setItems([]); setStatusByItem(new Map()); setLoading(false)
         setError('Kayla profile is not ready yet.'); return
       }
       const p = kaylaProfile as MarketingProfile
@@ -442,7 +478,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
         .order('date', { ascending: true })
         .order('position', { ascending: true }),
       supabase.from('marketing_calendar_checks')
-        .select('id,item_id,checked_at').eq('user_id', targetUserId),
+        .select('id,item_id,checked_at,status,note').eq('user_id', targetUserId),
     ])
 
     setLoading(false)
@@ -460,7 +496,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       companies: (row.marketing_calendar_item_companies ?? []).map((r: any) => r.company).filter(Boolean),
     }))
     setItems(mapped)
-    setCheckedByItem(new Map(((checkRows ?? []) as MarketingCalendarCheck[]).map(c => [c.item_id, c])))
+    // Older rows created before the status column default to 'posted'.
+    setStatusByItem(new Map(((checkRows ?? []) as any[]).map(c => [
+      c.item_id,
+      { ...c, status: (c.status ?? 'posted') as CheckStatus, note: c.note ?? null } as MarketingCalendarCheck,
+    ])))
   }, [isAdmin, supabase, userId, userName])
 
   useEffect(() => { loadCalendar() }, [loadCalendar])
@@ -559,13 +599,27 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     return m
   }, [visibleItems, weekKeys])
 
+  const todayKey  = toDateKey(new Date())
+
+  // Posted if stored so; missed if stored so OR if the date has already passed with
+  // no posted row; otherwise pending. This is the single source of truth for a cell's
+  // visual state and the counts.
+  const stateOf = (item: MarketingCalendarItem): PostState => {
+    const row = statusByItem.get(item.id)
+    if (row?.status === 'posted') return 'posted'
+    if (row?.status === 'missed') return 'missed'
+    return item.date < todayKey ? 'missed' : 'pending'
+  }
+  const isPosted = (item: MarketingCalendarItem) => statusByItem.get(item.id)?.status === 'posted'
+  const noteOf = (item: MarketingCalendarItem) => statusByItem.get(item.id)?.note ?? null
+
   const totalVisible = visibleItems.length
-  const checkedVisible = visibleItems.filter(i => checkedByItem.has(i.id)).length
-  const checkedWeek = weekItems.filter(i => checkedByItem.has(i.id)).length
+  const checkedVisible = visibleItems.filter(isPosted).length
+  const missedVisible = visibleItems.filter(i => stateOf(i) === 'missed').length
+  const checkedWeek = weekItems.filter(isPosted).length
   const completionPercent = totalVisible ? Math.round((checkedVisible / totalVisible) * 100) : 0
 
   const weekLabel = `${dateFormatter.format(weekDays[0])} – ${dateFormatter.format(weekDays[6])}`
-  const todayKey  = toDateKey(new Date())
 
   /* ── agenda items (bottom panel) ────────────────────────────────── */
   const agendaItems = useMemo(() => {
@@ -586,27 +640,53 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     return m
   }, [agendaItems])
 
-  /* ── toggle check ───────────────────────────────────────────────── */
-  const toggleItem = async (item: MarketingCalendarItem) => {
+  /* ── set / clear completion status ──────────────────────────────── */
+  // 'clear' deletes the row (back to pending, or auto-missed for a past date).
+  // 'posted'/'missed' upsert the row; marking posted wipes any missed reason.
+  const setStatus = async (item: MarketingCalendarItem, next: CheckStatus | 'clear', note: string | null = null) => {
     if (busyItemId) return
-    const existing = checkedByItem.get(item.id)
-    const previous = new Map(checkedByItem)
+    const previous = new Map(statusByItem)
     setBusyItemId(item.id)
 
-    if (existing) {
-      setCheckedByItem(cur => { const n = new Map(cur); n.delete(item.id); return n })
+    if (next === 'clear') {
+      setStatusByItem(cur => { const n = new Map(cur); n.delete(item.id); return n })
       const { error: e } = await supabase.from('marketing_calendar_checks')
         .delete().eq('item_id', item.id).eq('user_id', checkUserId)
-      if (e) { setCheckedByItem(previous); setError('Could not update this check.') }
+      if (e) { setStatusByItem(previous); setError('Could not update this item.') }
     } else {
-      setCheckedByItem(cur => new Map(cur).set(item.id, { id: `opt-${item.id}`, item_id: item.id, checked_at: new Date().toISOString() }))
+      setStatusByItem(cur => new Map(cur).set(item.id, { id: `opt-${item.id}`, item_id: item.id, checked_at: new Date().toISOString(), status: next, note }))
       const { data, error: e } = await supabase.from('marketing_calendar_checks')
-        .upsert({ item_id: item.id, user_id: checkUserId }, { onConflict: 'item_id,user_id' })
-        .select('id,item_id,checked_at').single()
-      if (e || !data) { setCheckedByItem(previous); setError('Could not update this check.') }
-      else setCheckedByItem(cur => new Map(cur).set(item.id, data as MarketingCalendarCheck))
+        .upsert({ item_id: item.id, user_id: checkUserId, status: next, note }, { onConflict: 'item_id,user_id' })
+        .select('id,item_id,checked_at,status,note').single()
+      if (e || !data) { setStatusByItem(previous); setError('Could not update this item.') }
+      else setStatusByItem(cur => new Map(cur).set(item.id, data as MarketingCalendarCheck))
     }
     setBusyItemId(null)
+  }
+
+  // The circle button just toggles "posted". Everything else (missed, reasons) is
+  // driven by the reason dialog and the auto-missed rule.
+  const toggleItem = (item: MarketingCalendarItem) =>
+    setStatus(item, isPosted(item) ? 'clear' : 'posted')
+
+  const openReasonDialog = (item: MarketingCalendarItem) => {
+    setReasonItem(item)
+    setReasonText(noteOf(item) ?? '')
+  }
+  const handleSaveReason = async () => {
+    if (!reasonItem) return
+    setSavingReason(true)
+    await setStatus(reasonItem, 'missed', reasonText.trim() || null)
+    setSavingReason(false)
+    setReasonItem(null)
+  }
+  // Remove the stored miss entirely — reverts to auto (still red if past) with no reason.
+  const handleClearReason = async () => {
+    if (!reasonItem) return
+    setSavingReason(true)
+    await setStatus(reasonItem, 'clear')
+    setSavingReason(false)
+    setReasonItem(null)
   }
 
   /* ── create event ───────────────────────────────────────────────── */
@@ -953,7 +1033,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                 {weekDays.map(date => {
                   const dateKey    = toDateKey(date)
                   const dayItems   = weekItemsByDate.get(dateKey) ?? []
-                  const dayDone    = dayItems.filter(i => checkedByItem.has(i.id)).length
+                  const dayDone    = dayItems.filter(isPosted).length
                   const isToday    = dateKey === todayKey
                   const dayKey     = `day::${dateKey}`
                   const isDragOver = dragOverKey === dayKey
@@ -981,7 +1061,6 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
                       <div className="flex flex-1 flex-col gap-1.5 p-1.5">
                         {dayItems.map(item => {
-                          const checked  = checkedByItem.has(item.id)
                           const busy     = item.id === busyItemId
                           const editable = isEditable(item)
                           const chLabel  = channels.find(c => c.channel === item.channel)?.label ?? item.channel
@@ -990,7 +1069,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                             <EventEntry
                               key={item.id}
                               item={item}
-                              checked={checked}
+                              state={stateOf(item)}
+                              note={noteOf(item)}
                               busy={busy}
                               editable={editable}
                               dragging={draggingId === item.id}
@@ -998,6 +1078,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                               channelLabel={chLabel}
                               onOpen={() => editable ? openEditDialog(item) : toggleItem(item)}
                               onToggle={() => toggleItem(item)}
+                              onEditReason={() => openReasonDialog(item)}
                               onDragStart={handleDragStart(item)}
                               onDragEnd={handleDragEnd}
                             />
@@ -1044,7 +1125,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                 {weekDays.map(date => {
                   const dateKey = toDateKey(date)
                   const dayItems = weekItems.filter(i => i.date === dateKey)
-                  const dayDone  = dayItems.filter(i => checkedByItem.has(i.id)).length
+                  const dayDone  = dayItems.filter(isPosted).length
                   const isToday  = dateKey === todayKey
 
                   return (
@@ -1072,14 +1153,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                             onDrop={handleCellDrop(dateKey, ch.channel)}>
                             <div className="flex min-h-[78px] flex-col gap-1.5">
                               {cellItems.map(item => {
-                                const checked  = checkedByItem.has(item.id)
                                 const busy     = item.id === busyItemId
                                 const editable = isEditable(item)
                                 return (
                                   <EventEntry
                                     key={item.id}
                                     item={item}
-                                    checked={checked}
+                                    state={stateOf(item)}
+                                    note={noteOf(item)}
                                     busy={busy}
                                     editable={editable}
                                     dragging={draggingId === item.id}
@@ -1087,6 +1168,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                                     channelLabel={ch.label}
                                     onOpen={() => editable ? openEditDialog(item) : toggleItem(item)}
                                     onToggle={() => toggleItem(item)}
+                                    onEditReason={() => openReasonDialog(item)}
                                     onDragStart={handleDragStart(item)}
                                     onDragEnd={handleDragEnd}
                                   />
@@ -1126,6 +1208,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                 >
                   {showPast ? 'Hide past' : 'Show past'}
                 </button>
+                {missedVisible > 0 && (
+                  <Badge variant="outline" className="gap-1 border-red-300 text-red-600">
+                    <XCircle className="h-3 w-3" />
+                    {missedVisible} missed
+                  </Badge>
+                )}
                 <Badge variant="outline" className="gap-1">
                   <BadgeCheck className="h-3 w-3" />
                   {checkedVisible}/{totalVisible}
@@ -1140,7 +1228,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                 {[...agendaByDate.entries()].map(([dateKey, dayItems]) => {
                   const date     = parseDate(dateKey)
                   const isToday  = dateKey === todayKey
-                  const dayDone  = dayItems.filter(i => checkedByItem.has(i.id)).length
+                  const dayDone  = dayItems.filter(isPosted).length
                   const allDone  = dayDone === dayItems.length
 
                   return (
@@ -1165,19 +1253,25 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                       {/* Event rows */}
                       <div className="ml-[52px] divide-y rounded-lg border bg-background overflow-hidden">
                         {dayItems.map(item => {
-                          const checked  = checkedByItem.has(item.id)
+                          const state    = stateOf(item)
+                          const posted   = state === 'posted'
+                          const missed   = state === 'missed'
+                          const note     = noteOf(item)
                           const editable = isEditable(item)
                           const primaryColor = item.companies[0]?.color ?? '#64748b'
 
                           return (
                             <div key={item.id} className={cn('group flex items-center gap-3 px-3 py-2.5 transition-colors',
-                              checked ? 'bg-muted/40' : 'hover:bg-accent/40')}>
-                              {/* Status toggle */}
+                              posted ? 'bg-muted/40' : missed ? 'bg-red-50' : 'hover:bg-accent/40')}>
+                              {/* Status toggle (marks posted) */}
                               <button type="button" disabled={busyItemId === item.id} onClick={() => toggleItem(item)}
-                                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+                                aria-label={posted ? 'Mark as not posted' : 'Mark as posted'}
+                                className={cn('flex-shrink-0 transition-colors',
+                                  posted ? 'text-green-600' : missed ? 'text-red-500 hover:text-green-600' : 'text-muted-foreground hover:text-foreground')}>
                                 {busyItemId === item.id ? <Loader2 className="h-4 w-4 animate-spin" />
-                                  : checked ? <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                            : <Circle className="h-4 w-4" />}
+                                  : posted ? <CheckCircle2 className="h-4 w-4" />
+                                  : missed ? <XCircle className="h-4 w-4" />
+                                           : <Circle className="h-4 w-4" />}
                               </button>
 
                               {/* Company dot(s) */}
@@ -1193,16 +1287,30 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                                 {item.channel}
                               </span>
 
-                              {/* Content */}
-                              <span
-                                onClick={() => editable && openEditDialog(item)}
-                                className={cn('min-w-0 flex-1 truncate text-sm', editable && 'cursor-pointer hover:underline',
-                                  checked && 'text-muted-foreground line-through decoration-2')}>
-                                {item.content}
+                              {/* Content + reason */}
+                              <span className="flex min-w-0 flex-1 flex-col">
+                                <span
+                                  onClick={() => editable && openEditDialog(item)}
+                                  className={cn('truncate text-sm', editable && 'cursor-pointer hover:underline',
+                                    posted && 'text-muted-foreground line-through decoration-2',
+                                    missed && 'text-red-700')}>
+                                  {item.content}
+                                </span>
+                                {missed && (
+                                  <button type="button" onClick={() => openReasonDialog(item)}
+                                    className={cn('mt-0.5 flex items-center gap-1 text-left text-[11px] transition-colors hover:underline',
+                                      note ? 'text-red-700' : 'text-red-500/80')}>
+                                    <Pencil className="h-3 w-3 flex-shrink-0" />
+                                    <span className="truncate">{note ? note : 'Add reason'}</span>
+                                  </button>
+                                )}
                               </span>
 
                               {/* Badges */}
                               <div className="flex flex-shrink-0 items-center gap-1.5">
+                                {missed && (
+                                  <span className="rounded bg-red-600 px-1 text-[9px] font-bold uppercase tracking-wide text-white">Missed</span>
+                                )}
                                 {item.recurrence_group_id && <Repeat className="h-3.5 w-3.5 text-muted-foreground" />}
                                 {item.is_highlighted && <Sparkles className="h-3.5 w-3.5" style={{ color: primaryColor }} />}
                                 {editable && (
@@ -1335,6 +1443,48 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                 </Button>
               </div>
             </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Missed Reason Dialog ─────────────────────────────────────── */}
+      <Dialog open={!!reasonItem} onOpenChange={open => !open && setReasonItem(null)}>
+        <DialogContent className="force-light-theme max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <XCircle className="h-4 w-4 text-red-600" /> Why was this missed?
+            </DialogTitle>
+          </DialogHeader>
+          {reasonItem && (
+            <div className="space-y-4">
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                <p className="font-semibold">{reasonItem.content}</p>
+                <p className="text-xs text-muted-foreground">
+                  {fullDateFormatter.format(parseDate(reasonItem.date))} · {reasonItem.channel}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Reason (optional)</Label>
+                <Textarea
+                  value={reasonText}
+                  onChange={e => setReasonText(e.target.value)}
+                  placeholder="e.g. client delayed approval, asset not ready…"
+                  rows={3}
+                  autoFocus
+                />
+                <p className="text-xs text-muted-foreground">
+                  Marking it posted later clears this automatically.
+                </p>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="outline" className="flex-1" onClick={handleClearReason} disabled={savingReason}>
+                  Clear
+                </Button>
+                <Button type="button" className="flex-1" onClick={handleSaveReason} disabled={savingReason}>
+                  {savingReason ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save reason'}
+                </Button>
+              </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>
