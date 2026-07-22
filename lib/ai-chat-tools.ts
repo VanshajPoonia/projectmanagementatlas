@@ -78,6 +78,15 @@ export const AI_CHAT_TOOLS = [
   },
 ]
 
+// The assistant has two modes. 'workspace' answers from the user's real data via
+// the tools above; 'web' is general chat. (Internet tools arrive in a later slice —
+// for now 'web' simply exposes no data tools so the two intents don't mix.)
+export type ChatMode = 'workspace' | 'web'
+
+export function toolsForMode(mode: ChatMode) {
+  return mode === 'web' ? [] : AI_CHAT_TOOLS
+}
+
 async function getTasks(ctx: ToolContext, args: any) {
   const { supabase, userId } = ctx
   const limit = Math.min(Math.max(Number(args?.limit) || 25, 1), 50)

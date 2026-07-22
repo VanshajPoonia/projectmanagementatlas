@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Bot, X, Send, Trash2, Loader2 } from 'lucide-react'
+import { Bot, X, Send, Trash2, Loader2, Globe, FolderKanban } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -14,9 +14,13 @@ interface AiMessage {
   content: string
 }
 
+type ChatMode = 'workspace' | 'web'
+
 interface AiChatWidgetProps {
   userId: string
 }
+
+const MODE_KEY = 'ai_chat_mode'
 
 export default function AiChatWidget({ userId }: AiChatWidgetProps) {
   const [open, setOpen] = useState(false)
@@ -24,9 +28,22 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [mode, setMode] = useState<ChatMode>('workspace')
   const supabase = createClient()
   const endRef = useRef<HTMLDivElement>(null)
   const loadedRef = useRef(false)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(MODE_KEY)
+      if (saved === 'web' || saved === 'workspace') setMode(saved)
+    } catch { /* ignore */ }
+  }, [])
+
+  const changeMode = (next: ChatMode) => {
+    setMode(next)
+    try { localStorage.setItem(MODE_KEY, next) } catch { /* ignore */ }
+  }
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true)
@@ -64,7 +81,7 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
       const res = await fetch('/api/ai-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, mode }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to reach the assistant')
@@ -101,7 +118,9 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
               </div>
               <div>
                 <p className="text-sm font-semibold leading-tight">Assistant</p>
-                <p className="text-xs text-muted-foreground leading-tight">Ask about your tasks or anything else</p>
+                <p className="text-xs text-muted-foreground leading-tight">
+                  {mode === 'web' ? 'General questions' : 'Your tasks, boards & calendar'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -127,6 +146,28 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
             </div>
           </div>
 
+          {/* Mode toggle */}
+          <div className="flex items-center gap-1 border-b p-2">
+            {([
+              { id: 'workspace' as ChatMode, label: 'Workspace', Icon: FolderKanban },
+              { id: 'web' as ChatMode, label: 'Ask anything', Icon: Globe },
+            ]).map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => changeMode(id)}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
+                  mode === id ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent'
+                )}
+                title={id === 'web' ? 'General questions, not tied to your workspace data' : 'Answers grounded in your tasks, boards and calendar'}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="flex-1 space-y-3 overflow-y-auto p-3">
             {loadingHistory && (
               <div className="flex justify-center py-6">
@@ -135,7 +176,9 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
             )}
             {!loadingHistory && messages.length === 0 && (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                Ask me anything — what's due this week, what's on a board, or general questions.
+                {mode === 'web'
+                  ? 'Ask me anything — general questions on any topic.'
+                  : "Ask about your work — what's due this week, what's on a board, or your marketing calendar."}
               </div>
             )}
             {messages.map((m) => (
@@ -167,7 +210,7 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message..."
+              placeholder={mode === 'web' ? 'Ask anything…' : 'Ask about your work…'}
               rows={1}
               className="max-h-24 min-h-9 flex-1 resize-none py-2"
               disabled={sending}

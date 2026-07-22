@@ -18,11 +18,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You've hit the hourly message limit — try again in a bit." }, { status: 429 })
     }
 
-    const { message } = await request.json()
+    const { message, mode: rawMode } = await request.json()
     if (typeof message !== 'string' || !message.trim()) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
     const content = message.trim().slice(0, MAX_MESSAGE_LENGTH)
+    const mode = rawMode === 'web' ? 'web' : 'workspace'
+
+    // Tighter, separate cap on "Ask anything" mode so the shared free quota can't
+    // be drained from one account (and it's where costlier features will land).
+    if (mode === 'web' && !checkRateLimit(`ai-chat-web:${user.id}`, 25, 60 * 60 * 1000)) {
+      return NextResponse.json({ error: "You've hit the hourly limit for Ask-anything mode — try again in a bit." }, { status: 429 })
+    }
 
     const { data: recent } = await supabase
       .from('ai_chat_messages')
@@ -36,7 +43,7 @@ export async function POST(request: Request) {
 
     let reply: string
     try {
-      reply = await callGemini([...history, { role: 'user', content }], { supabase, userId: user.id })
+      reply = await callGemini([...history, { role: 'user', content }], { supabase, userId: user.id }, { mode })
     } catch (err) {
       console.error('Gemini call failed:', err)
       const isQuota = err instanceof GeminiError && err.status === 429
