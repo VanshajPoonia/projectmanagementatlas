@@ -215,6 +215,140 @@ async function getMarketingCalendar(ctx: ToolContext, args: any) {
   return { count: items.length, items }
 }
 
+// ── Internet tools (only exposed in 'web' mode) ───────────────────────────────
+// These don't touch Supabase/RLS — they reach the public internet. They're kept
+// separate from the data tools and only handed to the model in 'web' mode so the
+// two intents (your private workspace data vs. the open web) never mix in one turn.
+
+export const WEB_TOOLS = [
+  {
+    name: 'web_search',
+    description:
+      'Search the public web for current, real-world information (news, facts, docs, prices, how-tos). Use this whenever the answer depends on up-to-date or external knowledge rather than the user\'s workspace. Returns a short answer plus source results with links.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The search query.' },
+        max_results: { type: 'number', description: 'How many results to return (1-8, default 5).' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'fetch_url',
+    description:
+      'Fetch the readable text of one specific public web page by its URL, when the user pastes a link or a search result needs to be read in full. Public http(s) pages only.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Absolute http(s) URL of a public web page.' },
+      },
+      required: ['url'],
+    },
+  },
+]
+
+export type ChatMode = 'workspace' | 'web'
+
+// Which function declarations the model sees, per mode. Files/images are passed as
+// input parts regardless of mode, so they aren't gated here.
+export function toolsForMode(mode: ChatMode) {
+  return mode === 'web' ? WEB_TOOLS : AI_CHAT_TOOLS
+}
+
+async function webSearch(args: any) {
+  const key = process.env.TAVILY_API_KEY
+  if (!key) {
+    return { error: 'Web search is not configured yet — an admin needs to add a TAVILY_API_KEY.' }
+  }
+  const query = String(args?.query ?? '').trim().slice(0, 400)
+  if (!query) return { error: 'No search query was provided.' }
+  const maxResults = Math.min(Math.max(Number(args?.max_results) || 5, 1), 8)
+
+  try {
+    const res = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: key,
+        query,
+        search_depth: 'basic',
+        max_results: maxResults,
+        include_answer: true,
+      }),
+      signal: AbortSignal.timeout(12000),
+    })
+    if (!res.ok) return { error: `Web search failed (${res.status}).` }
+    const data = await res.json()
+    return {
+      answer: data?.answer ?? null,
+      results: (data?.results ?? []).slice(0, maxResults).map((r: any) => ({
+        title: r?.title,
+        url: r?.url,
+        snippet: typeof r?.content === 'string' ? r.content.slice(0, 500) : undefined,
+      })),
+    }
+  } catch (err) {
+    console.error('web_search failed:', err)
+    return { error: 'Web search timed out or is unavailable.' }
+  }
+}
+
+// Block obvious SSRF targets (loopback, private ranges, link-local, cloud metadata).
+// Not bulletproof against DNS rebinding, but adequate for an internal assistant.
+function isBlockedHost(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, '')
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') || h.includes('metadata')) return true
+  const v4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (v4) {
+    const a = Number(v4[1]), b = Number(v4[2])
+    if (a === 0 || a === 10 || a === 127) return true
+    if (a === 192 && b === 168) return true
+    if (a === 169 && b === 254) return true
+    if (a === 172 && b >= 16 && b <= 31) return true
+  }
+  if (h === '::1' || h.startsWith('fe80') || h.startsWith('fc') || h.startsWith('fd')) return true
+  return false
+}
+
+async function fetchUrl(args: any) {
+  const raw = String(args?.url ?? '').trim()
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return { error: 'That is not a valid URL.' }
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return { error: 'Only http(s) URLs can be fetched.' }
+  if (isBlockedHost(url.hostname)) return { error: 'That host is not allowed.' }
+
+  try {
+    const res = await fetch(url.toString(), {
+      redirect: 'follow',
+      headers: { 'User-Agent': 'ProjectManagerBot/1.0', Accept: 'text/html,text/plain,*/*' },
+      signal: AbortSignal.timeout(12000),
+    })
+    if (!res.ok) return { error: `Could not fetch the page (${res.status}).` }
+    const ctype = res.headers.get('content-type') ?? ''
+    if (!/text\/html|text\/plain|application\/(xhtml|json)/.test(ctype)) {
+      return { error: `Unsupported content type (${ctype || 'unknown'}).` }
+    }
+    const html = (await res.text()).slice(0, 400_000)
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 6000)
+    return { url: url.toString(), text: text || '(no readable text found)' }
+  } catch (err) {
+    console.error('fetch_url failed:', err)
+    return { error: 'Fetching that page timed out or failed.' }
+  }
+}
+
 export async function executeTool(name: string, args: any, ctx: ToolContext): Promise<any> {
   try {
     switch (name) {
@@ -226,6 +360,10 @@ export async function executeTool(name: string, args: any, ctx: ToolContext): Pr
         return await getPersonalTasks(ctx, args)
       case 'get_marketing_calendar':
         return await getMarketingCalendar(ctx, args)
+      case 'web_search':
+        return await webSearch(args)
+      case 'fetch_url':
+        return await fetchUrl(args)
       default:
         return { error: `Unknown tool: ${name}` }
     }
