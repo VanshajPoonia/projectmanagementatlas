@@ -14,7 +14,7 @@
 // gap manually by cross-referencing against the caller's RLS-correct visible
 // board list before returning anything.
 
-import { getAssigneeIds, getAssigneeNames } from './assignees'
+import { getAssigneeNames, isTaskOwnedBy } from './assignees'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from './task-status'
 
 export interface ToolContext {
@@ -26,7 +26,7 @@ export const AI_CHAT_TOOLS = [
   {
     name: 'get_tasks',
     description:
-      "Lists tasks from the team's Kanban boards — title, status, priority, due date, board, assignees. Use for questions about tasks, what's due, overdue work, or a specific board's contents.",
+      "Lists tasks from the team's Kanban boards — title, status, priority, due date, board, assignees. Use for questions about tasks, what's due, overdue work, or a specific board's contents. Subtasks are included; they carry a `parent_task` field naming the task they belong to, and should be described in relation to it.",
     parameters: {
       type: 'object',
       properties: {
@@ -88,7 +88,7 @@ async function getTasks(ctx: ToolContext, args: any) {
   const { data: rows, error } = await supabase
     .from('tasks')
     .select(
-      'id, title, status, priority, due_date, created_by, assigned_to, task_assignees(user_id), column:columns(board_id, title)'
+      'id, title, status, priority, due_date, created_by, assigned_to, parent_task_id, task_assignees(user_id), column:columns(board_id, title)'
     )
     .is('deleted_at', null)
     .order('due_date', { ascending: true, nullsFirst: false })
@@ -106,10 +106,9 @@ async function getTasks(ctx: ToolContext, args: any) {
   const tasks = (rows ?? [])
     .filter((t: any) => t.column?.board_id && boardTitleById.has(t.column.board_id))
     .filter((t: any) => {
-      if (args?.scope !== 'all') {
-        const mine = getAssigneeIds(t).includes(userId) || t.created_by === userId
-        if (!mine) return false
-      }
+      // Same ownership rule as both dashboards, so the assistant's "my tasks" and the
+      // user's own screen never disagree.
+      if (args?.scope !== 'all' && !isTaskOwnedBy(t, userId)) return false
       if (args?.status === 'overdue') {
         const overdue = t.due_date && new Date(t.due_date) < now && getNormalizedTaskStatus(t) !== 'done'
         if (!overdue) return false
@@ -122,17 +121,32 @@ async function getTasks(ctx: ToolContext, args: any) {
       return true
     })
     .slice(0, limit)
-    .map((t: any) => ({
-      id: t.id,
-      title: t.title,
-      status: getTaskStatusLabel(t),
-      priority: t.priority,
-      due_date: t.due_date,
-      board: boardTitleById.get(t.column.board_id),
-      assignees: getAssigneeNames(t, profileList),
-    }))
 
-  return { count: tasks.length, tasks }
+  // Parent titles are fetched separately rather than embedded: parent_task_id is a
+  // self-referencing foreign key (where PostgREST's `!hint` is ambiguous about
+  // direction), and the 200-row window above can easily exclude a subtask's parent,
+  // which would leave the breadcrumb null even if the embed did resolve correctly.
+  const parentIds = Array.from(new Set(tasks.map((t: any) => t.parent_task_id).filter(Boolean)))
+  const parentTitleById = new Map<string, string>()
+  if (parentIds.length > 0) {
+    const { data: parentRows } = await supabase.from('tasks').select('id, title').in('id', parentIds)
+    for (const row of parentRows ?? []) parentTitleById.set(row.id, row.title)
+  }
+
+  const result = tasks.map((t: any) => ({
+    id: t.id,
+    title: t.title,
+    status: getTaskStatusLabel(t),
+    priority: t.priority,
+    due_date: t.due_date,
+    board: boardTitleById.get(t.column.board_id),
+    assignees: getAssigneeNames(t, profileList),
+    // Present only on subtasks, so the assistant can say "the 'Send draft' subtask
+    // of 'Q3 launch'" instead of quoting a title that reads as standalone work.
+    ...(t.parent_task_id ? { parent_task: parentTitleById.get(t.parent_task_id) ?? null } : {}),
+  }))
+
+  return { count: result.length, tasks: result }
 }
 
 async function getBoards(ctx: ToolContext) {

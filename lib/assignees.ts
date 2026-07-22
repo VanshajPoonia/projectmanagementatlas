@@ -32,3 +32,20 @@ export function getAssignees(task: any, users: any[]): any[] {
 export function getAssigneeNames(task: any, users: any[]): string[] {
   return getAssignees(task, users).map((u) => u.full_name || u.email)
 }
+
+/**
+ * Whether a task belongs in `userId`'s personal queue — the shared rule behind the
+ * user dashboard, the admin dashboard, and the AI assistant's "mine" scope.
+ *
+ * Top-level tasks count when assigned to you *or* created by you: raising a task is a
+ * claim on it. Subtasks count only when assigned, because adding a subtask to someone
+ * else's task is a contribution to their work, not a claim on it — without that
+ * distinction, anyone who breaks down a colleague's task inherits all the pieces.
+ */
+export function isTaskOwnedBy(task: any, userId: string): boolean {
+  const assignedToId = typeof task?.assigned_to === 'string' ? task.assigned_to : task?.assigned_to?.id
+  const isAssigned = assignedToId === userId || getAssigneeIds(task).includes(userId)
+
+  if (task?.parent_task_id) return isAssigned
+  return task?.created_by === userId || isAssigned
+}

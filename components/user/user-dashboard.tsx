@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home, Megaphone, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home, Megaphone, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, ChevronRight, CornerDownRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -27,6 +27,7 @@ import GlobalSearch from '../search/global-search'
 import { cn } from '@/lib/utils'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
+import { isTaskOwnedBy } from '@/lib/assignees'
 
 interface UserDashboardProps {
   user: any
@@ -66,16 +67,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const canUseMarketingCalendar = isKaylaMarketingUser || isAdmin
   const defaultAccentColor = isKaylaMarketingUser ? '#e91e8c' : '#111111'
   const { color: accentColor, setColor: setAccentColor, reset: resetAccentColor, style: accentStyle } = useAccentTheme(user.id, defaultAccentColor)
-  const myTasks = useMemo(() => {
-    return tasks.filter((task) => {
-      const assignedToId = typeof task.assigned_to === 'string' ? task.assigned_to : task.assigned_to?.id
-      const assigneeRows = Array.isArray(task.task_assignees) ? task.task_assignees : []
+  // The calendar plots deliverables by due date and lets them be rescheduled; subtasks
+  // carry no due date of their own, so they'd only add noise. Mirrors the admin shell.
+  const topLevelTasks = useMemo(() => tasks.filter((task: any) => !task.parent_task_id), [tasks])
 
-      return task.created_by === user.id
-        || assignedToId === user.id
-        || assigneeRows.some((assignee: any) => assignee.user_id === user.id)
-    })
-  }, [tasks, user.id])
+  const myTasks = useMemo(() => tasks.filter((task) => isTaskOwnedBy(task, user.id)), [tasks, user.id])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -258,6 +254,12 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                       >
                         <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-all cursor-pointer hover:shadow-md hover:border-primary/30">
                           <div className="flex-1">
+                            {task.parent?.title && (
+                              <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                                <CornerDownRight className="w-3 h-3 flex-shrink-0" />
+                                {task.parent.title}
+                              </p>
+                            )}
                             <div className="flex items-center gap-2">
                               <h4 className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">{task.title}</h4>
                               <Badge
@@ -329,6 +331,12 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                     >
                       <div className="flex items-center justify-between gap-3 p-4 border rounded-lg bg-secondary/40 hover:bg-accent transition-all cursor-pointer hover:shadow-md hover:border-primary/30">
                         <div className="flex-1 min-w-0">
+                          {task.parent?.title && (
+                            <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                              <CornerDownRight className="w-3 h-3 flex-shrink-0" />
+                              {task.parent.title}
+                            </p>
+                          )}
                           <div className="flex items-center gap-2">
                             <h4 className="min-w-0 break-words font-medium text-muted-foreground line-through decoration-2 [overflow-wrap:anywhere]">{task.title}</h4>
                             <Badge className="bg-green-600">
@@ -372,7 +380,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
           </TabsContent>
 
           <TabsContent value="calendar">
-            <CalendarView tasks={tasks} users={users} isAdmin={isAdmin} />
+            <CalendarView tasks={topLevelTasks} users={users} isAdmin={isAdmin} />
           </TabsContent>
 
           {canUseMarketingCalendar && (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone, Bookmark, SlidersHorizontal, ChevronLeft, ShieldCheck } from 'lucide-react'
@@ -35,6 +35,12 @@ interface AdminDashboardProps {
 
 export default function AdminDashboard({ user, users, boards, tasks }: AdminDashboardProps) {
   const isSuperAdmin = user.role === 'super_admin'
+
+  // Aggregate views count deliverables, not checklist items, so they stay on
+  // top-level tasks. Counting subtasks here would change every historical report
+  // number the moment someone breaks a task down.
+  const topLevelTasks = useMemo(() => tasks.filter((task: any) => !task.parent_task_id), [tasks])
+
   const [activeTab, setActiveTabState] = useState('overview')
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true
@@ -231,12 +237,12 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
 
             <TabsContent value="overview" className="space-y-6">
               <DashboardWindow id="admin-overview" title="Overview" description="Quick overview of your project management" icon={<LayoutDashboard className="h-4 w-4" />}>
-                <TaskOverview tasks={tasks} users={users} />
+                <TaskOverview tasks={topLevelTasks} users={users} />
               </DashboardWindow>
             </TabsContent>
 
             <TabsContent value="calendar">
-              <CalendarView tasks={tasks} users={users} isAdmin />
+              <CalendarView tasks={topLevelTasks} users={users} isAdmin />
             </TabsContent>
 
             <TabsContent value="marketing">
@@ -244,7 +250,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsContent>
 
             <TabsContent value="reports">
-              <ReportsView tasks={tasks} users={users} boards={boards} />
+              <ReportsView tasks={topLevelTasks} users={users} boards={boards} />
             </TabsContent>
 
             <TabsContent value="boards">
