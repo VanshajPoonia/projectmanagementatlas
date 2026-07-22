@@ -1,4 +1,4 @@
-import { AI_CHAT_TOOLS, executeTool, type ToolContext } from './ai-chat-tools'
+import { AI_CHAT_TOOLS, executeTool, toolsForMode, type ToolContext, type ChatMode } from './ai-chat-tools'
 
 // Gemini free tier: this key is shared across every user of the app, and the
 // daily request cap is shared too (not per-user). We don't pre-track that quota
@@ -8,11 +8,13 @@ import { AI_CHAT_TOOLS, executeTool, type ToolContext } from './ai-chat-tools'
 // Model naming: Google regularly sunsets older model versions for new API keys
 // (2.5-flash-lite already 404s as of mid-2026). If this model starts 404ing,
 // check `GET /v1beta/models?key=...` for the current lineup before guessing.
-export const AI_CHAT_MODEL = 'gemini-3.1-flash-lite'
+export const AI_CHAT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite'
 
 export const AI_CHAT_SYSTEM_PROMPT = `You are the built-in assistant for "Project Manager," an internal project management web app. It has: Kanban-style task boards with customizable columns/statuses, a shared team calendar (task due dates), a marketing content calendar (channels, companies, recurring events), private personal tasks, direct chat between teammates, bookmarks, and reports.
 
 You have tools to look up the current user's real data: get_tasks (Kanban tasks across boards), get_boards, get_personal_tasks (their private to-do list), and get_marketing_calendar. Use them whenever a question is about actual tasks, due dates, boards, or the marketing calendar — don't guess or make up data. If a tool comes back empty or with an error, say so plainly rather than inventing an answer. For anything else, help with general questions and how to use the app. Keep answers concise.`
+
+export const AI_CHAT_SYSTEM_PROMPT_WEB = `You are a helpful general-purpose assistant embedded in the "Project Manager" web app, currently in "Ask anything" mode. Answer questions on any topic, not just this app. Be accurate and concise, and if a question needs very current information you may not have, say so rather than guessing.`
 
 export interface ChatTurn {
   role: 'user' | 'assistant'
@@ -36,11 +38,17 @@ const MAX_TOOL_ROUNDS = 4
 // (parts, ids, signatures and all) rather than reconstructing it. Multiple
 // functionCall parts can arrive in one turn (parallel calls); their responses
 // all go back together in a single `role: 'function'` turn.
-export async function callGemini(history: ChatTurn[], toolContext: ToolContext): Promise<string> {
+export async function callGemini(
+  history: ChatTurn[],
+  toolContext: ToolContext,
+  opts: { mode?: ChatMode } = {}
+): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new GeminiError('GEMINI_API_KEY is not configured', 500)
   }
+
+  const mode: ChatMode = opts.mode === 'web' ? 'web' : 'workspace'
 
   const contents: any[] = history.map((turn) => ({
     role: turn.role === 'assistant' ? 'model' : 'user',
@@ -48,9 +56,15 @@ export async function callGemini(history: ChatTurn[], toolContext: ToolContext):
   }))
 
   const today = new Date().toISOString().slice(0, 10)
+  const basePrompt = mode === 'web' ? AI_CHAT_SYSTEM_PROMPT_WEB : AI_CHAT_SYSTEM_PROMPT
   const systemInstruction = {
-    parts: [{ text: `${AI_CHAT_SYSTEM_PROMPT}\n\nToday's date is ${today}.` }],
+    parts: [{ text: `${basePrompt}\n\nToday's date is ${today}.` }],
   }
+
+  // Web mode currently exposes no tools (general chat); omit the field entirely
+  // rather than sending an empty declaration list.
+  const fnDecls = toolsForMode(mode)
+  const tools = fnDecls.length > 0 ? [{ functionDeclarations: fnDecls }] : undefined
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const res = await fetch(
@@ -61,7 +75,7 @@ export async function callGemini(history: ChatTurn[], toolContext: ToolContext):
         body: JSON.stringify({
           systemInstruction,
           contents,
-          tools: [{ functionDeclarations: AI_CHAT_TOOLS }],
+          ...(tools ? { tools } : {}),
           generationConfig: {
             temperature: 0.7,
             maxOutputTokens: 1024,
@@ -112,3 +126,5 @@ export async function callGemini(history: ChatTurn[], toolContext: ToolContext):
 
   throw new GeminiError('Gemini did not produce a final answer in time', 502)
 }
+
+export { AI_CHAT_TOOLS }
