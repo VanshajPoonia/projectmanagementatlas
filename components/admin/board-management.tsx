@@ -316,7 +316,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
               </div>
               {isPrivate && (
                 <div className="space-y-1.5 pt-1">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Who can see this board (admins always have access)</p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Only you and the people you pick can see this board — other admins can&apos;t</p>
                   <div className="max-h-40 overflow-y-auto rounded border divide-y">
                     {allUsers.map(u => (
                       <label key={u.id} className="flex items-center gap-2 px-3 py-2 hover:bg-accent cursor-pointer text-sm">
@@ -408,7 +408,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                 </div>
                 {isPrivate && (
                   <div className="space-y-1.5 pt-1">
-                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Who can see this board (admins always have access)</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Only you and the people you pick can see this board — other admins can&apos;t</p>
                     <div className="max-h-40 overflow-y-auto rounded border divide-y">
                       {allUsers.map(u => (
                         <label key={u.id} className="flex items-center gap-2 px-3 py-2 hover:bg-accent cursor-pointer text-sm">
