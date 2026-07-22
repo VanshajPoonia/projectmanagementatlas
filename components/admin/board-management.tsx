@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette, Archive, ArchiveRestore, Globe, Lock, Users } from 'lucide-react'
+import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette, Archive, ArchiveRestore, Globe, Lock, Users, ChevronDown, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import Link from 'next/link'
@@ -22,6 +22,7 @@ interface BoardManagementProps {
 export default function BoardManagement({ boards: initialBoards }: BoardManagementProps) {
   const [boards, setBoards] = useState(initialBoards)
   const [archivedBoards, setArchivedBoards] = useState<any[]>([])
+  const [showArchived, setShowArchived] = useState(false)
   const [open, setOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editingBoard, setEditingBoard] = useState<any>(null)
@@ -523,10 +524,17 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
 
       {archivedBoards.length > 0 && (
         <div className="space-y-3 pt-4">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => setShowArchived(v => !v)}
+            className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            aria-expanded={showArchived}
+          >
+            {showArchived ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             <Archive className="w-4 h-4" />
             Archived boards ({archivedBoards.length}) — only admins can see these
-          </div>
+          </button>
+          {showArchived && (
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {archivedBoards.map((board) => (
               <Card key={board.id} className="flex items-center justify-between gap-3 p-4 bg-muted/40">
@@ -545,6 +553,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
               </Card>
             ))}
           </div>
+          )}
         </div>
       )}
     </div>
