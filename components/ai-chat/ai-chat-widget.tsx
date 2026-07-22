@@ -119,7 +119,7 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
               <div>
                 <p className="text-sm font-semibold leading-tight">Assistant</p>
                 <p className="text-xs text-muted-foreground leading-tight">
-                  {mode === 'web' ? 'General questions' : 'Your tasks, boards & calendar'}
+                  {mode === 'web' ? 'Web + general questions' : 'Your tasks, boards & calendar'}
                 </p>
               </div>
             </div>
@@ -160,7 +160,7 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
                   'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors',
                   mode === id ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent'
                 )}
-                title={id === 'web' ? 'General questions, not tied to your workspace data' : 'Answers grounded in your tasks, boards and calendar'}
+                title={id === 'web' ? 'General questions with live web search' : 'Answers grounded in your tasks, boards and calendar'}
               >
                 <Icon className="h-3.5 w-3.5" />
                 {label}
@@ -177,7 +177,7 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
             {!loadingHistory && messages.length === 0 && (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
                 {mode === 'web'
-                  ? 'Ask me anything — general questions on any topic.'
+                  ? 'Ask me anything — I can search the web or read a link you paste.'
                   : "Ask about your work — what's due this week, what's on a board, or your marketing calendar."}
               </div>
             )}

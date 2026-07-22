@@ -14,7 +14,9 @@ export const AI_CHAT_SYSTEM_PROMPT = `You are the built-in assistant for "Projec
 
 You have tools to look up the current user's real data: get_tasks (Kanban tasks across boards), get_boards, get_personal_tasks (their private to-do list), and get_marketing_calendar. Use them whenever a question is about actual tasks, due dates, boards, or the marketing calendar — don't guess or make up data. If a tool comes back empty or with an error, say so plainly rather than inventing an answer. For anything else, help with general questions and how to use the app. Keep answers concise.`
 
-export const AI_CHAT_SYSTEM_PROMPT_WEB = `You are a helpful general-purpose assistant embedded in the "Project Manager" web app, currently in "Ask anything" mode. Answer questions on any topic, not just this app. Be accurate and concise, and if a question needs very current information you may not have, say so rather than guessing.`
+export const AI_CHAT_SYSTEM_PROMPT_WEB = `You are a helpful general-purpose assistant embedded in the "Project Manager" web app, currently in "Ask anything" mode. Answer questions on any topic, not just this app.
+
+You can use web_search to look things up on the public internet and fetch_url to read a specific page the user links. Prefer searching whenever the answer depends on current events, real-world facts, prices, or anything you're unsure about, rather than guessing — and cite the source links you used. Keep answers concise and well-structured.`
 
 export interface ChatTurn {
   role: 'user' | 'assistant'
