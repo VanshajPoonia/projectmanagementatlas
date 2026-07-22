@@ -45,15 +45,19 @@ export async function checkDueDateReminders() {
       const daysRemaining = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
       
       for (const assignee of taskAssignees) {
-        if (assignee.profiles) {
-          await sendTaskDueSoonEmail(
-            assignee.profiles.email,
-            assignee.profiles.full_name || assignee.profiles.email,
-            task.title,
-            task.due_date,
-            daysRemaining
-          )
-        }
+        // Supabase types an embedded relation as an array even when the foreign key is
+        // to-one, so `assignee.profiles` is typed `{...}[]` while arriving as an object.
+        // Normalize both shapes rather than asserting one of them.
+        const profile: any = Array.isArray(assignee.profiles) ? assignee.profiles[0] : assignee.profiles
+        if (!profile?.email) continue
+
+        await sendTaskDueSoonEmail(
+          profile.email,
+          profile.full_name || profile.email,
+          task.title,
+          task.due_date,
+          daysRemaining
+        )
       }
     }
     
