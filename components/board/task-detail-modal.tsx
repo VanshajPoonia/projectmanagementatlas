@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { findColumnForStatus } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
+import SubtaskList from './subtask-list'
 
 interface TaskDetailModalProps {
   board?: any
@@ -33,9 +34,15 @@ interface TaskDetailModalProps {
   isAdmin?: boolean
   currentUserId: string
   initialTab?: 'comments' | 'attachments' | 'links' | 'activity'
+  /**
+   * Fired when subtasks change. Separate from `onUpdate` because callers wire that to
+   * close the modal — ticking a subtask should refresh the board underneath, not
+   * dismiss the task you're working in.
+   */
+  onSubtaskChange?: () => void
 }
 
-export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId, initialTab = 'comments' }: TaskDetailModalProps) {
+export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId, initialTab = 'comments', onSubtaskChange }: TaskDetailModalProps) {
   const supabase = createClient()
   const taskStatuses = useTaskStatuses()
   const [task, setTask] = useState<any>(null)
@@ -944,6 +951,24 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               </>
             )}
           </div>
+
+          {/* Subtasks — only on top-level tasks; nesting is capped at one level (060). */}
+          {task && !task.parent_task_id && (
+            <div className="border-t pt-4">
+              <SubtaskList
+                parentTask={task}
+                currentUserId={currentUserId}
+                canEdit={canEdit}
+                users={users}
+                board={board}
+                currentUser={currentUser}
+                onChange={() => {
+                  loadActivity()
+                  onSubtaskChange?.()
+                }}
+              />
+            </div>
+          )}
 
           {/* Attachments, Comments, and Activity */}
           <Tabs

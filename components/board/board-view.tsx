@@ -285,6 +285,27 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     setColorPickerColumn(null)
   }
 
+  // Subtasks are rows in the same `tasks` table and arrive in the same column payload
+  // as their parents. They're rendered nested inside the parent card, so they must be
+  // kept out of the column lists — otherwise every subtask also shows up as a loose
+  // card and inflates the per-column counts.
+  const boardTasks = (column: any) =>
+    (column.tasks || []).filter((task: any) => !task.deleted_at && !task.parent_task_id)
+
+  // Parent id -> its subtasks, so a card can show "3/5 done" without another query.
+  const subtasksByParent = useMemo(() => {
+    const map = new Map<string, any[]>()
+    for (const column of columns) {
+      for (const task of column.tasks || []) {
+        if (!task.parent_task_id || task.deleted_at) continue
+        const existing = map.get(task.parent_task_id)
+        if (existing) existing.push(task)
+        else map.set(task.parent_task_id, [task])
+      }
+    }
+    return map
+  }, [columns])
+
   const filterTasks = (tasks: any[]) => {
     return tasks.filter(task => {
       const taskDescription = cleanTaskDescription(task.description)
@@ -415,7 +436,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const exportVisibleTasksToCSV = () => {
     const headers = ['Board', 'Column', 'Title', 'Description', 'Assigned To', 'Priority', 'Status', 'Due Date', 'Tags']
     const rows = columns.flatMap((column) => {
-      const visibleTasks = sortTasks(filterTasks((column.tasks || []).filter((task: any) => !task.deleted_at)))
+      const visibleTasks = sortTasks(filterTasks(boardTasks(column)))
 
       return visibleTasks.map((task: any) => {
         const assigneeNames = getAssigneeNames(task, users)
@@ -661,7 +682,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             <div className="-mx-4 overflow-x-auto px-4 pb-6 snap-x snap-mandatory md:snap-none scroll-pl-4">
               <div className="flex items-start gap-4">
                 {columns.map((column) => {
-                  const visibleTasks = filterTasks((column.tasks || []).filter((task: any) => !task.deleted_at))
+                  const visibleTasks = filterTasks(boardTasks(column))
                     .sort((a: any, b: any) => a.position - b.position)
 
                   return (
@@ -741,6 +762,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                       users={users}
                                       board={board}
                                       columns={columns}
+                                      subtasks={subtasksByParent.get(task.id)}
                                       isDragging={snapshot.isDragging}
                                       onUpdate={refreshColumns}
                                     />
@@ -791,7 +813,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             )}
 
             {columns.map((column) => {
-              const columnTasks = filterTasks((column.tasks || []).filter((task: any) => !task.deleted_at))
+              const columnTasks = filterTasks(boardTasks(column))
               if (columnTasks.length === 0) return null
               
               return (

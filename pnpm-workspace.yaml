@@ -1,6 +1,10 @@
 allowBuilds:
-  '@tailwindcss/oxide': set this to true or false
-  sharp: set this to true or false
+  # pnpm regenerates this block with 'set this to true or false' placeholders, which
+  # makes `pnpm install` exit 1 on stricter pnpm versions (see 248b33c, then the 6bd65d2
+  # regression). Both packages need their postinstall to fetch a native binary: oxide is
+  # the Tailwind v4 CSS engine, sharp backs Next image optimization.
+  '@tailwindcss/oxide': true
+  sharp: true
 overrides:
   lodash: '>=4.18.1'
   ws: '>=8.21.0'

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar as CalendarPicker } from '@/components/ui/calendar'
-import { Calendar, User, MoreVertical, Tag, Clock, Repeat, History } from 'lucide-react'
+import { Calendar, User, MoreVertical, Tag, Clock, Repeat, History, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -34,11 +34,13 @@ interface TaskCardProps {
   users: any[]
   board?: any
   columns?: any[]
+  /** This task's subtasks, supplied by the board so the card can show progress. */
+  subtasks?: any[]
   isDragging?: boolean
   onUpdate?: () => void
 }
 
-export default function TaskCard({ task, isAdmin, currentUserId, users, board, columns, isDragging, onUpdate }: TaskCardProps) {
+export default function TaskCard({ task, isAdmin, currentUserId, users, board, columns, subtasks, isDragging, onUpdate }: TaskCardProps) {
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailInitialTab, setDetailInitialTab] = useState<'comments' | 'activity'>('comments')
   const [editingTitle, setEditingTitle] = useState(false)
@@ -235,6 +237,9 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
   }
   
   const daysRemaining = getDaysRemaining()
+
+  const subtaskCount = subtasks?.length ?? 0
+  const subtasksDone = (subtasks ?? []).filter((s: any) => getNormalizedTaskStatus(s) === 'done').length
   const getCountdownColor = () => {
     if (daysRemaining === null) return ''
     if (daysRemaining < 0) return 'text-red-600 bg-red-50 border-red-200'
@@ -408,6 +413,21 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
             )}
           </div>
 
+          {subtaskCount > 0 && (
+            <div className="flex items-center gap-2">
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-secondary">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-300"
+                  style={{ width: `${(subtasksDone / subtaskCount) * 100}%` }}
+                />
+              </div>
+              <span className="flex flex-shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                <ListChecks className="h-3 w-3" />
+                {subtasksDone}/{subtaskCount}
+              </span>
+            </div>
+          )}
+
           {daysRemaining !== null && (
             <Badge variant="outline" className={`gap-1 text-xs ${getCountdownColor()}`}>
               <Clock className="w-3 h-3" />
@@ -522,6 +542,8 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
           setDetailOpen(false)
           onUpdate?.()
         }}
+        // Refresh the board's rollup without dismissing the task being worked in.
+        onSubtaskChange={() => onUpdate?.()}
         board={board}
         isAdmin={isAdmin}
         currentUserId={currentUserId}
