@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone, Bookmark, SlidersHorizontal, ChevronLeft, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone, Bookmark, SlidersHorizontal, ChevronLeft, ShieldCheck, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import BoardManagement from './board-management'
@@ -18,6 +18,7 @@ import MarketingCalendar from '../marketing/marketing-calendar'
 import TaskNotificationToasts from '../notifications/task-notification-toasts'
 import AiChatWidget from '../ai-chat/ai-chat-widget'
 import DashboardWindow from '../dashboard/dashboard-window'
+import WorkNext from '../dashboard/work-next'
 import AccountSettings from '../account/account-settings'
 import ThemeToggle from '../theme-toggle'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
@@ -25,6 +26,7 @@ import MobileBottomNav, { type NavItem } from '../dashboard/mobile-bottom-nav'
 import GlobalSearch from '../search/global-search'
 import { gsap } from 'gsap'
 import { cn } from '@/lib/utils'
+import { isTaskOwnedBy } from '@/lib/assignees'
 
 interface AdminDashboardProps {
   user: any
@@ -41,6 +43,8 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   // number the moment someone breaks a task down.
   const topLevelTasks = useMemo(() => tasks.filter((task: any) => !task.parent_task_id), [tasks])
 
+  // The admin's own queue, by the same rule every other surface uses.
+  const myTasks = useMemo(() => tasks.filter((task: any) => isTaskOwnedBy(task, user.id)), [tasks, user.id])
   const [activeTab, setActiveTabState] = useState('overview')
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true
@@ -236,6 +240,15 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
+              <DashboardWindow
+                id="admin-work-next"
+                title="Work on next"
+                description="Ranked by deadline, priority, and what you've already started"
+                icon={<Sparkles className="h-4 w-4" />}
+              >
+                <WorkNext tasks={myTasks} basePath="/admin" />
+              </DashboardWindow>
+
               <DashboardWindow id="admin-overview" title="Overview" description="Quick overview of your project management" icon={<LayoutDashboard className="h-4 w-4" />}>
                 <TaskOverview tasks={topLevelTasks} users={users} />
               </DashboardWindow>

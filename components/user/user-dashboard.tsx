@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home, Megaphone, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, ChevronRight, CornerDownRight } from 'lucide-react'
+import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home, Megaphone, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, ChevronRight, Sparkles, CornerDownRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -18,6 +18,7 @@ import PersonalTasks from '../personal/personal-tasks'
 import BookmarksSection from '../bookmarks/bookmarks-section'
 import MarketingCalendar from '../marketing/marketing-calendar'
 import DashboardWindow from '../dashboard/dashboard-window'
+import WorkNext from '../dashboard/work-next'
 import AccountSettings from '../account/account-settings'
 import ThemeToggle from '../theme-toggle'
 import AccentThemePicker, { useAccentTheme } from '../theme/accent-theme-picker'
@@ -199,6 +200,15 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
           </TabsList>
 
           <TabsContent value="tasks" className="space-y-6">
+            <DashboardWindow
+              id="work-next"
+              title="Work on next"
+              description="Ranked by deadline, priority, and what you've already started"
+              icon={<Sparkles className="h-4 w-4" />}
+            >
+              <WorkNext tasks={myTasks} basePath="/dashboard" />
+            </DashboardWindow>
+
             <DashboardWindow id="notifications" title="Notifications" icon={<Bell className="h-4 w-4" />}>
               <NotificationInfo />
             </DashboardWindow>
