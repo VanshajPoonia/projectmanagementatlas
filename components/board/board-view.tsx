@@ -186,15 +186,14 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       return
     }
 
-    // Update task column and position. Prefer the managed status whose label
-    // matches the destination column's title (e.g. "Completed" -> key "done"),
-    // so the stored status stays one of the canonical keys used by filters
-    // elsewhere (Reports, etc). Fall back to slugifying the title for custom
-    // columns that don't correspond to any managed status.
+    // Update task column and position. Prefer the column's explicit status_key (Phase 1B FK) so
+    // the stored status is deterministic even for unconventional titles like "WIP". Fall back to
+    // the managed status whose label matches the destination column's title (e.g. "Completed" ->
+    // key "done"), then to slugifying the title for custom columns with no managed status.
     const matchingStatus = taskStatuses.find(
       s => s.label.trim().toLowerCase() === destColumn.title.trim().toLowerCase()
     )
-    const newStatus = matchingStatus?.key ?? destColumn.title.toLowerCase().replace(/ /g, '_')
+    const newStatus = destColumn.status_key ?? matchingStatus?.key ?? destColumn.title.toLowerCase().replace(/ /g, '_')
 
     // Optimistic update
     const prevColumns = columns

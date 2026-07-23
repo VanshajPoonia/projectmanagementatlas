@@ -220,7 +220,7 @@ async function getTasks(ctx: ToolContext, args: any) {
   const { data: rows, error } = await supabase
     .from('tasks')
     .select(
-      'id, title, status, priority, due_date, created_by, assigned_to, parent_task_id, task_assignees(user_id), column:columns(board_id, title)'
+      'id, title, status, priority, due_date, created_by, assigned_to, parent_task_id, task_assignees(user_id), column:columns(board_id, title, status_key)'
     )
     .is('deleted_at', null)
     .order('due_date', { ascending: true, nullsFirst: false })
@@ -285,7 +285,7 @@ async function getBoards(ctx: ToolContext) {
   const { supabase } = ctx
   const { data, error } = await supabase
     .from('boards')
-    .select('id, title, description, is_private, columns(title)')
+    .select('id, title, description, is_private, columns(title, status_key)')
     .is('archived_at', null)
     .order('created_at', { ascending: false })
   if (error) return { error: error.message }
