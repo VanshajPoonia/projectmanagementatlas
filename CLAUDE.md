@@ -6,15 +6,19 @@ in either direction.
 
 ## ⛔ Before running ANY SQL
 
-`.env.local` was copied from production and still points at the **live Supabase project**
-that the real Atlas/Shanks team uses every day.
+`.env.local` now points at a **separate dev Supabase project** (ref `pxzpewaerhjwnwsbaklc`), seeded
+as a full clone of production. Production (ref `icyfluwgyuimhwlddjyy`) is the live Supabase project
+the real Atlas/Shanks team uses every day — it must **never** be a migration target from this branch.
 
 The Phase 1 migrations below are destructive (adding `NOT NULL` columns, rewriting ~20 RLS
-policies, changing unique constraints). Running them against that database breaks the live app.
+policies, changing unique constraints). Running them against production would break the live app.
 
-**Do not run anything in `scripts/` until `.env.local` points at a separate Supabase project.**
-Applies to `psql`, the Supabase SQL editor, and any migration runner. If a task seems to need
-a migration applied, stop and confirm which database is targeted first.
+**Every write-path script must import and call `assertDevDatabase()` from `scripts/guard-db.mjs`
+before opening any connection.** It aborts immediately unless the target is exactly the dev
+sandbox — see `scripts/migrate.mjs` and `scripts/check-isolation.mjs` for the pattern. Run
+`pnpm guard` any time to see which project the current environment resolves to. This applies to
+`psql`, the Supabase SQL editor, and any migration runner — if a task seems to need a migration
+applied and the script doesn't yet call the guard, add the guard call first, don't skip it.
 
 ## What this branch is for
 
@@ -60,17 +64,23 @@ Related: `task_statuses.key` is globally `UNIQUE` and `companies.code` has a glo
 Phases 1–2 are invisible to users: everything backfills to one org, one module set, statuses
 backfill from the normalizer already in use. That is what makes them safe to land.
 
-**Phase 0 — safety net (do first).** No tests, no CI, and 59 hand-applied SQL files with no record
-of what has been applied. The tenancy migration is exactly where a mistake leaks Company A's data
-to Company B, and it would surface via a customer. Minimum: a migration runner with an
+**Phase 0 — safety net (do first). ✅ DONE.** No tests, no CI, and 59 hand-applied SQL files with no
+record of what has been applied. The tenancy migration is exactly where a mistake leaks Company A's
+data to Company B, and it would surface via a customer. Minimum: a migration runner with an
 `applied_migrations` table, and one script that signs in as two users in different orgs and asserts
 each sees zero of the other's rows.
+Built: `scripts/migrate.mjs` (+ `public.applied_migrations`, all 63 files baselined/applied) and
+`scripts/check-isolation.mjs` (two-user cross-tenant harness; current baseline is single-tenant —
+both users see the same rows, which is *expected* pre-Phase-1A and becomes the pass/fail gate once
+org isolation lands). Also added `scripts/guard-db.mjs`, a shared allowlist guard both scripts call
+before connecting — see the `⛔ Before running ANY SQL` section above.
 
 **Phase 1 — plumbing.** In this order:
-- **B. Status FK.** `columns.status_key` → `task_statuses(key)`, backfilled by running the existing
-  normalizer once over column titles. Normalizer reads the FK first, string matching stays as
-  legacy fallback. Land this *before* any second tenant exists.
-- **A. Organizations.** `organizations` + `org_members(org_id, user_id, org_role)`. Add `org_id`
+- **B. Status FK. ✅ DONE (migration `063`).** `columns.status_key` → `task_statuses(key)`,
+  backfilled by running the existing normalizer once over column titles (22/22 columns backfilled
+  correctly). Normalizer (`lib/task-status.ts`) reads the FK first, string matching stays as legacy
+  fallback. 56 tests green.
+- **A. Organizations. ⬅ NEXT — not started.** `organizations` + `org_members(org_id, user_id, org_role)`. Add `org_id`
   nullable to `boards`/`tags`/`task_statuses`/`companies`/`personal_tasks`/`bookmarks` → backfill
   to one seeded org → `NOT NULL`. Tasks and columns inherit through `boards`; do not denormalize
   `org_id` onto `tasks` without a query that proves it is needed.
@@ -115,7 +125,8 @@ Each is a product rather than a feature, and none serves the goal of reducing ti
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `059`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `064` (`063` is the last applied file).
+  Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`.
 - Do not add `Co-Authored-By: Claude` to commits in this repo.
