@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home, Megaphone, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, ChevronRight, Sparkles, CornerDownRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { resolveActiveTab } from '../shell/tab-url'
 import Link from 'next/link'
 import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
@@ -50,22 +51,38 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
     return next
   })
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const supabase = createClient()
   const isAdmin = user.role === 'admin' || user.role === 'super_admin'
+  const isKaylaMarketingUser = String(user.email ?? '').trim().toLowerCase() === 'kayla@goatlasgo.us'
+  const canUseMarketingCalendar = isKaylaMarketingUser || isAdmin
 
-  // Restores whichever tab was active before navigating away (e.g. into a board),
-  // so the in-app Back button returns here instead of resetting to Home.
+  // Tabs are the visible sections; only these are addressable via ?tab=.
+  const allowedTabs = useMemo(
+    () => ['tasks', 'personal', 'calendar', ...(canUseMarketingCalendar ? ['marketing'] : []), 'boards', 'chat'],
+    [canUseMarketingCalendar],
+  )
+
+  // Keep the active tab in sync with the URL so sections are deep-linkable and the
+  // browser Back/Forward buttons move between them. Falls back to the last session
+  // tab (e.g. after returning from a board) and finally to Home. Runs on every
+  // ?tab= change; setting the same value is a no-op, so no feedback loop.
   useEffect(() => {
-    const savedTab = sessionStorage.getItem('user-active-tab')
-    if (savedTab) setActiveTabState(savedTab)
-  }, [])
+    setActiveTabState(
+      resolveActiveTab(searchParams.get('tab'), sessionStorage.getItem('user-active-tab'), allowedTabs, 'tasks'),
+    )
+  }, [searchParams, allowedTabs])
 
   const setActiveTab = (tab: string) => {
     setActiveTabState(tab)
     sessionStorage.setItem('user-active-tab', tab)
+    const params = new URLSearchParams(Array.from(searchParams.entries()))
+    if (params.get('tab') !== tab) {
+      params.set('tab', tab)
+      router.push(`${pathname}?${params.toString()}`)
+    }
   }
-  const isKaylaMarketingUser = String(user.email ?? '').trim().toLowerCase() === 'kayla@goatlasgo.us'
-  const canUseMarketingCalendar = isKaylaMarketingUser || isAdmin
   const defaultAccentColor = isKaylaMarketingUser ? '#e91e8c' : '#111111'
   const { color: accentColor, setColor: setAccentColor, reset: resetAccentColor, style: accentStyle } = useAccentTheme(user.id, defaultAccentColor)
   // The calendar plots deliverables by due date and lets them be rescheduled; subtasks

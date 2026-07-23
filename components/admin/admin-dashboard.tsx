@@ -5,7 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone, Bookmark, SlidersHorizontal, ChevronLeft, ShieldCheck, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { resolveActiveTab } from '../shell/tab-url'
 import BoardManagement from './board-management'
 import StatusManagement from './status-management'
 import TaskOverview from './task-overview'
@@ -57,20 +58,34 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
     return next
   })
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const supabase = createClient()
   const headerRef = useRef<HTMLDivElement>(null)
   const tabsRef = useRef<HTMLDivElement>(null)
 
-  // Restores whichever tab was active before navigating away (e.g. into a board),
-  // so the in-app Back button returns here instead of resetting to Home.
+  // Sections addressable via ?tab= — matches the TabsTrigger values below.
+  const allowedTabs = ['overview', 'calendar', 'marketing', 'reports', 'boards', 'statuses', 'chat', 'personal']
+
+  // Keep the active tab in sync with the URL so sections are deep-linkable and the
+  // browser Back/Forward buttons move between them; falls back to the last session
+  // tab (e.g. after returning from a board), then Overview. Setting the same value
+  // is a no-op, so there's no feedback loop with the push below.
   useEffect(() => {
-    const savedTab = sessionStorage.getItem('admin-active-tab')
-    if (savedTab) setActiveTabState(savedTab)
-  }, [])
+    setActiveTabState(
+      resolveActiveTab(searchParams.get('tab'), sessionStorage.getItem('admin-active-tab'), allowedTabs, 'overview'),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const setActiveTab = (tab: string) => {
     setActiveTabState(tab)
     sessionStorage.setItem('admin-active-tab', tab)
+    const params = new URLSearchParams(Array.from(searchParams.entries()))
+    if (params.get('tab') !== tab) {
+      params.set('tab', tab)
+      router.push(`${pathname}?${params.toString()}`)
+    }
   }
 
   useEffect(() => {
