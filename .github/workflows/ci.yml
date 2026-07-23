@@ -1,0 +1,38 @@
+name: CI
+
+# Calibrated test gate (risk R-01/R-02). Runs the unit suite on every PR and on
+# pushes to main. Kept intentionally minimal and secret-free so it stays green and
+# meaningful. Follow-ups tracked in docs/architecture/risk-register.md:
+#   - `pnpm build` job once Supabase env is wired as GitHub Actions secrets (R-02)
+#   - `pnpm lint` once an eslint flat config exists (no config today → eslint errors)
+#   - `tsc --noEmit` once the type-error backlog is cleared and ignoreBuildErrors
+#     can be turned off (R-03)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # pnpm 11 requires Node >= 22.13; keep these in lockstep.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
