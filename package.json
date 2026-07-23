@@ -8,7 +8,11 @@
     "lint": "eslint .",
     "start": "next start",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "migrate": "node --env-file=.env.local scripts/migrate.mjs",
+    "migrate:status": "node --env-file=.env.local scripts/migrate.mjs --status",
+    "migrate:baseline": "node --env-file=.env.local scripts/migrate.mjs --baseline",
+    "check:isolation": "node --env-file=.env.local scripts/check-isolation.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",
