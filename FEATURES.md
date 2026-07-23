@@ -17,6 +17,24 @@
 - **Do NOT build on / fork Plane (or OpenProject/etc.) as an engine.** Reasons: throws away a working Next.js + Supabase + RLS + AI app; runs two backends; AGPL network-copyleft is a real risk for a proprietary hosted SaaS.
 - **DO mine the open-source repos as reference designs** — copy their *data models and UX*, re-implemented cleanly in our stack. See "Reference repos to mine."
 
+## Master product context — reconciliation (2026-07-23)
+A "Master Product Context" framework was supplied assuming a **Plane CE** foundation. **Audit verdict: this repo is not Plane** — it's a greenfield **Next.js 16 + React 19 + Supabase (RLS)** app, 62 numbered migrations, Supabase Auth, no Plane/Django/webhooks, no test harness, no LICENSE file. The master doc's *intent* is adopted; its Plane-specific mechanics do not apply. Owner decisions:
+
+1. **Foundation → build on the existing Next.js + Supabase app.** Do not fork/adopt Plane. (ADR: greenfield-we-already-have is the A.4-optimal choice — reuses auth, RLS, AI, marketing wedge; single stack.)
+2. **Enterprise items (budget, cost, capacity/workload, critical-path, SAFe-style governance) → north-star, design-for-later.** Stay off near-term phases, but the data model/hierarchy must not preclude them. Progressive disclosure per UX principle 1.
+3. **Deployment → hosted SaaS (Vercel + Supabase) for now.** Self-hosting is a possible future, not a current architectural constraint.
+4. **Process → calibrated/pragmatic.** Stand up a lightweight test harness incrementally; apply the master's 16-section response format *proportionally to each change's risk* (see below). No big-bang audit/e2e prerequisite.
+
+**Canonical hierarchy (north-star IA)** — reach incrementally, do NOT big-bang. One **Work-Item domain with configurable types** (Task/Subtask/Story/Bug/Feature/Request/Deliverable/Risk/Decision/Approval/Change-Request), never duplicate task models per view:
+> Organization → Workspace → Team → Portfolio → Initiative → Project → Epic/Module → **Work Item** → Subtask
+> Planning objects: Cycle/Sprint · Milestone · Release · Goal · Key Result · Risk · Decision · Approval · Meeting · Client · Request · Automation · Saved View
+
+Today's model (`companies → boards → tasks → subtasks` + Goals in P3) is a subset of this; each phase moves us toward it. **One Work-Item domain = Phase 1's custom-fields engine** — reinforces the existing ordering.
+
+**Per-feature response format (calibrated).** For real implementation prompts, follow the master's ordering proportionally: (1) existing-system audit → (2) assumptions → (3) user flow → (4) data-model → (5) API → (6) permissions/RLS → (7) frontend → (8) background jobs → (9) audit events → (10) test plan → (11) files → (12) implementation → (13) commands → (14) test results → (15) risks → (16) manual verification checklist. Skip sections that genuinely don't apply, and say so.
+
+---
+
 ## The wedge (how we stand out)
 > **"The PM tool built around marketing/content execution, with an AI that actually knows your work."**
 
@@ -160,3 +178,4 @@ Detailed investigation prompts will be added by the owner. When investigating, e
 ## Changelog
 - **2026-07-23** — Roadmap created. Confirmed all prior work is on `main` (AI harness PRs #10–#13, migrations 061/062 live). Reference repos captured for later investigation.
 - **2026-07-23** — Added market-scan competitor notes (per-product ideas + 15 recurring patterns) mapped to roadmap phases. Committed tracker to `main`.
+- **2026-07-23** — Reconciled the supplied "Master Product Context" against a real repo audit (not a Plane fork). Owner decisions recorded: build on existing Next.js+Supabase; enterprise items = north-star design-for-later; hosted-SaaS for now; calibrated process. Adopted canonical hierarchy as north-star IA + one Work-Item domain (= Phase 1).
