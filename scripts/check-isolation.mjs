@@ -13,6 +13,7 @@
 // touches existing data. Run: pnpm check:isolation  (loads .env.local)
 
 import { createClient } from '@supabase/supabase-js'
+import { assertDevDatabase } from './guard-db.mjs'
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -22,12 +23,9 @@ if (!url || !anon || !service) {
   process.exit(1)
 }
 
-// Guard rail: refuse to run against the known production project ref, ever.
-const PROD_REF = 'icyfluwgyuimhwlddjyy'
-if (url.includes(PROD_REF)) {
-  console.error(`refusing to run: ${url} is production. This harness creates/deletes users.`)
-  process.exit(1)
-}
+// Allowlist guard: this harness creates AND deletes users, so it must only ever run
+// against the dev sandbox. Aborts before any Supabase call if pointed elsewhere.
+assertDevDatabase()
 
 const admin = createClient(url, service, { auth: { autoRefreshToken: false, persistSession: false } })
 

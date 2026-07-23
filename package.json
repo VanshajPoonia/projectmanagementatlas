@@ -9,6 +9,7 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
+    "guard": "node --env-file=.env.local scripts/guard-db.mjs",
     "migrate": "node --env-file=.env.local scripts/migrate.mjs",
     "migrate:status": "node --env-file=.env.local scripts/migrate.mjs --status",
     "migrate:baseline": "node --env-file=.env.local scripts/migrate.mjs --baseline",

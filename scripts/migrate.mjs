@@ -20,6 +20,7 @@ import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { assertDevDatabase } from './guard-db.mjs'
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url))
 
@@ -28,6 +29,9 @@ if (!DB_URL) {
   console.error('POSTGRES_URL_NON_POOLING is not set. Run via pnpm migrate* (loads .env.local).')
   process.exit(1)
 }
+
+// Refuse to run against anything but the dev sandbox — aborts before any psql connection.
+assertDevDatabase()
 
 // libpq/psql is often not on the default PATH on macOS — locate it.
 function findPsql() {
