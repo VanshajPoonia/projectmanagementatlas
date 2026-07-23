@@ -2,12 +2,16 @@ import {
   Bell,
   Calendar,
   Crown,
+  FileBarChart,
+  Home,
   Kanban,
+  LayoutDashboard,
   ListChecks,
   Lock,
   Megaphone,
   MessageSquare,
   Shield,
+  SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -23,6 +27,10 @@ const ICONS: Record<string, LucideIcon> = {
   message: MessageSquare,
   shield: Shield,
   crown: Crown,
+  home: Home,
+  overview: LayoutDashboard,
+  reports: FileBarChart,
+  statuses: SlidersHorizontal,
 }
 
 export function navIcon(key: string): LucideIcon {

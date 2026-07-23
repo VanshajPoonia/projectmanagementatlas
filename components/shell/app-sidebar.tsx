@@ -1,55 +1,64 @@
 'use client'
 
+import * as React from 'react'
 import Link from 'next/link'
 import { PanelLeftClose, PanelLeftOpen, Clock } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
-import { visibleGroups, type Role } from './nav-model'
 import { navIcon } from './nav-icons'
+import type { NavItem } from './nav-model'
 
 export interface RecentItem {
   label: string
   href: string
 }
 
+// Host-provided nav item, optionally carrying a badge (e.g. chat unread count).
+export interface SidebarNavItem extends NavItem {
+  badge?: React.ReactNode
+}
+export interface SidebarNavGroup {
+  id: string
+  label: string
+  items: SidebarNavItem[]
+}
+
 interface AppSidebarProps {
-  role: Role
-  enabledModules: ReadonlySet<string>
+  /** Already role/module-filtered by the host. */
+  groups: SidebarNavGroup[]
   activeId: string | null
   collapsed: boolean
   onToggle: () => void
   recent?: RecentItem[]
+  title?: string
 }
 
 export function AppSidebar({
-  role,
-  enabledModules,
+  groups,
   activeId,
   collapsed,
   onToggle,
   recent = [],
+  title = 'Project Manager',
 }: AppSidebarProps) {
-  const groups = visibleGroups(role, enabledModules)
-
   return (
     <TooltipProvider delayDuration={0}>
       <nav
         aria-label="Primary"
         data-collapsed={collapsed}
         className={cn(
-          'bg-sidebar text-sidebar-foreground border-sidebar-border hidden h-dvh shrink-0 flex-col border-r md:flex',
+          'bg-sidebar text-sidebar-foreground border-sidebar-border sticky top-0 hidden h-dvh shrink-0 flex-col border-r md:flex',
           'motion-safe:transition-[width] motion-safe:duration-200',
           collapsed ? 'w-16' : 'w-60',
         )}
       >
-        {/* Brand + collapse toggle */}
         <div className="flex h-14 items-center gap-2 px-3">
           <div className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-lg font-semibold">
-            P
+            {title.charAt(0)}
           </div>
-          {!collapsed && <span className="truncate font-semibold">Project Manager</span>}
+          {!collapsed && <span className="truncate font-semibold">{title}</span>}
           <Button
             variant="ghost"
             size="icon-sm"
@@ -79,7 +88,7 @@ export function AppSidebar({
                       href={item.href}
                       aria-current={isActive ? 'page' : undefined}
                       className={cn(
-                        'group flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium outline-none',
+                        'group relative flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium outline-none',
                         'focus-visible:ring-ring focus-visible:ring-2',
                         isActive
                           ? 'bg-sidebar-accent text-sidebar-accent-foreground'
@@ -87,13 +96,13 @@ export function AppSidebar({
                         collapsed && 'justify-center',
                       )}
                     >
-                      <Icon className="size-4 shrink-0" aria-hidden="true" />
+                      <span className="relative shrink-0">
+                        <Icon className="size-4" aria-hidden="true" />
+                        {item.badge}
+                      </span>
                       {!collapsed && <span className="truncate">{item.label}</span>}
-                      {/* Non-colour cue that a section isn't built yet (status not by colour alone). */}
                       {!collapsed && item.status === 'planned' && (
-                        <span className="text-muted-foreground ml-auto text-[10px] font-normal">
-                          soon
-                        </span>
+                        <span className="text-muted-foreground ml-auto text-[10px] font-normal">soon</span>
                       )}
                     </Link>
                   )
@@ -102,10 +111,7 @@ export function AppSidebar({
                       {collapsed ? (
                         <Tooltip>
                           <TooltipTrigger asChild>{link}</TooltipTrigger>
-                          <TooltipContent side="right">
-                            {item.label}
-                            {item.status === 'planned' ? ' (soon)' : ''}
-                          </TooltipContent>
+                          <TooltipContent side="right">{item.label}</TooltipContent>
                         </Tooltip>
                       ) : (
                         link
@@ -117,7 +123,6 @@ export function AppSidebar({
             </div>
           ))}
 
-          {/* Recently viewed — quick path back to any recently opened record. */}
           {recent.length > 0 && !collapsed && (
             <div className="mb-4">
               <p className="text-muted-foreground px-2 pb-1 text-xs font-medium tracking-wide uppercase">

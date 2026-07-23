@@ -12,26 +12,23 @@ import {
   CommandList,
   CommandShortcut,
 } from '@/components/ui/command'
-import { visibleGroups, type Role } from './nav-model'
 import { navIcon } from './nav-icons'
+import type { NavGroup } from './nav-model'
 
 interface CommandPaletteProps {
-  role: Role
-  enabledModules: ReadonlySet<string>
+  /** Already role/module-filtered by the host (same groups as the sidebar). */
+  groups: NavGroup[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
 /**
- * Keyboard-first command palette (Cmd/Ctrl+K). This first slice covers Navigate;
- * Create / Change-status / Assign / Run-automation actions land as those domains
- * are built (see docs/design/information-architecture.md).
+ * Keyboard-first command palette (Cmd/Ctrl+K). This slice covers Navigate; Create /
+ * Change-status / Assign / Run-automation land as those domains are built.
  */
-export function CommandPalette({ role, enabledModules, open, onOpenChange }: CommandPaletteProps) {
+export function CommandPalette({ groups, open, onOpenChange }: CommandPaletteProps) {
   const router = useRouter()
-  const groups = visibleGroups(role, enabledModules)
 
-  // Global Cmd/Ctrl+K toggle.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {

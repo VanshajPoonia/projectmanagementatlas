@@ -1,7 +1,8 @@
 'use client'
 
+import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, LogOut, User as UserIcon } from 'lucide-react'
+import { Search, LogOut } from 'lucide-react'
 
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -21,6 +22,9 @@ interface AppTopbarProps {
   user: { full_name?: string | null; email?: string | null }
   breadcrumbs: Crumb[]
   onOpenCommand: () => void
+  /** Host-supplied right-side controls (e.g. accent picker, account settings). When
+   *  provided they replace the default theme+account cluster; the ⌘K entry stays. */
+  actions?: React.ReactNode
 }
 
 function initials(name?: string | null, email?: string | null): string {
@@ -30,7 +34,7 @@ function initials(name?: string | null, email?: string | null): string {
   return src.slice(0, 2).toUpperCase()
 }
 
-export function AppTopbar({ user, breadcrumbs, onOpenCommand }: AppTopbarProps) {
+export function AppTopbar({ user, breadcrumbs, onOpenCommand, actions }: AppTopbarProps) {
   const router = useRouter()
 
   const signOut = async () => {
@@ -44,7 +48,6 @@ export function AppTopbar({ user, breadcrumbs, onOpenCommand }: AppTopbarProps) 
         <Breadcrumbs items={breadcrumbs} />
       </div>
 
-      {/* Command / search entry — click or Cmd/Ctrl+K. */}
       <Button
         variant="outline"
         size="sm"
@@ -59,32 +62,31 @@ export function AppTopbar({ user, breadcrumbs, onOpenCommand }: AppTopbarProps) 
         </kbd>
       </Button>
 
-      <ThemeToggle />
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button className="focus-visible:ring-ring rounded-full outline-none focus-visible:ring-2" aria-label="Account menu">
-            <Avatar className="size-8">
-              <AvatarFallback>{initials(user.full_name, user.email)}</AvatarFallback>
-            </Avatar>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel className="truncate font-normal">
-            <span className="block font-medium">{user.full_name || 'Account'}</span>
-            {user.email && <span className="text-muted-foreground block truncate text-xs">{user.email}</span>}
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => router.push('/dashboard?tab=account')}>
-            <UserIcon className="size-4" />
-            Account settings
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={signOut}>
-            <LogOut className="size-4" />
-            Sign out
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {actions ?? (
+        <>
+          <ThemeToggle />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="focus-visible:ring-ring rounded-full outline-none focus-visible:ring-2" aria-label="Account menu">
+                <Avatar className="size-8">
+                  <AvatarFallback>{initials(user.full_name, user.email)}</AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="truncate font-normal">
+                <span className="block font-medium">{user.full_name || 'Account'}</span>
+                {user.email && <span className="text-muted-foreground block truncate text-xs">{user.email}</span>}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={signOut}>
+                <LogOut className="size-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
     </header>
   )
 }

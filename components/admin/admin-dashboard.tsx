@@ -7,6 +7,8 @@ import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, FileBa
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveTab } from '../shell/tab-url'
+import { AppShell } from '../shell/app-shell'
+import type { SidebarNavGroup } from '../shell/app-sidebar'
 import BoardManagement from './board-management'
 import StatusManagement from './status-management'
 import TaskOverview from './task-overview'
@@ -145,52 +147,68 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
     setActiveTab(value)
   }
 
+  const adminSections: SidebarNavGroup['items'] = [
+    { id: 'overview', label: 'Home', icon: 'home', href: '/admin?tab=overview', status: 'live' },
+    { id: 'calendar', label: 'Calendar', icon: 'calendar', href: '/admin?tab=calendar', status: 'live' },
+    { id: 'marketing', label: 'Marketing', icon: 'megaphone', href: '/admin?tab=marketing', status: 'live' },
+    { id: 'reports', label: 'Reports', icon: 'reports', href: '/admin?tab=reports', status: 'live' },
+    { id: 'boards', label: 'Boards', icon: 'kanban', href: '/admin?tab=boards', status: 'live' },
+    { id: 'statuses', label: 'Statuses', icon: 'statuses', href: '/admin?tab=statuses', status: 'live' },
+    {
+      id: 'chat',
+      label: 'Chat',
+      icon: 'message',
+      href: '/admin?tab=chat',
+      status: 'live',
+      badge: (
+        <span className="absolute -top-1 -right-2">
+          <ChatUnreadBadge userId={user.id} />
+        </span>
+      ),
+    },
+    { id: 'personal', label: 'Personal', icon: 'lock', href: '/admin?tab=personal', status: 'live' },
+  ]
+  const sidebarGroups: SidebarNavGroup[] = [
+    { id: 'sections', label: 'Workspace', items: adminSections },
+    ...(isSuperAdmin
+      ? [{
+          id: 'admin',
+          label: 'Admin',
+          items: [{ id: 'super-admin', label: 'Super Admin', icon: 'crown', href: '/admin/super-admin', status: 'live' as const }],
+        }]
+      : []),
+  ]
+  const activeLabel = adminSections.find((i) => i.id === activeTab)?.label ?? 'Home'
+
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <AppShell
+      user={{ id: user.id, role: user.role, full_name: user.full_name, email: user.email }}
+      groups={sidebarGroups}
+      activeId={activeTab}
+      breadcrumbs={[{ label: activeLabel }]}
+      topbarActions={
+        <>
+          <ThemeToggle />
+          <AccountSettings
+            userId={user.id}
+            currentName={user.full_name || ''}
+            email={user.email}
+            notifyAssignment={user.notify_email_assignment}
+            notifyUpdate={user.notify_email_update}
+            notifyComment={user.notify_email_comment}
+            notifyDueSoon={user.notify_email_due_soon}
+          />
+          <Button onClick={handleSignOut} variant="outline" size="sm">
+            <LogOut className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">Sign Out</span>
+          </Button>
+        </>
+      }
+    >
       <TaskNotificationToasts userId={user.id} />
       <AiChatWidget userId={user.id} />
-      {/* Header */}
-      <header ref={headerRef} className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-              <LayoutDashboard className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">Admin Dashboard</h1>
-              <p className="text-sm text-muted-foreground">{user.full_name}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {isSuperAdmin && (
-              <Button onClick={() => router.push('/admin/super-admin')} variant="outline" size="sm" className="gap-2">
-                <ShieldCheck className="w-4 h-4" />
-                <span className="hidden sm:inline">Super Admin</span>
-              </Button>
-            )}
-            <ThemeToggle />
-            <AccountSettings
-              userId={user.id}
-              currentName={user.full_name || ''}
-              email={user.email}
-              notifyAssignment={user.notify_email_assignment}
-              notifyUpdate={user.notify_email_update}
-              notifyComment={user.notify_email_comment}
-              notifyDueSoon={user.notify_email_due_soon}
-            />
-            <Button onClick={handleSignOut} variant="outline" size="sm">
-              <LogOut className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Sign Out</span>
-            </Button>
-          </div>
-        </div>
-        <div className="container mx-auto px-4 pb-3">
-          <GlobalSearch isAdmin />
-        </div>
-      </header>
 
-      {/* Body: sidebar + main */}
-      <div className="flex flex-1 min-h-0">
+      <div className="flex min-h-0 flex-1">
         {/* Bookmarks sidebar — hidden on mobile */}
         <aside className={cn(
           "hidden md:flex flex-col flex-shrink-0 border-r bg-muted/10 overflow-hidden transition-[width] duration-200 ease-in-out",
@@ -215,44 +233,12 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-w-0 px-4 py-8 pb-24 md:pb-8 overflow-x-hidden">
+        <div className="flex-1 min-w-0 px-4 py-8 overflow-x-hidden">
+          <div className="mb-6">
+            <GlobalSearch isAdmin />
+          </div>
         <div ref={tabsRef}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="hidden md:grid w-full max-w-6xl grid-cols-8 h-12">
-              <TabsTrigger value="overview" className="flex items-center gap-2">
-                <Home className="w-4 h-4" />
-                <span className="hidden sm:inline">Home</span>
-              </TabsTrigger>
-              <TabsTrigger value="calendar" className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                <span className="hidden sm:inline">Calendar</span>
-              </TabsTrigger>
-              <TabsTrigger value="marketing" className="flex items-center gap-2">
-                <Megaphone className="w-4 h-4" />
-                <span className="hidden sm:inline">Marketing</span>
-              </TabsTrigger>
-              <TabsTrigger value="reports" className="flex items-center gap-2">
-                <FileBarChart className="w-4 h-4" />
-                <span className="hidden sm:inline">Reports</span>
-              </TabsTrigger>
-              <TabsTrigger value="boards" className="flex items-center gap-2">
-                <ClipboardList className="w-4 h-4" />
-                <span className="hidden sm:inline">Boards</span>
-              </TabsTrigger>
-              <TabsTrigger value="statuses" className="flex items-center gap-2">
-                <SlidersHorizontal className="w-4 h-4" />
-                <span className="hidden sm:inline">Statuses</span>
-              </TabsTrigger>
-              <TabsTrigger value="chat" className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" />
-                <span className="hidden sm:inline">Chat</span>
-                <ChatUnreadBadge userId={user.id} />
-              </TabsTrigger>
-              <TabsTrigger value="personal" className="flex items-center gap-2">
-                <Lock className="w-4 h-4" />
-                <span className="hidden sm:inline">Personal</span>
-              </TabsTrigger>
-            </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
               <DashboardWindow
@@ -298,15 +284,8 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsContent>
           </Tabs>
         </div>
-        </main>
+        </div>
       </div>
-
-      <MobileBottomNav
-        items={primaryNavItems}
-        moreItems={moreNavItems}
-        activeTab={activeTab}
-        onChange={handleMobileNavChange}
-      />
-    </div>
+    </AppShell>
   )
 }
