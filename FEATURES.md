@@ -1,0 +1,162 @@
+# FEATURES — Roadmap & Progress
+
+> Living document. Tracks where the product is going, what's shipped, and what's next.
+> Update the checkboxes and the **Changelog** as work lands. Detailed build prompts
+> will be added by the owner over time.
+
+## How we work (ground rules)
+- **Everything ships to `main`** via small, properly-sliced PRs (one coherent change per PR).
+- **No `Co-Authored-By: Claude`** lines in commits (repo convention).
+- Migrations are hand-applied, numbered SQL in `scripts/` (currently through `062_`).
+- All data access goes through the Supabase **session client** so **RLS** applies. Never bypass with service-role unless deliberately gated.
+- Prefer extending the existing Next.js + Supabase stack over adopting a new engine (see "Architecture stance").
+
+---
+
+## Architecture stance (decided)
+- **Do NOT build on / fork Plane (or OpenProject/etc.) as an engine.** Reasons: throws away a working Next.js + Supabase + RLS + AI app; runs two backends; AGPL network-copyleft is a real risk for a proprietary hosted SaaS.
+- **DO mine the open-source repos as reference designs** — copy their *data models and UX*, re-implemented cleanly in our stack. See "Reference repos to mine."
+
+## The wedge (how we stand out)
+> **"The PM tool built around marketing/content execution, with an AI that actually knows your work."**
+
+Two assets almost none of the incumbents (Asana/Jira/Linear/ClickUp/Notion/monday/Smartsheet/MS Planner) have:
+1. A **first-class marketing content calendar** (native content-scheduling object, not a generic board).
+2. A **data-native AI assistant** — already reads the user's real tasks/boards/calendar + web + files.
+
+Lean into: content calendar + campaign goals + client portal + AI-generated weekly updates ("what shipped / what slipped / what's next" from real data).
+
+---
+
+## Current state — already built ✅
+- [x] Kanban boards: columns, task cards, subtasks, task detail modal, inline edits
+- [x] Private boards + RLS lockdown (admins/super-admins can't see *others'* private boards) — `scripts/061`
+- [x] Shared team calendar (task due dates)
+- [x] Marketing content calendar: editable/draggable cards, quarterly repeat, **posted / missed / pending** states with reason notes — `scripts/062`
+- [x] Personal private tasks
+- [x] Teammate direct chat (with unread badges)
+- [x] Bookmarks, Reports
+- [x] Multi-company tenancy (SRG/AGC as `companies` rows), Super-Admin page, role management
+- [x] "What should I work on next?" starter — `components/dashboard/work-next.tsx`
+- [x] **Data-aware AI assistant**: Workspace mode (reads tasks/boards/personal/marketing) + Ask-anything mode (Tavily web search + URL fetch) + file/image/PDF/audio/video + YouTube input
+
+---
+
+## Roadmap (sequenced)
+
+Ordering rationale: **custom fields** is the highest-leverage technical enabler (it unlocks views, automations, and forms), so it goes first. The **wedge** items (marketing/AI/portal) are interleaved because they're the differentiation.
+
+### Phase 1 — Custom fields engine  ⏳ NOT STARTED
+The single highest-leverage change. Turn hardcoded board columns into configurable field primitives.
+- [ ] Schema: `field_definitions` (per board/workspace) + `field_values` (per task); types: text, number, select, multi-select, person, date, status, checkbox, relation
+- [ ] RLS on new tables (inherit board visibility via existing chokepoint functions)
+- [ ] Task detail modal: render + edit custom fields
+- [ ] Board view: show selected fields on cards / as columns
+- [ ] Migration + backfill existing status/priority into the new model (or bridge)
+
+### Phase 2 — Multiple views over one dataset  ⏳ NOT STARTED
+Same tasks, more lenses. Mostly frontend once Phase 1 lands.
+- [ ] Table/spreadsheet view (sort, filter, inline edit, grouped rows)
+- [ ] Timeline / Gantt-lite view (start/due, dependencies optional)
+- [ ] Saved views (per user: filters + sort + visible fields)
+- [ ] View switcher UI on boards
+
+### Phase 3 — Goals → Projects → Tasks hierarchy  ⏳ NOT STARTED
+Gives execs a reason to log in; ties work to outcomes.
+- [ ] `goals` (per company) + link boards/tasks to a goal
+- [ ] Portfolio/roll-up view: progress across boards toward a goal
+- [ ] Goal progress indicators (auto from linked task completion)
+
+### Phase 4 — Marketing wedge deepening  ⏳ NOT STARTED
+Where we out-differentiate everyone.
+- [ ] Campaigns as first-class object (group content items under a campaign + goal)
+- [ ] Content approval workflow (draft → review → approved → scheduled → posted/missed)
+- [ ] Channel/company breakdown analytics on the marketing calendar
+- [ ] Recurring content templates
+
+### Phase 5 — Forms & intake  ⏳ NOT STARTED
+Structured work-request capture.
+- [ ] Form builder (fields map to a board's custom fields)
+- [ ] Public/shareable form link → creates a task (or marketing item) with RLS-safe write
+- [ ] Intake triage view
+
+### Phase 6 — Automation rules  ⏳ NOT STARTED
+Small rules engine on top of existing notifications.
+- [ ] Trigger → condition → action model (e.g. "status→Done ⇒ notify assignee's manager")
+- [ ] UI to build rules per board
+- [ ] Execution + audit log
+
+### Phase 7 — Client / stakeholder portal  ⏳ NOT STARTED
+Scoped read-only external view (our RLS + private-board work makes this achievable).
+- [ ] Share a board/goal read-only to an external email (tokened, RLS-enforced)
+- [ ] Client-facing status page (health, recent updates, upcoming)
+
+### Phase 8 — AI deepening (the standout)  ⏳ NOT STARTED
+- [ ] **AI weekly update generator**: auto-draft "what shipped / what slipped / what's next" from real task+calendar data
+- [ ] Project health & risk scoring (surfaced on dashboard)
+- [ ] Natural-language project search / commands ("show overdue SRG marketing posts")
+- [ ] Meeting-notes / message → task extraction
+
+### Cross-cutting (ongoing) — Linear-grade speed & polish
+- [ ] Command palette (`⌘K`): jump, create, assign, change status
+- [ ] Keyboard shortcuts for common actions
+- [ ] Fast task create (minimal friction)
+- [ ] Information-density pass on board/table views
+
+### Explicitly deferred (not now)
+Time tracking, budgets/cost reporting, critical-path/baselines, SAFe, DocuSign/contract workflows — enterprise territory (OpenProject-shaped), pulls away from our wedge.
+
+---
+
+## Market scan — competitor notes (reference)
+Captured from the owner's competitor scan. Use as a feature-pattern library; we cherry-pick, we don't chase parity.
+
+### Per-product — the one idea worth copying
+| Product | Strategy | Signature idea to borrow | Maps to |
+|---|---|---|---|
+| **Asana** | Connect tasks → goals | Task→Project→Portfolio→Goal chain, one dataset / many audiences | Phase 3 |
+| **monday.com** | Configurable building blocks | Reusable field primitives (text/person/date/status/formula/relation) instead of hardcoded workflows | Phase 1 |
+| **Jira** | Deep configurable work mgmt | Configurable workflows: per-project statuses, transitions, permissions, approvals | Phase 1 + 6 |
+| **ClickUp** | One app replaces many | Convert messages/docs/meetings → tasks; link conversations to work | Phase 8 |
+| **Notion** | Docs + DB + projects | Everything is a flexible page with structured props + unstructured content | Phase 1 (fields) / later docs |
+| **Linear** | Fast, opinionated, low-friction | Optimize for speed: few clicks to create/assign/move; keyboard-first, high density | Cross-cutting |
+| **Smartsheet** | Spreadsheet + PPM | Let users model work in tables/formulas without DB concepts | Phase 2 (table view) |
+| **MS Planner/Project** | Deep MS 365 integration | Put work where users already live (calendar/chat/email) | Phase 5 (intake) / later |
+
+### The 15 recurring patterns (whole-market signal)
+Multiple views · custom fields/configurable workflows · personal "My Tasks" · portfolio view · goals↔projects↔tasks · forms that create work · docs linked to tasks · workload/capacity · automation rules · client portals · AI summaries/task-gen · strong search & NL commands · integrations/open API · fast keyboard interactions · health/risk indicators.
+
+> Coverage vs. our roadmap: views→P2, custom fields→P1, My Tasks→✅(work-next), portfolio+goals→P3, forms→P5, automation→P6, client portal→P7, AI summaries/NL search/health→P8, keyboard/speed→cross-cutting. **Deliberately skipped for now:** workload/capacity planning, docs-linked-to-tasks, broad integrations/open API (revisit post-wedge).
+
+### Standing guidance from the scan
+- Don't chase parity — **pick 1–2 areas incumbents still feel cumbersome** and win there (our wedge: marketing execution + data-native AI).
+- **AGPL/GPL caution**: Plane/Vikunja/Leantime are AGPL, OpenProject GPL-3.0 — reference only, re-implement cleanly; never vendor their code into a proprietary hosted product. (Reinforces the "don't fork" stance above.)
+- The scan's "fork Plane + Next.js shell" recommendation was **considered and rejected** — two backends + AGPL exposure + discarding a working app. We mine, we don't fork.
+
+---
+
+## Reference repos to mine (study, don't fork)
+Detailed investigation prompts will be added by the owner. When investigating, extract **data model + UX patterns**, not code (license: most are AGPL/GPL — reference only, re-implement cleanly).
+
+| Repo | Best studied for |
+|---|---|
+| [AppFlowy](https://github.com/AppFlowy-IO/appflowy) | Notion-style flexible databases, field/property system, block/page model |
+| [Plane](https://github.com/makeplane/plane) | Cycles, modules, custom views, issue schema, analytics, roadmaps (modern SaaS UX) |
+| [OpenProject](https://github.com/opf/openproject) | Portfolio/Gantt/work-package schema, scheduling, permissions model |
+| [Vikunja](https://github.com/go-vikunja/vikunja) | Lightweight task model, filters, saved views, CalDAV |
+| [Leantime](https://github.com/Leantime/leantime) | Goals-focused planning, accessibility patterns for non-PMs |
+| [Taiga](https://github.com/kaleidos-ventures/taiga) · [deploy](https://github.com/taigaio/taiga-docker) | Agile: epics/user-stories/statuses, project templates, custom workflow states |
+
+### Investigation notes (fill in as we study each)
+- AppFlowy — _pending detailed prompt_
+- Plane — _pending detailed prompt_
+- OpenProject — _pending detailed prompt_
+- Vikunja — _pending detailed prompt_
+- Leantime — _pending detailed prompt_
+- Taiga — _pending detailed prompt_
+
+---
+
+## Changelog
+- **2026-07-23** — Roadmap created. Confirmed all prior work is on `main` (AI harness PRs #10–#13, migrations 061/062 live). Reference repos captured for later investigation.
+- **2026-07-23** — Added market-scan competitor notes (per-product ideas + 15 recurring patterns) mapped to roadmap phases. Committed tracker to `main`.
