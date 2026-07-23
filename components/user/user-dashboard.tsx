@@ -5,10 +5,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home, Megaphone, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, ChevronRight, Sparkles, CornerDownRight } from 'lucide-react'
+import { ClipboardList, LogOut, Calendar, Kanban, Home, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, Sparkles, CornerDownRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveTab } from '../shell/tab-url'
+import { AppShell } from '../shell/app-shell'
+import type { SidebarNavGroup } from '../shell/app-sidebar'
 import Link from 'next/link'
 import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
@@ -24,7 +26,6 @@ import AccountSettings from '../account/account-settings'
 import ThemeToggle from '../theme-toggle'
 import AccentThemePicker, { useAccentTheme } from '../theme/accent-theme-picker'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
-import MobileBottomNav, { type NavItem } from '../dashboard/mobile-bottom-nav'
 import GlobalSearch from '../search/global-search'
 import { cn } from '@/lib/utils'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
@@ -101,65 +102,66 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const doneTasks = myTasks.filter(t => getNormalizedTaskStatus(t) === 'done')
   const activeTasks = myTasks.filter(t => getNormalizedTaskStatus(t) !== 'done')
 
-  const navItems: NavItem[] = [
-    { value: 'tasks', label: 'Home', icon: Home },
-    { value: 'personal', label: 'Personal', icon: Lock },
-    { value: 'calendar', label: 'Calendar', icon: Calendar },
-    ...(canUseMarketingCalendar ? [{ value: 'marketing', label: 'Marketing', icon: Megaphone }] : []),
-    { value: 'boards', label: 'Boards', icon: Kanban },
+  const sidebarGroups: SidebarNavGroup[] = [
     {
-      value: 'chat',
-      label: 'Chat',
-      icon: MessageSquare,
-      badge: (
-        <span className="absolute -top-1 -right-2">
-          <ChatUnreadBadge userId={user.id} />
-        </span>
-      ),
+      id: 'sections',
+      label: 'Workspace',
+      items: [
+        { id: 'tasks', label: 'Home', icon: 'home', href: '/dashboard?tab=tasks', status: 'live' },
+        { id: 'personal', label: 'Personal', icon: 'lock', href: '/dashboard?tab=personal', status: 'live' },
+        { id: 'calendar', label: 'Calendar', icon: 'calendar', href: '/dashboard?tab=calendar', status: 'live' },
+        ...(canUseMarketingCalendar
+          ? [{ id: 'marketing', label: 'Marketing', icon: 'megaphone', href: '/dashboard?tab=marketing', status: 'live' as const }]
+          : []),
+        { id: 'boards', label: 'Boards', icon: 'kanban', href: '/dashboard?tab=boards', status: 'live' },
+        {
+          id: 'chat',
+          label: 'Chat',
+          icon: 'message',
+          href: '/dashboard?tab=chat',
+          status: 'live',
+          badge: (
+            <span className="absolute -top-1 -right-2">
+              <ChatUnreadBadge userId={user.id} />
+            </span>
+          ),
+        },
+      ],
     },
   ]
+  const activeLabel = sidebarGroups[0].items.find((i) => i.id === activeTab)?.label ?? 'Home'
 
   return (
-    <div className="min-h-screen bg-background flex flex-col" style={accentStyle}>
+    <AppShell
+      user={{ id: user.id, role: user.role, full_name: user.full_name, email: user.email }}
+      groups={sidebarGroups}
+      activeId={activeTab}
+      breadcrumbs={[{ label: activeLabel }]}
+      style={accentStyle}
+      topbarActions={
+        <>
+          <AccentThemePicker color={accentColor} onChange={setAccentColor} onReset={resetAccentColor} />
+          <ThemeToggle />
+          <AccountSettings
+            userId={user.id}
+            currentName={user.full_name || ''}
+            email={user.email}
+            notifyAssignment={user.notify_email_assignment}
+            notifyUpdate={user.notify_email_update}
+            notifyComment={user.notify_email_comment}
+            notifyDueSoon={user.notify_email_due_soon}
+          />
+          <Button onClick={handleSignOut} variant="outline" size="sm">
+            <LogOut className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">Sign Out</span>
+          </Button>
+        </>
+      }
+    >
       <TaskNotificationToasts userId={user.id} />
       <AiChatWidget userId={user.id} />
-      {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-              <LayoutDashboard className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">My Dashboard</h1>
-              <p className="text-sm text-muted-foreground">{user.full_name}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <AccentThemePicker color={accentColor} onChange={setAccentColor} onReset={resetAccentColor} />
-            <ThemeToggle />
-            <AccountSettings
-              userId={user.id}
-              currentName={user.full_name || ''}
-              email={user.email}
-              notifyAssignment={user.notify_email_assignment}
-              notifyUpdate={user.notify_email_update}
-              notifyComment={user.notify_email_comment}
-              notifyDueSoon={user.notify_email_due_soon}
-            />
-            <Button onClick={handleSignOut} variant="outline" size="sm">
-              <LogOut className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Sign Out</span>
-            </Button>
-          </div>
-        </div>
-        <div className="container mx-auto px-4 pb-3">
-          <GlobalSearch isAdmin={isAdmin} />
-        </div>
-      </header>
 
-      {/* Body: sidebar + main */}
-      <div className="flex flex-1 min-h-0">
+      <div className="flex min-h-0 flex-1">
         {/* Bookmarks sidebar — hidden on mobile */}
         <aside className={cn(
           "hidden md:flex flex-col flex-shrink-0 border-r bg-muted/10 overflow-hidden transition-[width] duration-200 ease-in-out",
@@ -184,37 +186,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-w-0 px-4 py-8 pb-24 md:pb-8 overflow-x-hidden">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`hidden md:grid w-full ${canUseMarketingCalendar ? 'max-w-4xl grid-cols-6' : 'max-w-3xl grid-cols-5'} h-12`}>
-            <TabsTrigger value="tasks" className="flex items-center gap-2">
-              <Home className="w-4 h-4" />
-              <span className="hidden sm:inline">Home</span>
-            </TabsTrigger>
-            <TabsTrigger value="personal" className="flex items-center gap-2">
-              <Lock className="w-4 h-4" />
-              <span className="hidden sm:inline">Personal</span>
-            </TabsTrigger>
-            <TabsTrigger value="calendar" className="flex items-center gap-2">
-              <Calendar className="w-4 h-4" />
-              <span className="hidden sm:inline">Calendar</span>
-            </TabsTrigger>
-            {canUseMarketingCalendar && (
-              <TabsTrigger value="marketing" className="flex items-center gap-2">
-                <Megaphone className="w-4 h-4" />
-                <span className="hidden sm:inline">Marketing</span>
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="boards" className="flex items-center gap-2">
-              <Kanban className="w-4 h-4" />
-              <span className="hidden sm:inline">Boards</span>
-            </TabsTrigger>
-            <TabsTrigger value="chat" className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4" />
-              <span className="hidden sm:inline">Chat</span>
-              <ChatUnreadBadge userId={user.id} />
-            </TabsTrigger>
-          </TabsList>
+        <div className="flex-1 min-w-0 px-4 py-8 overflow-x-hidden">
+          <div className="mb-6">
+            <GlobalSearch isAdmin={isAdmin} />
+          </div>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
 
           <TabsContent value="tasks" className="space-y-6">
             <DashboardWindow
@@ -458,11 +434,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
           <TabsContent value="chat">
             <ChatPanel currentUserId={user.id} isAdmin={false} />
           </TabsContent>
-        </Tabs>
-        </main>
+          </Tabs>
+        </div>
       </div>
-
-      <MobileBottomNav items={navItems} activeTab={activeTab} onChange={setActiveTab} />
-    </div>
+    </AppShell>
   )
 }
