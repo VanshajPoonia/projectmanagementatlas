@@ -12,8 +12,10 @@ import { AI_CHAT_TOOLS, executeTool, toolsForMode, type ToolContext, type ChatMo
 // fixed without a deploy, and callGemini falls back automatically on a 404.
 export const AI_CHAT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite'
 // Used only when a turn carries files/images/video — flash-lite is cheap for text
-// but the fuller flash model is the reliable multimodal path.
-export const AI_CHAT_MULTIMODAL_MODEL = process.env.GEMINI_MULTIMODAL_MODEL || 'gemini-3.1-flash'
+// but the fuller flash model is the reliable multimodal path. Both the default and
+// the fallback are verified present in the current models list (gemini-3.1-flash,
+// notably, is NOT — don't use it); if this 404s, check the live lineup.
+export const AI_CHAT_MULTIMODAL_MODEL = process.env.GEMINI_MULTIMODAL_MODEL || 'gemini-3.5-flash'
 const MULTIMODAL_FALLBACK = 'gemini-2.5-flash'
 
 export const AI_CHAT_SYSTEM_PROMPT = `You are the built-in assistant for "Project Manager," an internal project management web app. It has: Kanban-style task boards with customizable columns/statuses, a shared team calendar (task due dates), a marketing content calendar (channels, companies, recurring events), private personal tasks, direct chat between teammates, bookmarks, and reports.
