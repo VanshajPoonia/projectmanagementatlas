@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, FileBarChart, Lock, Home, Megaphone, Bookmark, SlidersHorizontal, ChevronLeft, ShieldCheck, Sparkles } from 'lucide-react'
+import { LayoutDashboard, LogOut, Calendar, Home, Bookmark, ChevronLeft, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveTab } from '../shell/tab-url'
@@ -25,7 +25,6 @@ import WorkNext from '../dashboard/work-next'
 import AccountSettings from '../account/account-settings'
 import ThemeToggle from '../theme-toggle'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
-import MobileBottomNav, { type NavItem } from '../dashboard/mobile-bottom-nav'
 import GlobalSearch from '../search/global-search'
 import { gsap } from 'gsap'
 import { cn } from '@/lib/utils'
@@ -63,7 +62,6 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const supabase = createClient()
-  const headerRef = useRef<HTMLDivElement>(null)
   const tabsRef = useRef<HTMLDivElement>(null)
 
   // Sections addressable via ?tab= — matches the TabsTrigger values below.
@@ -91,14 +89,6 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   }
 
   useEffect(() => {
-    if (headerRef.current) {
-      gsap.fromTo(
-        headerRef.current,
-        { y: -80, opacity: 0 },
-        { y: 0, opacity: 1, duration: 0.7, ease: 'power3.out' }
-      )
-    }
-
     if (tabsRef.current) {
       gsap.fromTo(
         tabsRef.current,
@@ -111,40 +101,6 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.push('/login')
-  }
-
-  const primaryNavItems: NavItem[] = [
-    { value: 'overview', label: 'Home', icon: Home },
-    { value: 'boards', label: 'Boards', icon: ClipboardList },
-    { value: 'reports', label: 'Reports', icon: FileBarChart },
-    {
-      value: 'chat',
-      label: 'Chat',
-      icon: MessageSquare,
-      badge: (
-        <span className="absolute -top-1 -right-2">
-          <ChatUnreadBadge userId={user.id} />
-        </span>
-      ),
-    },
-  ]
-
-  const moreNavItems: NavItem[] = [
-    { value: 'calendar', label: 'Calendar', icon: Calendar },
-    { value: 'marketing', label: 'Marketing', icon: Megaphone },
-    { value: 'statuses', label: 'Statuses', icon: SlidersHorizontal },
-    { value: 'personal', label: 'Personal', icon: Lock },
-    ...(isSuperAdmin ? [{ value: 'super-admin', label: 'Super Admin', icon: ShieldCheck }] : []),
-  ]
-
-  // Super Admin is a dedicated page, not a tab — intercept its nav value and
-  // navigate instead of switching tabs.
-  const handleMobileNavChange = (value: string) => {
-    if (value === 'super-admin') {
-      router.push('/admin/super-admin')
-      return
-    }
-    setActiveTab(value)
   }
 
   const adminSections: SidebarNavGroup['items'] = [

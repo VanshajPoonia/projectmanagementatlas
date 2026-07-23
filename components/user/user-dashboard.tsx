@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LayoutDashboard, ClipboardList, MessageSquare, LogOut, Calendar, Kanban, Lock, Home, Megaphone, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, ChevronRight, Sparkles, CornerDownRight } from 'lucide-react'
+import { ClipboardList, LogOut, Calendar, Kanban, Home, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, Sparkles, CornerDownRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveTab } from '../shell/tab-url'
@@ -26,7 +26,6 @@ import AccountSettings from '../account/account-settings'
 import ThemeToggle from '../theme-toggle'
 import AccentThemePicker, { useAccentTheme } from '../theme/accent-theme-picker'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
-import MobileBottomNav, { type NavItem } from '../dashboard/mobile-bottom-nav'
 import GlobalSearch from '../search/global-search'
 import { cn } from '@/lib/utils'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
@@ -102,24 +101,6 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const inProgressTasks = myTasks.filter(t => getNormalizedTaskStatus(t) === 'in_progress')
   const doneTasks = myTasks.filter(t => getNormalizedTaskStatus(t) === 'done')
   const activeTasks = myTasks.filter(t => getNormalizedTaskStatus(t) !== 'done')
-
-  const navItems: NavItem[] = [
-    { value: 'tasks', label: 'Home', icon: Home },
-    { value: 'personal', label: 'Personal', icon: Lock },
-    { value: 'calendar', label: 'Calendar', icon: Calendar },
-    ...(canUseMarketingCalendar ? [{ value: 'marketing', label: 'Marketing', icon: Megaphone }] : []),
-    { value: 'boards', label: 'Boards', icon: Kanban },
-    {
-      value: 'chat',
-      label: 'Chat',
-      icon: MessageSquare,
-      badge: (
-        <span className="absolute -top-1 -right-2">
-          <ChatUnreadBadge userId={user.id} />
-        </span>
-      ),
-    },
-  ]
 
   const sidebarGroups: SidebarNavGroup[] = [
     {
