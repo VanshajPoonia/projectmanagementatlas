@@ -3,6 +3,7 @@
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar as CalendarPicker } from '@/components/ui/calendar'
@@ -47,6 +48,8 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
   const [detailInitialTab, setDetailInitialTab] = useState<'comments' | 'activity'>('comments')
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(task.title)
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [descDraft, setDescDraft] = useState('')
   const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false)
   const supabase = createClient()
   const taskAssignees = getAssignees(task, users)
@@ -77,6 +80,22 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
       return
     }
     logTaskActivity(supabase, task.id, currentUserId, `renamed the task from "${task.title}" to "${trimmed}"`)
+    onUpdate?.()
+  }
+
+  // Inline description edit on the card — same "no popup" convention Bobby asked for, mirroring
+  // how the modal initializes (cleaned text) and logs ("updated the description").
+  const handleSaveDescription = async () => {
+    const trimmed = descDraft.trim()
+    setEditingDesc(false)
+    if (trimmed === (taskDescription || '')) return
+    const { error } = await supabase.from('tasks').update({ description: trimmed || null }).eq('id', task.id)
+    if (error) {
+      toast.error('Could not update description', { description: error.message })
+      setDescDraft(taskDescription || '')
+      return
+    }
+    logTaskActivity(supabase, task.id, currentUserId, 'updated the description')
     onUpdate?.()
   }
 
@@ -338,11 +357,53 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
             )}
           </div>
 
-          {taskDescription && (
-            <p className="break-words text-xs text-muted-foreground line-clamp-3 [overflow-wrap:anywhere]">
+          {editingDesc ? (
+            <Textarea
+              autoFocus
+              value={descDraft}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setDescDraft(e.target.value)}
+              onBlur={handleSaveDescription}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  handleSaveDescription()
+                } else if (e.key === 'Escape') {
+                  setDescDraft(taskDescription || '')
+                  setEditingDesc(false)
+                }
+              }}
+              placeholder="Add a description... (⌘/Ctrl+Enter to save, Esc to cancel)"
+              rows={3}
+              className="min-h-0 text-xs"
+            />
+          ) : taskDescription ? (
+            <p
+              className={`break-words text-xs text-muted-foreground line-clamp-3 [overflow-wrap:anywhere] ${
+                canEdit ? 'cursor-text rounded hover:bg-accent' : ''
+              }`}
+              onClick={(e) => {
+                if (!canEdit) return
+                e.stopPropagation()
+                setDescDraft(taskDescription || '')
+                setEditingDesc(true)
+              }}
+            >
               {taskDescription}
             </p>
-          )}
+          ) : canEdit ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setDescDraft('')
+                setEditingDesc(true)
+              }}
+              className="text-left text-xs italic text-muted-foreground/60 hover:text-foreground"
+            >
+              + Add description
+            </button>
+          ) : null}
 
           {/* Tags */}
           {task.task_tags && task.task_tags.length > 0 && (
