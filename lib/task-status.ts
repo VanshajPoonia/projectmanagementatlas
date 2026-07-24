@@ -77,14 +77,14 @@ interface StatusLike { key: string; label: string }
 interface ColumnLike { id: string; title: string; status_key?: string | null; tasks?: unknown[] }
 
 /**
- * Find the board column a task should live in for a given status.
- *
- * FK-first: a column explicitly mapped to this status (columns.status_key) wins. Otherwise we
- * match on the column title (exact, case-insensitive) so a status like "Completed"/"Cancelled"
- * lands in its own column even when several share a normalized bucket, and finally fall back to
- * the normalized to_do/in_progress/done bucket for older boards whose titles don't line up.
+ * A column deliberately set up for this exact status — either linked via columns.status_key
+ * (the "Link Status" column menu) or titled to match the status label precisely. Used when a
+ * user explicitly picks a status from a task's dropdown: relocating the card into a column that
+ * only *coincidentally* buckets the same way (see bucketFromText) would silently move the task
+ * somewhere the user didn't choose, so that fallback is deliberately excluded here (unlike
+ * findColumnForStatus, which drag-and-drop and legacy boards still rely on).
  */
-export function findColumnForStatus(
+export function findExactColumnForStatus(
   statusKey: string,
   statusLabel: string | undefined,
   columns: ColumnLike[] | undefined | null,
@@ -99,6 +99,27 @@ export function findColumnForStatus(
     const exact = columns.find((c) => text(c.title) === label)
     if (exact) return exact
   }
+
+  return undefined
+}
+
+/**
+ * Find the board column a task should live in for a given status.
+ *
+ * FK-first: a column explicitly mapped to this status (columns.status_key) wins. Otherwise we
+ * match on the column title (exact, case-insensitive) so a status like "Completed"/"Cancelled"
+ * lands in its own column even when several share a normalized bucket, and finally fall back to
+ * the normalized to_do/in_progress/done bucket for older boards whose titles don't line up.
+ */
+export function findColumnForStatus(
+  statusKey: string,
+  statusLabel: string | undefined,
+  columns: ColumnLike[] | undefined | null,
+): ColumnLike | undefined {
+  if (!columns?.length) return undefined
+
+  const exact = findExactColumnForStatus(statusKey, statusLabel, columns)
+  if (exact) return exact
 
   const targetBucket = bucketFromText(text(statusKey))
   return columns.find((c) => getNormalizedTaskStatus({ column: c }) === targetBucket)

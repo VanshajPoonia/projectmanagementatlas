@@ -18,6 +18,7 @@ import { SelectTrigger } from "@/components/ui/select"
 import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -60,6 +61,8 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [selectedColumn, setSelectedColumn] = useState<any>(null)
   const [newColumnDialogOpen, setNewColumnDialogOpen] = useState(false)
   const [newColumnTitle, setNewColumnTitle] = useState('')
+  const [newColumnStatusKey, setNewColumnStatusKey] = useState<string>('__none__')
+  const [statusPickerColumn, setStatusPickerColumn] = useState<string | null>(null)
   const [editingBoardTitle, setEditingBoardTitle] = useState(false)
   const [boardTitle, setBoardTitle] = useState(board.title)
   const [boardDescription, setBoardDescription] = useState(cleanBoardDescription(board.description))
@@ -111,7 +114,6 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     ? [
         { value: 'calendar', label: 'Calendar', icon: Calendar },
         { value: 'marketing', label: 'Marketing', icon: Megaphone },
-        { value: 'statuses', label: 'Statuses', icon: SlidersHorizontal },
         { value: 'personal', label: 'Personal', icon: Lock },
       ]
     : []
@@ -244,13 +246,14 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
   const handleAddColumn = async () => {
     if (!newColumnTitle.trim()) return
-    
+
     const { data, error } = await supabase
       .from('columns')
       .insert({
         title: newColumnTitle,
         board_id: board.id,
-        position: columns.length
+        position: columns.length,
+        status_key: newColumnStatusKey === '__none__' ? null : newColumnStatusKey,
       })
       .select()
       .single()
@@ -258,6 +261,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     if (data && !error) {
       setColumns([...columns, { ...data, tasks: [] }])
       setNewColumnTitle('')
+      setNewColumnStatusKey('__none__')
       setNewColumnDialogOpen(false)
     }
   }
@@ -288,6 +292,23 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     
     setColumns(columns.map(col => col.id === columnId ? { ...col, color } : col))
     setColorPickerColumn(null)
+  }
+
+  const handleUpdateColumnStatus = async (columnId: string, statusKey: string) => {
+    const resolvedKey = statusKey === '__none__' ? null : statusKey
+    const { error } = await supabase
+      .from('columns')
+      .update({ status_key: resolvedKey })
+      .eq('id', columnId)
+
+    if (error) {
+      toast.error('Could not link this column to a status')
+      return
+    }
+
+    setColumns(columns.map(col => col.id === columnId ? { ...col, status_key: resolvedKey } : col))
+    setStatusPickerColumn(null)
+    toast.success(resolvedKey ? 'Column linked to status' : 'Column unlinked from status')
   }
 
   // Subtasks are rows in the same `tasks` table and arrive in the same column payload
@@ -496,6 +517,29 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back
               </Button>
+              {/* Persistent nav so switching sections doesn't require leaving the board first
+                  (mobile gets the equivalent via MobileBottomNav below — this page renders
+                  outside the AppShell sidebar since kanban boards need the full viewport width). */}
+              <div className="hidden items-center gap-0.5 rounded-md border p-0.5 md:flex">
+                {[...navItems, ...navMoreItems].map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <Tooltip key={item.value}>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleNavChange(item.value)}
+                          aria-label={item.label}
+                        >
+                          <Icon className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{item.label}</TooltipContent>
+                    </Tooltip>
+                  )
+                })}
+              </div>
               {editingBoardTitle && isAdmin ? (
                 <div className="flex-1 max-w-xl space-y-2">
                   <Input
@@ -731,6 +775,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                   <DropdownMenuItem onClick={() => setColorPickerColumn(column.id)}>
                                     <Palette className="w-4 h-4 mr-2" />
                                     Change Color
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => setStatusPickerColumn(column.id)}>
+                                    <SlidersHorizontal className="w-4 h-4 mr-2" />
+                                    Link Status
                                   </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => handleDeleteColumn(column.id)} className="text-red-600">
                                     <Trash className="w-4 h-4 mr-2" />
@@ -1145,6 +1193,22 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   onChange={(e) => setNewColumnTitle(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
                 />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Status (optional — lets tasks moved here reliably track that status)
+                  </label>
+                  <Select value={newColumnStatusKey} onValueChange={setNewColumnStatusKey}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="No status mapping" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">No status mapping</SelectItem>
+                      {taskStatuses.map((s: any) => (
+                        <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setNewColumnDialogOpen(false)}>
                     Cancel
@@ -1152,6 +1216,32 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   <Button onClick={handleAddColumn}>Add Column</Button>
                 </div>
               </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={statusPickerColumn !== null} onOpenChange={() => setStatusPickerColumn(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Link Column to Status</DialogTitle>
+                <DialogDescription>
+                  Tasks moved into this column will reliably be tracked under the chosen status —
+                  without a link, a status can be picked from a task's dropdown but won't stick.
+                </DialogDescription>
+              </DialogHeader>
+              <Select
+                value={columns.find(c => c.id === statusPickerColumn)?.status_key ?? '__none__'}
+                onValueChange={(value) => statusPickerColumn && handleUpdateColumnStatus(statusPickerColumn, value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="No status mapping" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No status mapping</SelectItem>
+                  {taskStatuses.map((s: any) => (
+                    <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </DialogContent>
           </Dialog>
 

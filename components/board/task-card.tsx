@@ -19,7 +19,7 @@ import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
 import { getAssignees, getAssigneeIds } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
-import { getNormalizedTaskStatus, findColumnForStatus, getEffectiveStatusKey } from '@/lib/task-status'
+import { getNormalizedTaskStatus, findExactColumnForStatus, getEffectiveStatusKey } from '@/lib/task-status'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { sendTaskAssignmentEmail } from '@/lib/email'
 import { logTaskActivity } from '@/lib/task-activity'
@@ -95,9 +95,15 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
     // status here also relocates the card into whichever column represents that
     // status (mirrors the status drag-and-drop between columns already sets).
     const statusLabel = statuses.find(s => s.key === value)?.label
-    const matchingColumn = findColumnForStatus(value, statusLabel, columns)
+    const matchingColumn = findExactColumnForStatus(value, statusLabel, columns)
+    if (!matchingColumn) {
+      toast.error(`No column on this board is linked to "${statusLabel || value}"`, {
+        description: 'An admin can link a column to it from the column\'s "⋮" menu → Link Status.',
+      })
+      return
+    }
     const updates: Record<string, any> = { status: value }
-    if (matchingColumn && matchingColumn.id !== task.column_id) {
+    if (matchingColumn.id !== task.column_id) {
       updates.column_id = matchingColumn.id
       updates.position = (matchingColumn as any).tasks?.length || 0
     }

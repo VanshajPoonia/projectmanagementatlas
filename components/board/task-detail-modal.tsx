@@ -21,7 +21,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
-import { findColumnForStatus } from '@/lib/task-status'
+import { findExactColumnForStatus } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
 import SubtaskList from './subtask-list'
 
@@ -224,40 +224,53 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
     setLoading(true)
 
+    let effectiveStatus = status
+    let matchingColumnId: string | undefined
+
+    // Board columns are the source of truth for where a card sits, so when the
+    // status changes here, relocate the card into the column that represents it
+    // (same behaviour as the inline status dropdown on the tile). Only an exact
+    // column match counts — bucketing a status like "cancel" into whatever column
+    // happens to share its done/in-progress/to-do bucket would silently move the
+    // task somewhere the user didn't choose, so that's rejected instead.
+    if (task?.status !== status) {
+      const boardId = board?.id || task?.board_id
+      const statusLabel = taskStatuses.find((s) => s.key === status)?.label
+      const { data: boardColumns } = boardId
+        ? await supabase.from('columns').select('id, title, position, status_key').eq('board_id', boardId).order('position')
+        : { data: null }
+      const matchingColumn = findExactColumnForStatus(status, statusLabel, boardColumns as any)
+
+      if (!matchingColumn) {
+        toast.error(`No column on this board is linked to "${statusLabel || status}"`, {
+          description: 'An admin can link a column to it from the column\'s "⋮" menu → Link Status. Other changes will still be saved.',
+        })
+        effectiveStatus = task?.status
+        setStatus(task?.status)
+      } else if (matchingColumn.id !== task?.column_id) {
+        matchingColumnId = matchingColumn.id
+      }
+    }
+
     // Auto-generate entry_date when task is marked as complete
     const updateData: any = {
       title: title.trim(),
       description: description.trim() || null,
       priority,
-      status,
+      status: effectiveStatus,
       due_date: dueDate?.toISOString() || null,
       visibility,
       // task_assignees is the source of truth; keep assigned_to as a mirror of the first assignee
       assigned_to: assignees[0] || null,
     }
-    
+
     // If status changed to 'done', set entry_date to now
-    if (status === 'done' && task?.status !== 'done') {
+    if (effectiveStatus === 'done' && task?.status !== 'done') {
       updateData.entry_date = new Date().toISOString()
     }
 
-    // Board columns are the source of truth for where a card sits, so when the
-    // status changes here, relocate the card into the column that represents it
-    // (same behaviour as the inline status dropdown on the tile).
-    if (task?.status !== status) {
-      const boardId = board?.id || task?.board_id
-      if (boardId) {
-        const { data: boardColumns } = await supabase
-          .from('columns')
-          .select('id, title, position')
-          .eq('board_id', boardId)
-          .order('position')
-        const statusLabel = taskStatuses.find((s) => s.key === status)?.label
-        const matchingColumn = findColumnForStatus(status, statusLabel, boardColumns as any)
-        if (matchingColumn && matchingColumn.id !== task?.column_id) {
-          updateData.column_id = matchingColumn.id
-        }
-      }
+    if (matchingColumnId) {
+      updateData.column_id = matchingColumnId
     }
 
     const { error } = await supabase
