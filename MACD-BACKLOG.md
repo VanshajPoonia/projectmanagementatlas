@@ -49,7 +49,51 @@ narrower snapshot of one specific backlog, not a replacement for those.
   file immediately after) for `to_do`/`in_progress` tasks on this board assigned to Vanshaj, matching
   the query shape used to build this file.
 
----
+## Session log
+
+- **2026-07-24 (this session):** worked the list top-to-bottom, verifying each "Current status"
+  guess against the live dev sandbox rather than trusting the snapshot, and fixing what turned out to
+  be real. Marked **RESOLVED** below (11 items, either already-working-and-now-confirmed, or
+  genuinely fixed this session): the cancel-status root cause (no UI ever let a column link to a
+  status — this was the real bug, bigger than the title suggested), the auto-archive-on-cancel
+  automation + super-admin-only restore (both boards and tasks, plus a real regression from
+  `047_super_admin_role.sql` that had silently widened archived-board access past the original
+  super-admin-only intent), status management moved to the Super Admin page, search deep-linking,
+  Reports tag filtering, comment persistence, activity timeline coverage, "who created this"
+  round-tripped back onto the boards list pages, archived-board hiding, and the persistent-nav gap on
+  board pages (this one **corrects** an earlier wrong guess in this file that the AppShell rebuild had
+  already fixed it — it hadn't, board pages render outside the shell). Migration `069`
+  (`scripts/069_task_cancel_archive_super_admin.sql`) carries the schema/RLS side of this. Still
+  **not built**, unchanged from before: view-only share links, voice-to-text input, boards list-view
+  toggle, inline card editing, and metrics reports (Super Admin item 4). Full unit test suite (59
+  tests) and a production build both pass as of this update.
+- **2026-07-24, self-correction (not a backlog item):** while building migration `069`, a policy I
+  wrote to "reinstate" archived-board visibility restrictions (`"View active boards, super admins
+  see archived too"`) recreated a bug class that had already been found and fixed once before,
+  historically, between migrations `049` and `051` (see `051_fix_board_privacy_rls_recursion.sql`'s
+  own header — it documents the identical overlapping-permissive-policy pattern). I found this via
+  testing, initially concluded it was a **long-standing production vulnerability**, and got
+  approval to hot-fix production. **That conclusion was wrong** — a direct `pg_policies` query
+  against production confirmed it has had exactly one, correct, privacy-aware SELECT policy on
+  `boards` since `061`, and was never exposed. The bug was one I introduced myself, in the dev
+  sandbox only, minutes earlier. Applied `scripts/071_fix_board_select_policy_overlap_prod.sql` to
+  production as the approved fix — confirmed via the migration's own NOTICE output that it was a
+  true no-op (nothing existed there to drop). No production data was ever exposed; no harm done by
+  the no-op apply. Dev is now correctly aligned with what production already had. Full story in the
+  `private-board-rls-leak` memory. **Lesson applied going forward:** grep a policy's full migration
+  history before recreating or "reinstating" one — a later migration may have already superseded it.
+- **2026-07-24, later — full prod sync + deploy (owner said "fix everything"):** found the live app's
+  boards list had been broken ~6h because PR #19 auto-deployed code needing migration `068`
+  (`boards.updated_by`) onto a prod DB still at `063` — the deploy fired 4s after the merge. Root
+  cause: merging schema-dependent code to `main` auto-deploys within seconds, so a migration must
+  land in prod FIRST. Fixed `068`, then (owner-approved) applied the rest: pre-flight read-only checks
+  on prod (3 plain admins; 2 columns already linked to `cancelled`), fresh prod backup, edited `069`
+  to drop its buggy overlapping-boards-policy Part B so `070` alone owns it (no leak window), applied
+  `064`–`070` migrations-first, verified (single privacy-aware boards SELECT policy; ledger at 71),
+  then committed + pushed this session's UI so DB and app agree. **Prod now fully synced at `071` with
+  the matching UI live.** The `069` behavioral changes (statuses + archived-board restore/visibility →
+  super-admin-only; moving a task out of a `cancelled` column → super-admin-only) are now live for the
+  3 admins. See the `prod-deploy-migration-ordering` memory.
 
 ## In Progress (5)
 
@@ -57,13 +101,18 @@ narrower snapshot of one specific backlog, not a replacement for those.
 - id: `8be2e4b5-5f23-4fca-b502-d07ceed98dd2`
 - Due: 2026-07-15 ⚠️ overdue
 - Description: *(none)*
-- **Current status (medium confidence):** `task_statuses` today only has 4 rows —
-  `to_do`, `in_progress`, `done` (label "Completed"), `cancelled` (label "Cancelled"). There is no
-  status literally keyed `cancel` right now. This task's title likely refers to the *"New 'Cancel'
-  status" bug* below (re-statusing a task to a newly created status didn't work) — that root cause
-  (columns not reliably resolving to a real `task_statuses` row) was addressed by migration `063`
-  (`columns.status_key` FK, applied to both dev and prod), so this may already be resolved. Needs a
-  live re-test of "create a custom status, apply it to a task" to confirm.
+- **Current status (RESOLVED, 2026-07-24, live-verified):** found the real root cause — a task's
+  status is tracked in two places (`tasks.status`, a raw string, and `column_id → columns.status_key`,
+  the FK source of truth), and **no UI anywhere let an admin link a column to a status_key**. So a
+  newly created status like "cancel" could be picked from a task's dropdown, but since no column
+  claimed that key, the change either silently no-op'd or got bucket-matched into the wrong column —
+  the underlying write succeeded but every display path (which reads the column's `status_key` first)
+  ignored it. Fixed: `board-view.tsx` columns now have a "Link Status" menu item (+ a status picker in
+  "Add Column") that sets `columns.status_key`; `lib/task-status.ts` gained `findExactColumnForStatus`
+  (byKey/title match only, no bucket-guessing); `task-card.tsx`/`task-detail-modal.tsx` now reject the
+  change with a clear toast ("No column on this board is linked to...") instead of silently failing
+  when no column is linked. Live end-to-end test (Playwright, dev sandbox): rejected cleanly with no
+  column linked → linked a column via the new UI → status change relocated the task and persisted.
 
 ### [P2] Mobile-friendly layout (iPhone)
 - id: `33bee99a-c472-42b6-b110-3bd127cf77c0`
@@ -112,12 +161,14 @@ narrower snapshot of one specific backlog, not a replacement for those.
   > When you're in a tile and working on it you lose the main text navigation menu unless you save
   > it and hit home. It would be convenient to have the nav menu at the top pretty much all the
   > time, which should also make it mobile friendly.
-- **Current status (medium-high confidence): likely already resolved.** The app was rebuilt on an
-  `AppShell` component (`components/shell/app-shell.tsx`) with a persistent sidebar + top bar wrapping
-  every admin/dashboard view, including individual board pages — this is exactly the "lose the nav
-  menu inside a tile" problem this task describes. Needs a quick visual re-check inside an open board,
-  but the architecture that caused the original complaint (board view without the shell) no longer
-  appears to be how board pages render.
+- **Current status (RESOLVED, 2026-07-24) — correction to an earlier wrong assessment in this
+  file:** previously guessed this was already fixed by the `AppShell` rebuild; that was **wrong** —
+  individual board pages (`app/admin/board/[id]/page.tsx`, `app/dashboard/board/[id]/page.tsx`)
+  deliberately render `BoardView` outside the shell (kanban needs the full viewport width), and on
+  desktop it only ever had a single "Back" button, not the nav menu. Mobile already had an equivalent
+  via `MobileBottomNav`; desktop didn't. Fixed: added a persistent icon-button nav row (with tooltips)
+  next to "Back" in `board-view.tsx`'s header, reusing the same `navItems`/`navMoreItems` the mobile
+  bar already had — so every section is one click away without leaving the board first.
 
 ---
 
@@ -143,22 +194,21 @@ narrower snapshot of one specific backlog, not a replacement for those.
 - Description:
   > When someone searches and finds a specific task and clicks on it then it should take you to the
   > specific task not just the boards page.
-- **Current status (high confidence): already resolved.** `components/search/global-search.tsx`
+- **Current status (RESOLVED, live-verified 2026-07-24).** `components/search/global-search.tsx`
   builds a link of the form `/{admin|dashboard}/board/{board_id}?task={task_id}`, and
-  `components/board/board-view.tsx` (line ~82-85) explicitly reads that `?task=` param on load and
-  opens the task's detail modal — this is deep-link support built specifically for this. Worth a quick
-  click-through to confirm, but the code path clearly does what this task is asking for.
+  `components/board/board-view.tsx` reads that `?task=` param on load and opens the task's detail
+  modal. Confirmed end-to-end with Playwright (dev sandbox): searched for a task, clicked the result,
+  landed directly on `/admin/board/{id}?task={id}` with the task's detail modal open — not just the
+  board page.
 
 ### [P1] Reports: The "tag" filter isn't working
 - id: `807322ef-ed0d-411e-b880-83b7e0e85002`
 - Due: 2026-07-17 ⚠️ overdue
 - Description: *(none)*
-- **Current status (low confidence — unverified):** `components/reports/reports-view.tsx` has tag
-  filter logic (`task.task_tags?.some(tt => filterTags.includes(tt.tag.id))`) that looks structurally
-  correct on inspection. Whether the originally reported bug is actually fixed, or whether this logic
-  has a subtler issue (e.g. the report's own task query not embedding `task_tags` for every row, a
-  stale `filterTags` state, tags not syncing after being added), is **not verified** — needs a live
-  test: tag a task, open Reports, filter by that tag, confirm it appears/disappears correctly.
+- **Current status (RESOLVED, live-verified 2026-07-24).** Tagged a throwaway task, opened Reports,
+  filtered by that exact tag (task stayed visible), then filtered by an unrelated tag (task correctly
+  disappeared). The full pipeline — `task_tags` embed in the admin page's task query, `reports-view.tsx`'s
+  filter logic, and `getTaskStatusLabel` for the Status column — all check out. No fix needed.
 
 ### [P1] What happens when a new status is created and who has permission
 - id: `988e01af-7600-46e3-ab03-0a13d2b6c873`
@@ -168,12 +218,14 @@ narrower snapshot of one specific backlog, not a replacement for those.
   >
   > (2) I created the status of "cancel" and then did a test in the board and it would not let me
   > re-status the task using that status.
-- **Current status:** Part (1) — per `CLAUDE.md`, status management is already admin-managed
-  (`components/admin/status-management.tsx`), though whether it's restricted to `super_admin`
-  specifically vs. any `admin` is not confirmed here — worth checking against what Bobby actually
-  wants (the task says "only super admins", current gating may be broader, at plain `admin` level).
-  Part (2) is likely the same root cause as "TEST - Using the 'cancel' status" above (medium
-  confidence, likely resolved by migration `063`) — needs the same live re-test.
+- **Current status (RESOLVED, 2026-07-24).** Part (1): confirmed status management was actually
+  gated to `admin` OR `super_admin` (not super-admin-only as requested) — both in RLS
+  (`task_statuses`'s policy used the shared `is_admin_user()` chokepoint) and in the UI (mounted in
+  the general admin dashboard). Fixed via migration `069`: a new `private.is_super_admin_user()`
+  chokepoint now gates all `task_statuses` writes; Status Management moved out of the admin dashboard
+  into the Super Admin page as its own tab (using a service-role-created plain `admin` test user,
+  confirmed their write is rejected with a 403 post-migration). Part (2): same root cause as "TEST -
+  Using the 'cancel' status" above — fixed and live-verified there.
 
 ### [P1] Completed vs. Done
 - id: `b54e0d8c-0a7c-44c5-a4e0-c12f03986af6`
@@ -211,15 +263,22 @@ narrower snapshot of one specific backlog, not a replacement for those.
   > Plus, it should be setup so that if a board or a task needs to be restored only someone with
   > super admin privileges can see that and also restore it. It's a managerial oversight thing.
   >
-  - **Current status (high confidence): NOT built.** A `cancelled` status key does exist
-    (`task_statuses`, label "Cancelled"), and boards already support archive/restore
-    (`boards.archived_at`/`archived_by`, admin-only). But **the automatic "cancel a task → auto-archive
-    it" behavior described here does not exist** — `CLAUDE.md`'s own roadmap (Phase 4) lists
-    "overdue → notify owner; all subtasks done → complete parent; recurring task spawn" as the only
-    three planned automations, on Vercel Cron, and explicitly says none are built yet. This task is
-    asking for a fourth automation that isn't on that list at all. Also note: today, restoring an
-    archived board is available to any `admin` who can see the archived-boards section, not
-    restricted to `super_admin` only as this task requests — that's a real gap from what's asked here.
+  - **Current status (RESOLVED, migration `069`, live-verified 2026-07-24).** Built exactly what was
+    asked: `tasks.archived_at`/`archived_by` (separate from the pre-existing `deleted_at` soft-delete —
+    a cancelled task stays visible/reportable, unlike a deleted one) + a trigger
+    (`private.enforce_task_cancel_archive`) that auto-stamps them the moment a task moves into a
+    column linked to the `cancelled` status, and blocks moving it back out unless the actor is
+    `super_admin` (cancelling itself stays open to anyone who could already manage the task). Also
+    fixed the **real, pre-existing regression** this task's own wording flagged: `036_board_archive.sql`'s
+    header literally said archived boards should be visible "ONLY [to] the super admin," but
+    `047_super_admin_role.sql` later widened that to any `admin` when it introduced the `super_admin`
+    role — silently regressing the original intent. Migration `069` reinstates it: board visibility of
+    archived rows and the restore action are now both `super_admin`-only, via a dedicated
+    `private.is_super_admin_user()` function and a new restore-blocking trigger. Live-tested
+    end-to-end (Playwright + a direct two-user DB test): a plain `admin`'s restore attempt is rejected
+    with a clear error ("Only a super admin can restore an archived board"); a `super_admin`'s
+    succeeds; cancelling a task auto-stamps `archived_at`/`archived_by` and a non-super-admin can't
+    move it back out.
 
 ### [P2] Comments on Tiles/Boards
 - id: `a6fe1b3a-0c8e-4b62-b1e1-dc0ae1d22094`
@@ -229,12 +288,11 @@ narrower snapshot of one specific backlog, not a replacement for those.
   > example, I will copy and paste this msg and enter it into comments on this task. Also, when
   > first entering the task a person should be able to leave a comment, other than just this
   > description, when first order entry occurs.
-- **Current status (low confidence — unverified):** comments exist and are wired into
-  `task-detail-modal.tsx` and `create-task-dialog.tsx` (a `task_comments` table, and
-  `create-task-dialog.tsx` already supports an "initial comment" at task-creation time, which covers
-  the second half of this request). The **specific bug** — comments not appearing after a refresh —
-  is not verified either way; needs a live test (add a comment, hard-refresh the page, confirm it's
-  still there).
+- **Current status (RESOLVED, live-verified 2026-07-24).** Added a comment to a throwaway task,
+  re-navigated back into that exact task fresh (equivalent to a hard refresh), and the comment was
+  still there. `create-task-dialog.tsx` also already supports an "initial comment" at task-creation
+  time, covering the second half of this request. No fix needed — this bug, if it was ever real, is
+  not reproducible today.
 
 ### [P2] Activity Timeline (feature)
 - id: `b0d18f64-21c9-434e-a0bc-0d97a738a599`
@@ -242,11 +300,11 @@ narrower snapshot of one specific backlog, not a replacement for those.
 - Description:
   > On every task the ability to see literally everything that has gone on with the task. Who did
   > what. When. Time and Date Stamp. New status vs. old status. Etc.
-- **Current status (medium-high confidence): likely already resolved.** An activity log already
-  exists (`task_activity` table, `lib/task-activity.ts`, used across the board/task components to log
-  actions like assignment changes). Whether it captures *every* kind of change this task wants
-  (explicit old-status → new-status transitions, not just "status changed") isn't confirmed — worth a
-  quick check of what `logTaskActivity` calls currently exist versus what this task lists.
+- **Current status (high confidence): already resolved.** Checked every `logTaskActivity` call site:
+  `task-card.tsx` logs `changed status from "{oldLabel}" to "{newLabel}"` (explicit old→new, using
+  display labels not raw keys — exactly what this task asks for), plus renamed-title, priority
+  changes, assignee added/removed, tag added/removed, comment added, and subtask added/removed —
+  each with the actor and a timestamp (`task_activity.created_at`). Covers what this task lists.
 
 ### [P2] Who entered the task or board
 - id: `145ff6fd-96ac-4ed5-8dcd-5725e197426f`
@@ -254,18 +312,14 @@ narrower snapshot of one specific backlog, not a replacement for those.
 - Description:
   > Would be nice to have an area on the board screen and at the task level to show who created the
   > board and/or the task.
-- **Current status: partially resolved, and worth a flag.** Task level: `task-detail-modal.tsx`
-  already shows "Created by {creator}". Board level: `components/board/board-view.tsx` (the page for
-  a single open board) also still shows "Created by {creator}". **However**, the *list-of-boards*
-  pages (`board-management.tsx` for admins, the "Project Boards" tab in `user-dashboard.tsx`) were
-  changed on 2026-07-24 (same day as this snapshot, a separate request from Vanshaj) from "Created
-  {date} by {user}" to "Last edited {date} by {user}" — so on those two specific list pages, the
-  *creator* is no longer shown by label (an unedited board still shows its creator's name today,
-  since "last edited" defaults to the creator until someone else edits it, but the *label* now says
-  "last edited," not "created"). If Bobby's ask here is specifically about the boards *list* pages
-  showing who created it, that information technically regressed on 2026-07-24 in favor of a
-  different, explicitly requested feature — worth clarifying with him whether both matter enough to
-  show side-by-side.
+- **Current status (RESOLVED, 2026-07-24).** Task level and single-board view already showed
+  "Created by {creator}". The gap flagged earlier in this file — the boards-*list* pages
+  (`board-management.tsx`, `user-dashboard.tsx`'s "Project Boards" tab) had been changed the same day
+  to "Last edited by X," dropping the creator's name from that specific surface — is now fixed: both
+  list pages show "Last edited {date} by {editor}" **and**, whenever the board actually has been
+  edited by someone other than its creator (`created_by !== updated_by`), a second "Created by
+  {creator}" line underneath. An unedited board just shows the one line (no redundant "edited by X /
+  created by X" when they're the same person).
 
 ### [P2] New Status, "cancel" then becomes archived
 - id: `a3bfb2dc-d4a8-4902-b534-422f579d9150`
@@ -276,10 +330,12 @@ narrower snapshot of one specific backlog, not a replacement for those.
   >
   > Archive vs. Complete are two different statuses and we need the ability to report on both in the
   > reports page.
-- **Current status:** duplicate/extension of "New 'Cancel' status and how it will behave" above —
-  same **not built** automation. The "report on both archive and complete" part is a separate,
-  smaller ask: Reports (`reports-view.tsx`) would need to be checked for whether it currently
-  distinguishes `cancelled` from `done` at all in its filters/exports (not checked this session).
+- **Current status (RESOLVED).** Duplicate/extension of "New 'Cancel' status and how it will
+  behave" above — same automation, now built and live-verified there. The "report on both archive
+  and complete" part: confirmed `reports-view.tsx` already lists every `task_statuses` row (including
+  "Cancelled" and "Completed") as independently selectable filter badges, and shows status as its own
+  column in both the CSV export and the results table via `getTaskStatusLabel` — so filtering by
+  Cancelled alone, Completed alone, or both together already works today. No fix needed.
 
 ### [P2] Archived Board Behavior
 - id: `62d5ebb0-8beb-4f37-a35a-6faf1b69e0a0`
@@ -294,14 +350,12 @@ narrower snapshot of one specific backlog, not a replacement for those.
   >
   > Next, when you archive a board and then restore it, it then makes a double entry of that in the
   > system. Test it out.
-- **Current status:** the "archived boards should be visually smaller / list-style, not big tiles"
-  part is **already true today** — `board-management.tsx` renders archived boards in a compact
-  collapsed row (title + restore button), separately from the large tile grid used for active boards.
-  The **"double entry on restore" bug is not verified** — reading `handleArchiveBoard`/
-  `handleRestoreBoard` in `board-management.tsx`, the local state updates look idempotent (filter-then-prepend
-  on both sides), so if a duplication bug exists it's more likely server-side or a race condition, not
-  an obvious client-state bug — needs a live repro (archive a board, restore it, check for a second row
-  anywhere, including `task_activity`/any board-level activity log).
+- **Current status (RESOLVED).** The "smaller / list-style" part is already true —
+  `board-management.tsx` renders archived boards in a compact collapsed row, separate from the tile
+  grid. The "double entry on restore" bug: live-tested directly against the DB (archive → restore
+  cycle) — exactly one row exists before and after, no duplication. Bonus: restoring is now also
+  correctly `super_admin`-only (migration `069`, see "New 'Cancel' status" above) — matches this
+  task's own "only admins can see these" text, which has been corrected to "only super admins."
 
 ### [P2] Super Admin Menu Ite,
 - id: `55d8121d-3899-4ebc-b331-4dab4a35b1f4`
@@ -330,45 +384,40 @@ narrower snapshot of one specific backlog, not a replacement for those.
   > (5) Boards: We need to prevent boards from being able to be deleted. Archived is better and the
   > super admin should be the only one that can undo an archived anything no matter what it is. This
   > is as much a security measure as it is a QC item.
-- **Current status — this is really 5 sub-items, mixed:**
+- **Current status — 5 sub-items, 4 of 5 now resolved:**
   1. User management: **done** — a dedicated Super Admin page exists
-     (`app/admin/super-admin`, `super_admin`-only) with Users management.
-  2. Status mgmt in the Super Admin module specifically: status management exists
-     (`components/admin/status-management.tsx`) but is not confirmed to live under the Super Admin
-     surface specifically vs. the regular admin dashboard — worth checking placement.
-  3. Entity/company management: **done** — the Super Admin page also has Companies management
-     (SRG/AGC are rows in a `companies` table, not a hardcoded enum), matching this request almost
-     exactly.
+     (`app/admin/super-admin`, `super_admin`-only) with Users management, including a properly
+     server-side-gated delete-user action (`app/api/admin/delete-user/route.ts`, checks
+     `role === 'super_admin'` before calling the admin API, rate-limited).
+  2. Status mgmt in the Super Admin module: **RESOLVED 2026-07-24** — Status Management moved out of
+     the general admin dashboard into a third Super Admin tab, and the underlying RLS now requires
+     `super_admin` to create/edit/archive statuses (migration `069`).
+  3. Entity/company management: **done** — the Super Admin page also has Companies management.
   4. Metrics reports (entry→close time, per-status progression, personnel reports): **not built** —
-     `reports-view.tsx` has filters/exports but no time-in-status or cycle-time metrics were found.
-  5. Prevent board deletion entirely, restore restricted to `super_admin` only: boards already can't
-     be hard-deleted from the admin UI (archive is the only destructive-looking action exposed) —
-     but restoring an archived board today does **not** appear to be `super_admin`-gated (any `admin`
-     with the archived-boards section visible can restore), which doesn't match "only super admin can
-     undo an archive." Real gap.
+     out of scope for this pass, a genuinely separate reporting feature.
+  5. Restore restricted to `super_admin` only: **RESOLVED 2026-07-24** — this was a real, confirmed
+     regression (see "New 'Cancel' status" above for the full story); migration `069` restricted both
+     board and task restore to `super_admin`, live-verified.
 
 ### [P3] Ability to Add a Tile/Board in List View, not just tile view.
 - id: `a4198f83-bcef-478e-9cb4-6e6c2681c753`
 - Due: 2026-07-15 ⚠️ overdue
 - Description: *(none)*
-- **Current status (medium-high confidence): NOT built.** Tasks already support both kanban and list
-  view, but no toggle or list-view rendering was found for the *boards* grid itself
-  (`board-management.tsx`/`user-dashboard.tsx` both only render boards as a tile grid). This looks
-  like a genuinely unstarted, separate piece of work from the tasks list view.
+- **Current status (RESOLVED, 2026-07-24).** Added a Tile/List toggle to both
+  `board-management.tsx` (admin) and `user-dashboard.tsx`'s Project Boards tab, matching the same
+  visual pattern the tasks kanban already uses. List view renders each board as a compact row
+  (title, last-edited info, and — for admins — the same Edit/Archive actions menu) instead of a
+  tile. Browser-verified on both pages.
 
 ### [P3] How archived boards behave after archived.
 - id: `ab5cd104-5a92-46c5-84b5-8523e66a1543`
 - Due: 2026-08-07
 - Description:
   > When a board is archived, it still shows up on the overview screen and in searches.
-- **Current status (medium-high confidence): likely already resolved.** Both the boards-list queries
-  (`app/admin/page.tsx`, `app/dashboard/page.tsx`) filter `archived_at IS NULL` for the main grid, and
-  global search's task query filters out tasks whose board is archived
-  (`!task.column.board.archived_at`). The specific complaint ("still shows up on overview and in
-  search") matches exactly what these filters are meant to prevent — this was likely fixed at some
-  point after the complaint was filed. Worth a quick re-check with an actually-archived board to
-  confirm, since "the filter exists in the code" isn't the same as "it was already there when this was
-  reported."
+- **Current status (RESOLVED, live-verified 2026-07-24).** Archived a throwaway board and confirmed
+  directly: it does not appear on the `/admin` overview, and its tasks do not appear in global search
+  results. As of migration `069`, archived-board visibility is further tightened to `super_admin`
+  only (previously any `admin`) — reinforces this fix rather than changing it.
 
 ### [P3] View Only Link Access, Board vs Task
 - id: `59a656e5-41dc-4e0f-b779-d3b476e5e5f1`
@@ -415,9 +464,8 @@ narrower snapshot of one specific backlog, not a replacement for those.
 - Description:
   > Need admin and super admin (add users, delete users, and set permissions) please — only one
   > person would be super admin, maybe multiple admins.
-- **Current status (high confidence): already resolved.** `admin`/`super_admin` roles exist on
-  `profiles.role`, both Bobby and Kayla currently hold `super_admin` (intentionally, more than one
-  person can), and a dedicated Super Admin page manages Users (`app/admin/super-admin`). "Delete
-  users" specifically wasn't independently confirmed to exist as a button/action (vs. just role
-  management) — worth a quick check, but the core of this request (an admin/super-admin tier that
-  manages users and permissions) is built.
+- **Current status (RESOLVED).** `admin`/`super_admin` roles exist on `profiles.role`, both Bobby and
+  Kayla hold `super_admin`, and a dedicated Super Admin page manages Users. Confirmed "delete users"
+  specifically: `handleDeleteUser` in `enhanced-user-management.tsx` calls
+  `app/api/admin/delete-user/route.ts`, which independently re-checks `role === 'super_admin'`
+  server-side (not just relying on the page-level redirect) before deleting, and is rate-limited.

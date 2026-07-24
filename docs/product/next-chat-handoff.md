@@ -96,9 +96,10 @@ future session, that's a regression — don't assume it's still pending.
   assertMigrationTarget({allowProd}) = the migration runner: dev always
   allowed, prod ONLY via an explicit --allow-prod flag + loud banner. Only
   additive/non-destructive migrations may ever use --allow-prod.
-- Migrations: numbered SQL in scripts/, next number is 068. Dev sandbox is at
-  067; production is at 063 (063 was additive and applied to prod on
-  2026-07-24). Apply via the runner only: `pnpm migrate` (status:
+- Migrations: numbered SQL in scripts/, next number is 072. Dev AND production
+  are BOTH fully synced at 071 (001–071 all applied to prod on 2026-07-24 —
+  owner-approved batch, applied migrations-FIRST then deployed the UI).
+  Apply via the runner only: `pnpm migrate` (status:
   `pnpm migrate:status`). Never hand-run SQL in the Supabase editor. Each
   file wraps itself in BEGIN;…COMMIT; and is idempotent (match 047/063/065
   style).
@@ -121,9 +122,11 @@ future session, that's a regression — don't assume it's still pending.
   delete, move, or unlock it.
 
 ## Git / shipping
-- Local `main` is currently 12 commits ahead of origin/main and NOT pushed.
-- When ready to ship: push via SMALL SLICED PRs, not one big push. A push to
-  main triggers a Vercel deploy (safe now — prod already has migration 063).
+- Local `main` == origin/main (pushed + deployed as of 2026-07-24 EOD).
+- A push to `main` AUTO-DEPLOYS to prod within seconds. So: apply any schema
+  migration to prod (`--allow-prod`) BEFORE merging code that depends on it —
+  a missing 068 once shipped ahead of its migration and broke the live boards
+  list for ~6h. Migrations first, then deploy. Prefer small sliced commits.
 - Do NOT add "Co-Authored-By: Claude" trailers to commits (repo rule).
 - Tests: `pnpm test` (currently 59 passing — keep them green).
 
