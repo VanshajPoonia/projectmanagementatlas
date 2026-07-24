@@ -31,6 +31,8 @@ interface TaskCardProps {
   task: any
   isAdmin: boolean
   currentUserId: string
+  /** The caller's board_members row for this board, if any (null = no row = full default access). */
+  boardRole?: 'member' | 'guest' | 'client' | null
   users: any[]
   board?: any
   columns?: any[]
@@ -40,7 +42,7 @@ interface TaskCardProps {
   onUpdate?: () => void
 }
 
-export default function TaskCard({ task, isAdmin, currentUserId, users, board, columns, subtasks, isDragging, onUpdate }: TaskCardProps) {
+export default function TaskCard({ task, isAdmin, currentUserId, boardRole = null, users, board, columns, subtasks, isDragging, onUpdate }: TaskCardProps) {
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailInitialTab, setDetailInitialTab] = useState<'comments' | 'activity'>('comments')
   const [editingTitle, setEditingTitle] = useState(false)
@@ -50,11 +52,14 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
   const taskAssignees = getAssignees(task, users)
   const assigneeIds = getAssigneeIds(task)
   const taskDescription = cleanTaskDescription(task.description)
-  const canDelete = isAdmin || task.created_by === currentUserId
+  // Mirrors the server-side restriction from migrations 065/067 — guest/client board
+  // members can view but not create/edit/delete tasks.
+  const isRestrictedMember = boardRole === 'guest' || boardRole === 'client'
+  const canDelete = !isRestrictedMember && (isAdmin || task.created_by === currentUserId)
   // Mirrors TaskDetailModal's canEdit/canEditDueDate rules, so inline edits on the
   // tile follow the same permissions as the full modal.
-  const canEdit = isAdmin || task.created_by === currentUserId || assigneeIds.includes(currentUserId)
-  const canEditDueDate = isAdmin || task.created_by === currentUserId
+  const canEdit = !isRestrictedMember && (isAdmin || task.created_by === currentUserId || assigneeIds.includes(currentUserId))
+  const canEditDueDate = !isRestrictedMember && (isAdmin || task.created_by === currentUserId)
   const currentUser = users.find((u: any) => u.id === currentUserId)
   const statuses = useTaskStatuses()
 
@@ -547,6 +552,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, users, board, c
         board={board}
         isAdmin={isAdmin}
         currentUserId={currentUserId}
+        boardRole={boardRole}
         initialTab={detailInitialTab}
       />
     </>

@@ -33,6 +33,8 @@ interface TaskDetailModalProps {
   onUpdate: () => void
   isAdmin?: boolean
   currentUserId: string
+  /** The caller's board_members row for this board, if any (null = no row = full default access). */
+  boardRole?: 'member' | 'guest' | 'client' | null
   initialTab?: 'comments' | 'attachments' | 'links' | 'activity'
   /**
    * Fired when subtasks change. Separate from `onUpdate` because callers wire that to
@@ -42,7 +44,7 @@ interface TaskDetailModalProps {
   onSubtaskChange?: () => void
 }
 
-export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId, initialTab = 'comments', onSubtaskChange }: TaskDetailModalProps) {
+export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId, boardRole = null, initialTab = 'comments', onSubtaskChange }: TaskDetailModalProps) {
   const supabase = createClient()
   const taskStatuses = useTaskStatuses()
   const [task, setTask] = useState<any>(null)
@@ -85,15 +87,18 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     }
   }, [open, taskId])
 
-  const canEdit = Boolean(
+  // Mirrors the server-side restriction from migrations 065/067 — guest/client board
+  // members can view but not create/edit/delete tasks.
+  const isRestrictedMember = boardRole === 'guest' || boardRole === 'client'
+  const canEdit = !isRestrictedMember && Boolean(
     isAdmin
     || task?.created_by === currentUserId
     || (typeof task?.assigned_to === 'string' ? task.assigned_to : task?.assigned_to?.id) === currentUserId
     || assignees.includes(currentUserId)
   )
-  const canDelete = Boolean(isAdmin || task?.created_by === currentUserId)
+  const canDelete = !isRestrictedMember && Boolean(isAdmin || task?.created_by === currentUserId)
   // Per the PM portal spec: the due date can only be changed by the task's creator (or an admin).
-  const canEditDueDate = Boolean(isAdmin || task?.created_by === currentUserId)
+  const canEditDueDate = !isRestrictedMember && Boolean(isAdmin || task?.created_by === currentUserId)
 
   const loadAssignees = async () => {
     const { data } = await supabase
