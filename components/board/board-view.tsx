@@ -42,11 +42,16 @@ interface BoardViewProps {
   users: any[]
   isAdmin: boolean
   currentUserId: string
+  /** The caller's board_members row for this board, if any (null = no row = full default access). */
+  boardRole?: 'member' | 'guest' | 'client' | null
 }
 
 const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(id, full_name, email), task_assignees(user_id), task_tags(tag:tags(*)))'
 
-export default function BoardView({ board, columns: initialColumns, users, isAdmin, currentUserId }: BoardViewProps) {
+export default function BoardView({ board, columns: initialColumns, users, isAdmin, currentUserId, boardRole = null }: BoardViewProps) {
+  // Mirrors the server-side restriction from migrations 065/067 (private.can_manage_task /
+  // the tasks INSERT policy) — guest/client board members can view but not create/edit/delete.
+  const isRestrictedMember = boardRole === 'guest' || boardRole === 'client'
   const router = useRouter()
   const searchParams = useSearchParams()
   const [columns, setColumns] = useState(initialColumns)
@@ -116,6 +121,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   }
 
   const canManageTask = useCallback((task: any) => {
+    if (isRestrictedMember) return false
     const assignedToId = typeof task?.assigned_to === 'string' ? task.assigned_to : task?.assigned_to?.id
     return Boolean(
       isAdmin
@@ -123,7 +129,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       || assignedToId === currentUserId
       || getAssigneeIds(task).includes(currentUserId)
     )
-  }, [currentUserId, isAdmin])
+  }, [currentUserId, isAdmin, isRestrictedMember])
 
   const columnColors = [
     '#3b82f6', // blue
@@ -186,15 +192,14 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       return
     }
 
-    // Update task column and position. Prefer the managed status whose label
-    // matches the destination column's title (e.g. "Completed" -> key "done"),
-    // so the stored status stays one of the canonical keys used by filters
-    // elsewhere (Reports, etc). Fall back to slugifying the title for custom
-    // columns that don't correspond to any managed status.
+    // Update task column and position. Prefer the column's explicit status_key (Phase 1B FK) so
+    // the stored status is deterministic even for unconventional titles like "WIP". Fall back to
+    // the managed status whose label matches the destination column's title (e.g. "Completed" ->
+    // key "done"), then to slugifying the title for custom columns with no managed status.
     const matchingStatus = taskStatuses.find(
       s => s.label.trim().toLowerCase() === destColumn.title.trim().toLowerCase()
     )
-    const newStatus = matchingStatus?.key ?? destColumn.title.toLowerCase().replace(/ /g, '_')
+    const newStatus = destColumn.status_key ?? matchingStatus?.key ?? destColumn.title.toLowerCase().replace(/ /g, '_')
 
     // Optimistic update
     const prevColumns = columns
@@ -705,14 +710,16 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                             </p>
                           </div>
                           <div className="flex items-center gap-1">
-                            <Button
-                              size="icon-sm"
-                              variant="ghost"
-                              onClick={() => handleOpenCreateDialog(column)}
-                              aria-label={`Add task to ${column.title}`}
-                            >
-                              <Plus className="w-4 h-4" />
-                            </Button>
+                            {!isRestrictedMember && (
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                onClick={() => handleOpenCreateDialog(column)}
+                                aria-label={`Add task to ${column.title}`}
+                              >
+                                <Plus className="w-4 h-4" />
+                              </Button>
+                            )}
                             {isAdmin && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -759,6 +766,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                       task={task}
                                       isAdmin={isAdmin}
                                       currentUserId={currentUserId}
+                                      boardRole={boardRole}
                                       users={users}
                                       board={board}
                                       columns={columns}
@@ -1106,6 +1114,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           board={board}
           isAdmin={isAdmin}
           currentUserId={currentUserId}
+          boardRole={boardRole}
         />
       )}
 
