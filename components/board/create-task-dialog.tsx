@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { VoiceInputButton } from '@/components/ui/voice-input-button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { createClient } from '@/lib/supabase/client'
@@ -272,9 +273,16 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="description" className="text-sm font-medium">
-              Description
-            </label>
+            <div className="flex items-center justify-between">
+              <label htmlFor="description" className="text-sm font-medium">
+                Description
+              </label>
+              <VoiceInputButton
+                onTranscript={(t) => setDescription((prev) => (prev ? prev + ' ' + t : t))}
+                className="h-6 w-6 text-muted-foreground"
+                title="Dictate description"
+              />
+            </div>
             <Textarea
               id="description"
               placeholder="Task description..."

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { VoiceInputButton } from '@/components/ui/voice-input-button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
@@ -715,7 +716,16 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
           {/* Description */}
           <div className="space-y-2">
-            <Label>Description</Label>
+            <div className="flex items-center justify-between">
+              <Label>Description</Label>
+              {canEdit && (
+                <VoiceInputButton
+                  onTranscript={(t) => setDescription((prev) => (prev ? prev + ' ' + t : t))}
+                  className="h-6 w-6 text-muted-foreground"
+                  title="Dictate description"
+                />
+              )}
+            </div>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
