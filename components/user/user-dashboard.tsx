@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ClipboardList, LogOut, Calendar, Kanban, Home, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, Sparkles, CornerDownRight } from 'lucide-react'
+import { ClipboardList, LogOut, Calendar, Kanban, Home, Bookmark, Bell, ListTodo, CheckCircle2, ChevronLeft, Sparkles, CornerDownRight, LayoutGrid, List } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveTab } from '../shell/tab-url'
@@ -42,6 +42,7 @@ interface UserDashboardProps {
 
 export default function UserDashboard({ user, tasks, boards, users }: UserDashboardProps) {
   const [activeTab, setActiveTabState] = useState('tasks')
+  const [boardsViewMode, setBoardsViewMode] = useState<'tile' | 'list'>('tile')
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true
     const saved = localStorage.getItem('bookmarks_sidebar_open')
@@ -420,11 +421,52 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
 
           <TabsContent value="boards">
             <Card>
-              <CardHeader>
-                <CardTitle>Project Boards</CardTitle>
-                <CardDescription>View all project boards</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <div>
+                  <CardTitle>Project Boards</CardTitle>
+                  <CardDescription>View all project boards</CardDescription>
+                </div>
+                <div className="flex items-center border rounded-md">
+                  <Button
+                    onClick={() => setBoardsViewMode('tile')}
+                    variant={boardsViewMode === 'tile' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="gap-2 rounded-r-none"
+                    aria-label="Tile view"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    onClick={() => setBoardsViewMode('list')}
+                    variant={boardsViewMode === 'list' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="gap-2 rounded-l-none"
+                    aria-label="List view"
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
+                {boardsViewMode === 'list' ? (
+                  <div className="space-y-2">
+                    {boards.map((board) => (
+                      <Link key={board.id} href={`/dashboard/board/${board.id}`}>
+                        <Card className="flex items-center gap-3 p-3 hover:shadow-md transition-all cursor-pointer hover:border-primary/30">
+                          <Kanban className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-medium">{board.title}</div>
+                            {(board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email) && (
+                              <p className="truncate text-xs text-muted-foreground">
+                                Last edited by {board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email}
+                              </p>
+                            )}
+                          </div>
+                        </Card>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {boards.map((board) => (
                     <Link key={board.id} href={`/dashboard/board/${board.id}`}>
@@ -446,6 +488,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                                   Last edited by {board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email}
                                 </p>
                               )}
+                              {board.created_by !== board.updated_by && (board.creator?.full_name || board.creator?.email) && (
+                                <p className="truncate text-xs text-muted-foreground">
+                                  Created by {board.creator.full_name || board.creator.email}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </CardHeader>
@@ -453,6 +500,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                     </Link>
                   ))}
                 </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

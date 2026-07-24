@@ -3,9 +3,10 @@
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, ShieldCheck, Users, Building2 } from 'lucide-react'
+import { ArrowLeft, ShieldCheck, Users, Building2, SlidersHorizontal } from 'lucide-react'
 import EnhancedUserManagement from './enhanced-user-management'
 import CompanyManagement from './company-management'
+import StatusManagement from './status-management'
 
 interface SuperAdminDashboardProps {
   users: any[]
@@ -43,7 +44,7 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
 
       <main className="container mx-auto px-4 py-8">
         <Tabs defaultValue="companies" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="companies" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
               Companies
@@ -51,6 +52,10 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
             <TabsTrigger value="users" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Users
+            </TabsTrigger>
+            <TabsTrigger value="statuses" className="flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4" />
+              Statuses
             </TabsTrigger>
           </TabsList>
 
@@ -60,6 +65,10 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
 
           <TabsContent value="users">
             <EnhancedUserManagement users={users} currentUserId={currentUserId} />
+          </TabsContent>
+
+          <TabsContent value="statuses">
+            <StatusManagement />
           </TabsContent>
         </Tabs>
       </main>

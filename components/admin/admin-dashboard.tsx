@@ -10,7 +10,6 @@ import { resolveActiveTab } from '../shell/tab-url'
 import { AppShell } from '../shell/app-shell'
 import type { SidebarNavGroup } from '../shell/app-sidebar'
 import BoardManagement from './board-management'
-import StatusManagement from './status-management'
 import TaskOverview from './task-overview'
 import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
@@ -67,8 +66,9 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
 
   // Module activation (PROMPT 3 "1-C"): app_modules is a singleton config table (one org, no
   // org_id) — everything defaults enabled=true, so this is a no-op until a super_admin flips a
-  // module off in Super Admin. 'overview'/'statuses' are core admin functions, not registered
-  // modules, so they're always on.
+  // module off in Super Admin. 'overview' is a core admin function, not a registered module,
+  // so it's always on. Statuses management moved to the Super Admin page (069) — status
+  // creation/editing is now super_admin-only, so it no longer belongs in the shared admin tabs.
   const modules = useAppModules()
   const showCalendar = isModuleEnabled(modules, 'calendar')
   const showMarketing = isModuleEnabled(modules, 'marketing_calendar')
@@ -84,7 +84,6 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
     ...(showMarketing ? ['marketing'] : []),
     ...(showReports ? ['reports'] : []),
     ...(showBoards ? ['boards'] : []),
-    'statuses',
     ...(showChat ? ['chat'] : []),
     ...(showPersonal ? ['personal'] : []),
   ]
@@ -139,7 +138,6 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
     ...(showBoards
       ? [{ id: 'boards', label: 'Boards', icon: 'kanban', href: '/admin?tab=boards', status: 'live' as const }]
       : []),
-    { id: 'statuses', label: 'Statuses', icon: 'statuses', href: '/admin?tab=statuses', status: 'live' },
     ...(showChat
       ? [{
           id: 'chat',
@@ -259,10 +257,6 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
 
             <TabsContent value="boards">
               <BoardManagement boards={boards} />
-            </TabsContent>
-
-            <TabsContent value="statuses">
-              <StatusManagement />
             </TabsContent>
 
             <TabsContent value="chat">

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette, Archive, ArchiveRestore, Globe, Lock, Users, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette, Archive, ArchiveRestore, Globe, Lock, Users, ChevronDown, ChevronRight, LayoutGrid, List } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import Link from 'next/link'
@@ -21,6 +21,7 @@ interface BoardManagementProps {
 
 export default function BoardManagement({ boards: initialBoards }: BoardManagementProps) {
   const [boards, setBoards] = useState(initialBoards)
+  const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
   const [archivedBoards, setArchivedBoards] = useState<any[]>([])
   const [showArchived, setShowArchived] = useState(false)
   const [open, setOpen] = useState(false)
@@ -207,7 +208,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
     e.stopPropagation()
 
     const confirmed = window.confirm(
-      `Archive "${boardTitle}"?\n\nThe board and all its data are kept — it's just hidden from everyone except admins. You can restore it any time.`
+      `Archive "${boardTitle}"?\n\nThe board and all its data are kept — it's just hidden from everyone except super admins. Only a super admin can restore it.`
     )
     if (!confirmed) return
 
@@ -246,8 +247,8 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
 
       setArchivedBoards((prev) => prev.filter(b => b.id !== boardId))
       if (data) setBoards((prev) => [data, ...prev])
-    } catch (err) {
-      alert('Failed to restore board. Please try again.')
+    } catch (err: any) {
+      alert(err?.message || 'Failed to restore board. Please try again.')
       console.error('Restore board error:', err)
     }
   }
@@ -369,6 +370,29 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
           <h2 className="text-2xl font-bold tracking-tight">Board Management</h2>
           <p className="text-muted-foreground">Create and manage project boards</p>
         </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center border rounded-md">
+            <Button
+              onClick={() => setViewMode('tile')}
+              variant={viewMode === 'tile' ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-2 rounded-r-none"
+              aria-label="Tile view"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span className="hidden sm:inline">Tile</span>
+            </Button>
+            <Button
+              onClick={() => setViewMode('list')}
+              variant={viewMode === 'list' ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-2 rounded-l-none"
+              aria-label="List view"
+            >
+              <List className="w-4 h-4" />
+              <span className="hidden sm:inline">List</span>
+            </Button>
+          </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2">
@@ -450,8 +474,66 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
+      {viewMode === 'list' && (
+        <div className="space-y-2">
+          {boards.map((board) => (
+            <Card key={board.id} className="group relative hover:shadow-md transition-all">
+              <Link href={`/admin/board/${board.id}`}>
+                <div className="flex cursor-pointer items-center gap-3 p-3 pr-12">
+                  <Kanban className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate font-medium">{board.title}</span>
+                      {board.is_private && <Lock className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />}
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Calendar className="w-3 h-3" />
+                      Last edited {new Date(board.updated_at ?? board.created_at).toLocaleDateString('en-US')}
+                      {(board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email) && (
+                        <span className="truncate">
+                          by {board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Link>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 z-10">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus:opacity-100 transition-opacity bg-background/95 backdrop-blur-sm shadow-md hover:bg-background"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem className="cursor-pointer" onClick={(e) => handleEditBoard(board, e)}>
+                      <Edit className="w-4 h-4 mr-2" />
+                      Edit Board
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="cursor-pointer" onClick={(e) => handleArchiveBoard(board.id, board.title, e)}>
+                      <Archive className="w-4 h-4 mr-2" />
+                      Archive Board
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {viewMode === 'tile' && (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {boards.map((board) => (
           <Card key={board.id} className="relative group hover:shadow-lg transition-all">
@@ -480,7 +562,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-1">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="w-4 h-4" />
                     Last edited {new Date(board.updated_at ?? board.created_at).toLocaleDateString('en-US')}
@@ -490,6 +572,11 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                       </span>
                     )}
                   </div>
+                  {board.created_by !== board.updated_by && (board.creator?.full_name || board.creator?.email) && (
+                    <div className="truncate text-xs text-muted-foreground">
+                      Created by {board.creator.full_name || board.creator.email}
+                    </div>
+                  )}
                 </CardContent>
               </div>
             </Link>
@@ -531,6 +618,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
           </Card>
         ))}
       </div>
+      )}
 
       {boards.length === 0 && (
         <Card className="p-12 text-center">
@@ -554,7 +642,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
           >
             {showArchived ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             <Archive className="w-4 h-4" />
-            Archived boards ({archivedBoards.length}) — only admins can see these
+            Archived boards ({archivedBoards.length}) — only super admins can see these
           </button>
           {showArchived && (
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
