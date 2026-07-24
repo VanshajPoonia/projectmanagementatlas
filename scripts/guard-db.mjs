@@ -86,6 +86,64 @@ export function assertDevDatabase({ silent = false } = {}) {
   return DEV_REF
 }
 
+// Migration-target variant. Once this repo became the single folder for BOTH the live app and
+// the tenancy rebuild, "never touch prod" stopped being correct — legitimate prod migrations
+// exist. So: dev is always allowed; PROD requires a deliberate `--allow-prod` opt-in and prints
+// an unmissable banner. An unknown target is refused either way, and an environment that names
+// BOTH projects is refused rather than guessed at.
+export function assertMigrationTarget({ allowProd = false } = {}) {
+  const pg = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL || ''
+  const rest = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  const refs = extractRefs(pg, rest)
+
+  if (refs.length === 0) {
+    abort([
+      'Could not identify a Supabase project from the environment.',
+      'Refusing to run a migration against an unknown target.',
+    ])
+  }
+
+  const isProd = refs.includes(PROD_REF)
+  const isDev = refs.includes(DEV_REF)
+
+  if (isProd && isDev) {
+    abort([
+      'The environment references BOTH projects at once:',
+      `    prod ${PROD_REF} and dev ${DEV_REF}`,
+      '',
+      'Refusing to guess which one you meant. Set exactly one target.',
+    ])
+  }
+
+  if (isProd) {
+    if (!allowProd) {
+      abort([
+        'The active connection points at PRODUCTION:',
+        `    ${PROD_REF}   (the live app)`,
+        '',
+        'Prod migrations are possible but must be deliberate. If you truly',
+        'intend to migrate production, re-run with --allow-prod.',
+        'Destructive tenancy migrations must NEVER be run this way.',
+      ])
+    }
+    console.error('\n' + '!'.repeat(66))
+    console.error(`  ⚠️   RUNNING AGAINST PRODUCTION — ${PROD_REF}`)
+    console.error('  This is the LIVE database. --allow-prod was passed explicitly.')
+    console.error('!'.repeat(66) + '\n')
+    return PROD_REF
+  }
+
+  if (!isDev) {
+    abort([
+      `Unexpected project: ${refs.join(', ')}`,
+      `Allowed: dev ${DEV_REF}, or prod ${PROD_REF} with --allow-prod.`,
+    ])
+  }
+
+  console.log(`✅ DB guardrail OK — target is the dev sandbox (${DEV_REF}).`)
+  return DEV_REF
+}
+
 // Standalone mode: `node scripts/guard-db.mjs` / `pnpm guard` — report and exit.
 if (import.meta.url === `file://${process.argv[1]}`) {
   assertDevDatabase()

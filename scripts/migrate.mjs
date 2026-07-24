@@ -20,7 +20,7 @@ import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { assertDevDatabase } from './guard-db.mjs'
+import { assertMigrationTarget } from './guard-db.mjs'
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url))
 
@@ -30,8 +30,19 @@ if (!DB_URL) {
   process.exit(1)
 }
 
-// Refuse to run against anything but the dev sandbox — aborts before any psql connection.
-assertDevDatabase()
+// CLI: [--status | --baseline | --apply] [--allow-prod] [--through=NNN]
+//   --allow-prod   deliberate opt-in required to target the live database
+//   --through=NNN  with --baseline, record only files numbered <= NNN (the rest stay pending),
+//                  which is how a DB that is already at migration NNN gets adopted by the runner
+//                  without marking later, genuinely-unapplied files as done.
+const ARGS = process.argv.slice(2)
+const ALLOW_PROD = ARGS.includes('--allow-prod')
+const throughArg = ARGS.find((a) => a.startsWith('--through='))
+const THROUGH = throughArg ? Number.parseInt(throughArg.split('=')[1], 10) : null
+const mode = ARGS.find((a) => ['--status', '--baseline', '--apply'].includes(a)) || '--apply'
+
+// Dev is always allowed; prod requires --allow-prod. Aborts before any psql connection.
+assertMigrationTarget({ allowProd: ALLOW_PROD })
 
 // libpq/psql is often not on the default PATH on macOS — locate it.
 function findPsql() {
@@ -91,7 +102,6 @@ function record(file) {
      on conflict (filename) do nothing;`])
 }
 
-const mode = process.argv[2] || '--apply'
 ensureTable()
 const applied = appliedSet()
 const files = migrationFiles()
@@ -104,7 +114,9 @@ if (mode === '--status') {
 }
 
 if (mode === '--baseline') {
-  const toRecord = files.filter((f) => !applied.has(f))
+  const prefixNum = (f) => Number.parseInt(f.match(/^(\d+)/)[1], 10)
+  let toRecord = files.filter((f) => !applied.has(f))
+  if (THROUGH !== null) toRecord = toRecord.filter((f) => prefixNum(f) <= THROUGH)
   if (!toRecord.length) { console.log('nothing to baseline — all files already recorded.'); process.exit(0) }
   // One round-trip, not one-per-file (the DB is remote).
   const values = toRecord.map((f) => `('${f}', '${checksum(f)}')`).join(', ')

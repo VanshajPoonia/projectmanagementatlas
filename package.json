@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "node --env-file=.env.local scripts/guard-db.mjs && next build",
-    "dev": "node --env-file=.env.local scripts/guard-db.mjs && next dev",
+    "build": "next build",
+    "dev": "node --env-file-if-exists=.env.local scripts/guard-db.mjs && next dev",
     "lint": "eslint .",
-    "start": "node --env-file=.env.local scripts/guard-db.mjs && next start",
+    "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
     "guard": "node --env-file=.env.local scripts/guard-db.mjs",
