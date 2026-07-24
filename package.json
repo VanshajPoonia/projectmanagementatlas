@@ -4,11 +4,17 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "node --env-file-if-exists=.env.local scripts/guard-db.mjs && next dev",
     "lint": "eslint .",
     "start": "next start",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "guard": "node --env-file=.env.local scripts/guard-db.mjs",
+    "migrate": "node --env-file=.env.local scripts/migrate.mjs",
+    "migrate:status": "node --env-file=.env.local scripts/migrate.mjs --status",
+    "migrate:baseline": "node --env-file=.env.local scripts/migrate.mjs --baseline",
+    "check:isolation": "node --env-file=.env.local scripts/check-isolation.mjs",
+    "check:board-roles": "node --env-file=.env.local scripts/check-board-roles.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",

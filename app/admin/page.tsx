@@ -28,10 +28,10 @@ export default async function AdminPage() {
     { data: tasks },
   ] = await Promise.all([
     supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-    supabase.from('boards').select('*, creator:profiles!boards_created_by_fkey(full_name, email)').is('archived_at', null).order('created_at', { ascending: false }),
+    supabase.from('boards').select('*, creator:profiles!boards_created_by_fkey(full_name, email), editor:profiles!boards_updated_by_fkey(full_name, email)').is('archived_at', null).order('created_at', { ascending: false }),
     // Subtasks included so an admin's own assigned subtasks reach their dashboard;
     // AdminDashboard splits them back out for the aggregate views (see topLevelTasks).
-    supabase.from('tasks').select('*, column:columns(board_id), task_assignees(user_id), task_tags(tag:tags(*))').is('deleted_at', null).order('created_at', { ascending: false }),
+    supabase.from('tasks').select('*, column:columns(board_id, status_key), task_assignees(user_id), task_tags(tag:tags(*))').is('deleted_at', null).order('created_at', { ascending: false }),
   ])
 
   // Resolved locally rather than via a PostgREST embed — parent_task_id is a

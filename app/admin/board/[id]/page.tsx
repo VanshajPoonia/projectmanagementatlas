@@ -31,10 +31,12 @@ export default async function BoardPage({ params }: { params: Promise<{ id: stri
   const [
     { data: columns, error: columnsError },
     { data: users },
+    { data: membership },
   ] = await Promise.all([
     supabase.from('columns').select('*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(id, full_name, email), task_assignees(user_id), task_tags(tag:tags(*)))').eq('board_id', id).order('position'),
     supabase.from('profiles').select('id, full_name, email'),
+    supabase.from('board_members').select('role').eq('board_id', id).eq('user_id', user.id).maybeSingle(),
   ])
 
-  return <BoardView board={board} columns={columns || []} users={users || []} isAdmin={profile?.role === 'admin' || profile?.role === 'super_admin'} currentUserId={user.id} />
+  return <BoardView board={board} columns={columns || []} users={users || []} isAdmin={profile?.role === 'admin' || profile?.role === 'super_admin'} currentUserId={user.id} boardRole={membership?.role ?? null} />
 }

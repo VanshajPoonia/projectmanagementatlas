@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 import { isTaskOwnedBy } from '@/lib/assignees'
+import { useAppModules, isModuleEnabled } from '@/lib/modules'
 
 interface UserDashboardProps {
   user: any
@@ -59,10 +60,27 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const isKaylaMarketingUser = String(user.email ?? '').trim().toLowerCase() === 'kayla@goatlasgo.us'
   const canUseMarketingCalendar = isKaylaMarketingUser || isAdmin
 
+  // Module activation (PROMPT 3 "1-C"): app_modules is a singleton config table (one org, no
+  // org_id) — everything defaults enabled=true, so this is a no-op until a super_admin flips a
+  // module off in Super Admin. 'tasks' (Home) is core and always on, not a registered module.
+  const modules = useAppModules()
+  const showPersonal = isModuleEnabled(modules, 'personal_tasks')
+  const showCalendar = isModuleEnabled(modules, 'calendar')
+  const showMarketing = canUseMarketingCalendar && isModuleEnabled(modules, 'marketing_calendar')
+  const showBoards = isModuleEnabled(modules, 'boards')
+  const showChat = isModuleEnabled(modules, 'chat')
+
   // Tabs are the visible sections; only these are addressable via ?tab=.
   const allowedTabs = useMemo(
-    () => ['tasks', 'personal', 'calendar', ...(canUseMarketingCalendar ? ['marketing'] : []), 'boards', 'chat'],
-    [canUseMarketingCalendar],
+    () => [
+      'tasks',
+      ...(showPersonal ? ['personal'] : []),
+      ...(showCalendar ? ['calendar'] : []),
+      ...(showMarketing ? ['marketing'] : []),
+      ...(showBoards ? ['boards'] : []),
+      ...(showChat ? ['chat'] : []),
+    ],
+    [showPersonal, showCalendar, showMarketing, showBoards, showChat],
   )
 
   // Keep the active tab in sync with the URL so sections are deep-linkable and the
@@ -108,24 +126,32 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
       label: 'Workspace',
       items: [
         { id: 'tasks', label: 'Home', icon: 'home', href: '/dashboard?tab=tasks', status: 'live' },
-        { id: 'personal', label: 'Personal', icon: 'lock', href: '/dashboard?tab=personal', status: 'live' },
-        { id: 'calendar', label: 'Calendar', icon: 'calendar', href: '/dashboard?tab=calendar', status: 'live' },
-        ...(canUseMarketingCalendar
+        ...(showPersonal
+          ? [{ id: 'personal', label: 'Personal', icon: 'lock', href: '/dashboard?tab=personal', status: 'live' as const }]
+          : []),
+        ...(showCalendar
+          ? [{ id: 'calendar', label: 'Calendar', icon: 'calendar', href: '/dashboard?tab=calendar', status: 'live' as const }]
+          : []),
+        ...(showMarketing
           ? [{ id: 'marketing', label: 'Marketing', icon: 'megaphone', href: '/dashboard?tab=marketing', status: 'live' as const }]
           : []),
-        { id: 'boards', label: 'Boards', icon: 'kanban', href: '/dashboard?tab=boards', status: 'live' },
-        {
+        ...(showBoards
+          ? [{ id: 'boards', label: 'Boards', icon: 'kanban', href: '/dashboard?tab=boards', status: 'live' as const }]
+          : []),
+        ...(showChat
+          ? [{
           id: 'chat',
           label: 'Chat',
           icon: 'message',
           href: '/dashboard?tab=chat',
-          status: 'live',
+          status: 'live' as const,
           badge: (
             <span className="absolute -top-1 -right-2">
               <ChatUnreadBadge userId={user.id} />
             </span>
           ),
-        },
+        }]
+          : []),
       ],
     },
   ]
@@ -415,9 +441,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                                   {cleanBoardDescription(board.description)}
                                 </CardDescription>
                               )}
-                              {(board.creator?.full_name || board.creator?.email) && (
+                              {(board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email) && (
                                 <p className="mt-1 truncate text-xs text-muted-foreground">
-                                  Created by {board.creator.full_name || board.creator.email}
+                                  Last edited by {board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email}
                                 </p>
                               )}
                             </div>

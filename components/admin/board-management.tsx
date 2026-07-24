@@ -60,6 +60,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
           title,
           description,
           created_by: user.id,
+          updated_by: user.id,
           is_private: isPrivate,
         })
         .select()
@@ -123,11 +124,15 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
   const handleUpdateBoard = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editingBoard) return
-    
+
     setLoading(true)
     setError(null)
 
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('User not authenticated')
+
+      const updatedAt = new Date().toISOString()
       const { error } = await supabase
         .from('boards')
         .update({
@@ -135,6 +140,8 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
           description: description.trim() || null,
           color: boardColor,
           is_private: isPrivate,
+          updated_at: updatedAt,
+          updated_by: user.id,
         })
         .eq('id', editingBoard.id)
 
@@ -148,10 +155,23 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
         )
       }
 
+      // Look up the editor's display info from the already-loaded users list rather
+      // than a second round-trip.
+      const editorProfile = allUsers.find(u => u.id === user.id)
+
       // Update local state
       setBoards(boards.map(b =>
         b.id === editingBoard.id
-          ? { ...b, title: title.trim(), description: description.trim(), color: boardColor, is_private: isPrivate }
+          ? {
+              ...b,
+              title: title.trim(),
+              description: description.trim(),
+              color: boardColor,
+              is_private: isPrivate,
+              updated_at: updatedAt,
+              updated_by: user.id,
+              editor: editorProfile ? { full_name: editorProfile.full_name, email: editorProfile.email } : b.editor,
+            }
           : b
       ))
 
@@ -463,9 +483,11 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                 <CardContent>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="w-4 h-4" />
-                    Created {new Date(board.created_at).toLocaleDateString('en-US')}
-                    {(board.creator?.full_name || board.creator?.email) && (
-                      <span className="truncate">by {board.creator.full_name || board.creator.email}</span>
+                    Last edited {new Date(board.updated_at ?? board.created_at).toLocaleDateString('en-US')}
+                    {(board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email) && (
+                      <span className="truncate">
+                        by {board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email}
+                      </span>
                     )}
                   </div>
                 </CardContent>

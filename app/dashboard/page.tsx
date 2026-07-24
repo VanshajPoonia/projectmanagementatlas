@@ -26,7 +26,7 @@ export default async function DashboardPage() {
   // UserDashboard).
   const { data: tasksData } = await supabase
     .from('tasks')
-    .select('*, task_assignees(user_id), column:columns(title, board_id, board:boards(id, title, archived_at))')
+    .select('*, task_assignees(user_id), column:columns(title, status_key, board_id, board:boards(id, title, archived_at))')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
   const tasks = tasksData ?? []
@@ -34,7 +34,7 @@ export default async function DashboardPage() {
   // Fetch all boards (archived boards are hidden from non-admins)
   const { data: boards } = await supabase
     .from('boards')
-    .select('*, creator:profiles!boards_created_by_fkey(full_name, email)')
+    .select('*, creator:profiles!boards_created_by_fkey(full_name, email), editor:profiles!boards_updated_by_fkey(full_name, email)')
     .is('archived_at', null)
     .order('created_at', { ascending: false })
 

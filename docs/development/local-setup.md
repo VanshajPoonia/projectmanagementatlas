@@ -55,16 +55,25 @@ git-ignored. Never prefix a secret with `NEXT_PUBLIC_`; never commit keys (risk 
 
 ## 4. Database
 
+> ⛔ **On the `platform` branch, ignore the `vercel env pull` instructions below.** This worktree's
+> `.env.local` is deliberately repointed at a separate dev Supabase project (see `CLAUDE.md`) so
+> destructive tenancy migrations can't reach production. Running `vercel env pull` here would
+> silently overwrite it with production credentials and defeat that safeguard entirely — there is
+> no `.vercel/` link in this worktree on purpose. Never run `vercel env pull` or `vercel link` here.
+> Use `pnpm migrate` (see `scripts/migrate.mjs`), not raw `psql` — it enforces the same dev-only
+> guard and is the source of truth for what's been applied (`public.applied_migrations`).
+
 The hosted Supabase project already has the schema applied. To reproduce it on a fresh Supabase
 project, apply `scripts/0*.sql` **in numeric order** (`001` → `062`) via the Supabase SQL editor or
-`psql`. There is no migration runner — ordering by filename is the contract (risk R-04).
+`psql`. There is no migration runner — ordering by filename is the contract (risk R-04). *(This
+paragraph describes the `main` branch's process — outdated for `platform`, see the warning above.)*
 
-To apply/inspect against prod, the established path is:
+To apply/inspect against prod (main branch only — NOT this worktree), the established path is:
 ```bash
 vercel env pull .env.local           # pull current env
 psql "$POSTGRES_URL_NON_POOLING"     # run SQL on the hosted DB
 ```
-New schema changes go in the **next numbered file** (`063_*.sql`), forward-only.
+New schema changes go in the **next numbered file** (`064_*.sql` on `platform`), forward-only.
 
 ## 5. Run
 

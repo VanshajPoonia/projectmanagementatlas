@@ -29,6 +29,7 @@ import GlobalSearch from '../search/global-search'
 import { gsap } from 'gsap'
 import { cn } from '@/lib/utils'
 import { isTaskOwnedBy } from '@/lib/assignees'
+import { useAppModules, isModuleEnabled } from '@/lib/modules'
 
 interface AdminDashboardProps {
   user: any
@@ -64,8 +65,29 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   const supabase = createClient()
   const tabsRef = useRef<HTMLDivElement>(null)
 
+  // Module activation (PROMPT 3 "1-C"): app_modules is a singleton config table (one org, no
+  // org_id) — everything defaults enabled=true, so this is a no-op until a super_admin flips a
+  // module off in Super Admin. 'overview'/'statuses' are core admin functions, not registered
+  // modules, so they're always on.
+  const modules = useAppModules()
+  const showCalendar = isModuleEnabled(modules, 'calendar')
+  const showMarketing = isModuleEnabled(modules, 'marketing_calendar')
+  const showReports = isModuleEnabled(modules, 'reports')
+  const showBoards = isModuleEnabled(modules, 'boards')
+  const showChat = isModuleEnabled(modules, 'chat')
+  const showPersonal = isModuleEnabled(modules, 'personal_tasks')
+
   // Sections addressable via ?tab= — matches the TabsTrigger values below.
-  const allowedTabs = ['overview', 'calendar', 'marketing', 'reports', 'boards', 'statuses', 'chat', 'personal']
+  const allowedTabs = [
+    'overview',
+    ...(showCalendar ? ['calendar'] : []),
+    ...(showMarketing ? ['marketing'] : []),
+    ...(showReports ? ['reports'] : []),
+    ...(showBoards ? ['boards'] : []),
+    'statuses',
+    ...(showChat ? ['chat'] : []),
+    ...(showPersonal ? ['personal'] : []),
+  ]
 
   // Keep the active tab in sync with the URL so sections are deep-linkable and the
   // browser Back/Forward buttons move between them; falls back to the last session
@@ -105,24 +127,36 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
 
   const adminSections: SidebarNavGroup['items'] = [
     { id: 'overview', label: 'Home', icon: 'home', href: '/admin?tab=overview', status: 'live' },
-    { id: 'calendar', label: 'Calendar', icon: 'calendar', href: '/admin?tab=calendar', status: 'live' },
-    { id: 'marketing', label: 'Marketing', icon: 'megaphone', href: '/admin?tab=marketing', status: 'live' },
-    { id: 'reports', label: 'Reports', icon: 'reports', href: '/admin?tab=reports', status: 'live' },
-    { id: 'boards', label: 'Boards', icon: 'kanban', href: '/admin?tab=boards', status: 'live' },
+    ...(showCalendar
+      ? [{ id: 'calendar', label: 'Calendar', icon: 'calendar', href: '/admin?tab=calendar', status: 'live' as const }]
+      : []),
+    ...(showMarketing
+      ? [{ id: 'marketing', label: 'Marketing', icon: 'megaphone', href: '/admin?tab=marketing', status: 'live' as const }]
+      : []),
+    ...(showReports
+      ? [{ id: 'reports', label: 'Reports', icon: 'reports', href: '/admin?tab=reports', status: 'live' as const }]
+      : []),
+    ...(showBoards
+      ? [{ id: 'boards', label: 'Boards', icon: 'kanban', href: '/admin?tab=boards', status: 'live' as const }]
+      : []),
     { id: 'statuses', label: 'Statuses', icon: 'statuses', href: '/admin?tab=statuses', status: 'live' },
-    {
-      id: 'chat',
-      label: 'Chat',
-      icon: 'message',
-      href: '/admin?tab=chat',
-      status: 'live',
-      badge: (
-        <span className="absolute -top-1 -right-2">
-          <ChatUnreadBadge userId={user.id} />
-        </span>
-      ),
-    },
-    { id: 'personal', label: 'Personal', icon: 'lock', href: '/admin?tab=personal', status: 'live' },
+    ...(showChat
+      ? [{
+          id: 'chat',
+          label: 'Chat',
+          icon: 'message',
+          href: '/admin?tab=chat',
+          status: 'live' as const,
+          badge: (
+            <span className="absolute -top-1 -right-2">
+              <ChatUnreadBadge userId={user.id} />
+            </span>
+          ),
+        }]
+      : []),
+    ...(showPersonal
+      ? [{ id: 'personal', label: 'Personal', icon: 'lock', href: '/admin?tab=personal', status: 'live' as const }]
+      : []),
   ]
   const sidebarGroups: SidebarNavGroup[] = [
     { id: 'sections', label: 'Workspace', items: adminSections },
