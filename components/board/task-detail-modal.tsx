@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { VoiceInputButton } from '@/components/ui/voice-input-button'
+import { ShareLinkDialog } from './share-link-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
@@ -693,7 +694,12 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle>Task Details</DialogTitle>
+          <div className="flex items-center justify-between gap-2 pr-8">
+            <DialogTitle>Task Details</DialogTitle>
+            {(isAdmin || task?.created_by === currentUserId) && (
+              <ShareLinkDialog resourceType="task" resourceId={taskId} />
+            )}
+          </div>
           {task?.created_at && (
             <p className="text-xs text-muted-foreground">
               Created by {task.creator?.full_name || task.creator?.email || 'Unknown'} on{' '}

@@ -29,6 +29,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import TaskCard from './task-card'
 import CreateTaskDialog from './create-task-dialog'
 import { TaskDetailModal } from './task-detail-modal'
+import { ShareLinkDialog } from './share-link-dialog'
 import ChatPanel from '@/components/chat/chat-panel'
 import MobileBottomNav, { type NavItem } from '@/components/dashboard/mobile-bottom-nav'
 import { getAssigneeIds, getAssignees, getAssigneeNames } from '@/lib/assignees'
@@ -607,6 +608,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   <span className="hidden sm:inline">List</span>
                 </Button>
               </div>
+
+              {(isAdmin || board?.created_by === currentUserId) && (
+                <ShareLinkDialog resourceType="board" resourceId={board.id} />
+              )}
 
               <Button
                 onClick={() => setShowFilters(!showFilters)}
