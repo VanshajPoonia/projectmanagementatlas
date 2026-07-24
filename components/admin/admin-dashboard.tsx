@@ -14,6 +14,7 @@ import TaskOverview from './task-overview'
 import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
 import ReportsView from '../reports/reports-view'
+import MetricsView from '../reports/metrics-view'
 import PersonalTasks from '../personal/personal-tasks'
 import BookmarksSection from '../bookmarks/bookmarks-section'
 import MarketingCalendar from '../marketing/marketing-calendar'
@@ -252,7 +253,18 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsContent>
 
             <TabsContent value="reports">
-              <ReportsView tasks={topLevelTasks} users={users} boards={boards} />
+              <Tabs defaultValue="table" className="space-y-4">
+                <TabsList>
+                  <TabsTrigger value="table">Report</TabsTrigger>
+                  <TabsTrigger value="metrics">Metrics</TabsTrigger>
+                </TabsList>
+                <TabsContent value="table">
+                  <ReportsView tasks={topLevelTasks} users={users} boards={boards} />
+                </TabsContent>
+                <TabsContent value="metrics">
+                  <MetricsView tasks={topLevelTasks} users={users} boards={boards} />
+                </TabsContent>
+              </Tabs>
             </TabsContent>
 
             <TabsContent value="boards">
