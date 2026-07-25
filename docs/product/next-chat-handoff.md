@@ -96,9 +96,9 @@ future session, that's a regression — don't assume it's still pending.
   assertMigrationTarget({allowProd}) = the migration runner: dev always
   allowed, prod ONLY via an explicit --allow-prod flag + loud banner. Only
   additive/non-destructive migrations may ever use --allow-prod.
-- Migrations: numbered SQL in scripts/, next number is 072. Dev AND production
-  are BOTH fully synced at 071 (001–071 all applied to prod on 2026-07-24 —
-  owner-approved batch, applied migrations-FIRST then deployed the UI).
+- Migrations: numbered SQL in scripts/, next number is 073. Dev AND production
+  are BOTH fully synced at 072 (001–072 all applied to prod — 072_share_links.sql
+  applied 2026-07-25, owner-approved, migration-first then pushed the UI).
   Apply via the runner only: `pnpm migrate` (status:
   `pnpm migrate:status`). Never hand-run SQL in the Supabase editor. Each
   file wraps itself in BEGIN;…COMMIT; and is idempotent (match 047/063/065
@@ -122,7 +122,10 @@ future session, that's a regression — don't assume it's still pending.
   delete, move, or unlock it.
 
 ## Git / shipping
-- Local `main` == origin/main (pushed + deployed as of 2026-07-24 EOD).
+- Local `main` == origin/main (pushed + deployed as of 2026-07-25). Latest 4 commits shipped:
+  inline description editing on task cards, voice-to-text dictation on task descriptions, a
+  Metrics tab on Reports (entry-to-close time, time-in-status, personnel), and view-only share
+  links for boards/tasks (revocable, token-scoped, no sign-in — table `share_links`, migration 072).
 - A push to `main` AUTO-DEPLOYS to prod within seconds. So: apply any schema
   migration to prod (`--allow-prod`) BEFORE merging code that depends on it —
   a missing 068 once shipped ahead of its migration and broke the live boards
