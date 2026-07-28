@@ -1,21 +1,14 @@
 /**
- * An empty selection is the single canonical representation of "All".
- * Keeping both [] and every company id as "All" made a company click invert
- * the filter after the All button had been used.
+ * Company filters are exclusive: clicking another company switches directly
+ * to it, while clicking the active company returns to All.
  */
 export function toggleCompanySelection(
   activeCompanyIds: string[],
   companyId: string,
-  allCompanyIds: string[],
 ) {
-  if (activeCompanyIds.length === 0) return [companyId]
-
-  const next = activeCompanyIds.includes(companyId)
-    ? activeCompanyIds.filter(id => id !== companyId)
-    : [...activeCompanyIds, companyId]
-
-  if (next.length === 0 || allCompanyIds.every(id => next.includes(id))) return []
-  return next
+  return activeCompanyIds.length === 1 && activeCompanyIds[0] === companyId
+    ? []
+    : [companyId]
 }
 
 export function reconcileCompanySelection(
@@ -25,8 +18,35 @@ export function reconcileCompanySelection(
   if (activeCompanyIds.length === 0) return []
 
   const next = activeCompanyIds.filter(id => availableCompanyIds.includes(id))
-  if (next.length === 0 || availableCompanyIds.every(id => next.includes(id))) return []
-  return next
+  return next.length > 0 ? [next[next.length - 1]] : []
+}
+
+interface CenteredScrollLeftInput {
+  currentScrollLeft: number
+  containerLeft: number
+  containerWidth: number
+  targetLeft: number
+  targetWidth: number
+}
+
+/**
+ * Uses viewport-relative rectangles so the result remains correct when the
+ * scroll area is nested inside positioned dashboard containers.
+ */
+export function centeredScrollLeft({
+  currentScrollLeft,
+  containerLeft,
+  containerWidth,
+  targetLeft,
+  targetWidth,
+}: CenteredScrollLeftInput) {
+  return Math.max(
+    0,
+    currentScrollLeft
+      + targetLeft
+      - containerLeft
+      - (containerWidth - targetWidth) / 2,
+  )
 }
 
 interface ImportedCalendarItem {

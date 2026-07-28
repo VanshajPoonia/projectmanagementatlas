@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils'
 import { autoTextColor as autoText, withAlpha } from '@/lib/color'
 import { toast } from 'sonner'
 import {
+  centeredScrollLeft,
   isImportedWeekendPlaceholder,
   reconcileCompanySelection,
   toggleCompanySelection,
@@ -975,9 +976,17 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       const container = weekBoardScrollRef.current
       const today = container?.querySelector<HTMLElement>(`[data-calendar-date="${toDateKey(new Date())}"]`)
       if (!container || !today) return
+      const containerRect = container.getBoundingClientRect()
+      const todayRect = today.getBoundingClientRect()
 
       container.scrollTo({
-        left: Math.max(0, today.offsetLeft - (container.clientWidth - today.clientWidth) / 2),
+        left: centeredScrollLeft({
+          currentScrollLeft: container.scrollLeft,
+          containerLeft: containerRect.left,
+          containerWidth: containerRect.width,
+          targetLeft: todayRect.left,
+          targetWidth: todayRect.width,
+        }),
         behavior: 'smooth',
       })
     })
@@ -1065,7 +1074,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Company filter — mix and match; an empty selection means "All". */}
+            {/* Company filter — one company at a time; an empty selection means "All". */}
             <Button type="button" size="sm" variant={activeCompanyIds.length === 0 ? 'default' : 'outline'}
               aria-pressed={activeCompanyIds.length === 0}
               onClick={() => setActiveCompanyIds([])} className="min-w-14">
@@ -1078,7 +1087,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                   variant={on ? 'default' : 'outline'}
                   aria-pressed={on}
                   onClick={() => setActiveCompanyIds(prev =>
-                    toggleCompanySelection(prev, c.id, companies.map(company => company.id))
+                    toggleCompanySelection(prev, c.id)
                   )}
                   className="min-w-14"
                   style={on ? { backgroundColor: c.color, borderColor: c.color } : {}}>

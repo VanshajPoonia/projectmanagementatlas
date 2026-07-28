@@ -175,6 +175,14 @@ describe('MarketingCalendar controls', () => {
       expect(screen.queryAllByText('SRG post').length).toBeGreaterThan(0)
       expect(screen.queryAllByText('AGC post')).toHaveLength(0)
     })
+
+    fireEvent.click(screen.getByRole('button', { name: 'AGC' }))
+    await waitFor(() => {
+      expect(screen.queryAllByText('AGC post').length).toBeGreaterThan(0)
+      expect(screen.queryAllByText('SRG post')).toHaveLength(0)
+    })
+    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'AGC' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('returns to the current week and reveals todays column', async () => {
