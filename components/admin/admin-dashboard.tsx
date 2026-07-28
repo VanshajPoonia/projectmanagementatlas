@@ -268,7 +268,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsContent>
 
             <TabsContent value="boards">
-              <BoardManagement boards={boards} />
+              <BoardManagement boards={boards} isSuperAdmin={isSuperAdmin} />
             </TabsContent>
 
             <TabsContent value="chat">

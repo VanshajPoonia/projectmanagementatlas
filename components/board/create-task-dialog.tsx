@@ -14,7 +14,7 @@ import { sendTaskAssignmentEmail } from '@/lib/email'
 import { LinkIcon, Plus, X, Tag } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
-import { getNormalizedTaskStatus } from '@/lib/task-status'
+import { findExactColumnForStatus } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
 
 interface CreateTaskDialogProps {
@@ -22,12 +22,13 @@ interface CreateTaskDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   column: any
+  columns: any[]
   users: any[]
   boardId: string
   onTaskCreated?: () => void
 }
 
-export default function CreateTaskDialog({ open, onOpenChange, column, users, boardId, board, onTaskCreated }: CreateTaskDialogProps) {
+export default function CreateTaskDialog({ open, onOpenChange, column, columns, users, boardId, board, onTaskCreated }: CreateTaskDialogProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [assignees, setAssignees] = useState<string[]>([])
@@ -50,13 +51,17 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
   const supabase = createClient()
   const taskStatuses = useTaskStatuses()
 
-  // Surface the column's implied status (normalized to a real status key) when the dialog
-  // opens so the user can confirm it, and so the default always matches a managed status.
+  // Only an explicit status link (or exact managed-status title on a legacy board)
+  // may choose the initial status. Fuzzy title inference is what allowed cards to be
+  // stored in one column with a different raw status.
   useEffect(() => {
     if (open && column?.title) {
-      setStatus(getNormalizedTaskStatus({ column: { title: column.title } }))
+      const exactTitleMatch = taskStatuses.find(
+        (candidate) => candidate.label.trim().toLowerCase() === column.title.trim().toLowerCase()
+      )
+      setStatus(column.status_key || exactTitleMatch?.key || '')
     }
-  }, [open, column])
+  }, [open, column, taskStatuses])
 
   // Tags (company tags like SRG/AGC included) can't be created here, only picked from
   // the admin-managed list, so load it whenever the dialog opens.
@@ -100,6 +105,14 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
     }
 
     try {
+      const statusLabel = taskStatuses.find((candidate) => candidate.key === status)?.label
+      const targetColumn = findExactColumnForStatus(status, statusLabel, columns)
+      if (!targetColumn) {
+        throw new Error(
+          `No column on this board is linked to "${statusLabel || status}". Ask an admin to link one from the column menu.`
+        )
+      }
+
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (userError) throw userError
@@ -108,13 +121,13 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
       const taskData = {
         title,
         description,
-        column_id: column.id,
+        column_id: targetColumn.id,
         assigned_to: assignees[0] || null,
         created_by: user.id,
         priority,
         due_date: dueDate || null,
         status,
-        position: column.tasks?.length || 0,
+        position: targetColumn.tasks?.filter((task: any) => !task.deleted_at && !task.archived_at).length || 0,
         visibility,
         is_recurring: isRecurring,
         recurrence_pattern: isRecurring ? recurrencePattern : null,
@@ -141,6 +154,9 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
             }))
           )
         if (linksError) throw linksError
+        for (const link of links) {
+          logTaskActivity(supabase, task.id, user.id, `added link "${link.title}"`)
+        }
       }
 
       if (selectedTagIds.length > 0) {
@@ -465,7 +481,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, users, bo
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  {taskStatuses.map((s) => (
+                  {taskStatuses.filter((s) => s.key !== 'cancelled').map((s) => (
                     <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
                   ))}
                 </SelectContent>

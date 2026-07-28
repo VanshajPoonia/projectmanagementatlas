@@ -98,7 +98,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     || (typeof task?.assigned_to === 'string' ? task.assigned_to : task?.assigned_to?.id) === currentUserId
     || assignees.includes(currentUserId)
   )
-  const canDelete = !isRestrictedMember && Boolean(isAdmin || task?.created_by === currentUserId)
+  const canDeleteAttachments = !isRestrictedMember && Boolean(isAdmin || task?.created_by === currentUserId)
   // Per the PM portal spec: the due date can only be changed by the task's creator (or an admin).
   const canEditDueDate = !isRestrictedMember && Boolean(isAdmin || task?.created_by === currentUserId)
 
@@ -308,10 +308,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
         activityMessages.push(`changed priority from ${task?.priority} to ${priority}`)
       }
       if (task?.status !== status) {
-        const oldLabel = taskStatuses.find((s) => s.key === task?.status)?.label || task?.status
         const newLabel = taskStatuses.find((s) => s.key === status)?.label || status
         changes.push(`Status changed to ${newLabel}`)
-        activityMessages.push(`changed status from "${oldLabel}" to "${newLabel}"`)
+        // The database lifecycle trigger records the canonical structured status
+        // transition in the same transaction; a second legacy row here would
+        // double-count it in timing metrics.
       }
       if ((task?.visibility || 'assigned') !== visibility) {
         const visLabel = visibility === 'board' ? 'board visible' : 'assigned only'
@@ -455,8 +456,10 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             })
 
           if (error) throw error
-          
+
+          logTaskActivity(supabase, taskId, currentUser.id, `added attachment "${file.name}"`)
           await loadAttachments()
+          toast.success('Attachment added')
           e.target.value = '' // Reset input for next upload
         } catch (err) {
           console.error('[v0] Upload error:', err)
@@ -528,13 +531,28 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
   const handleDeleteAttachment = async (attachmentId: string) => {
     if (!confirm('Delete this attachment?')) return
-    
-    await supabase
+
+    const attachment = attachments.find((candidate) => candidate.id === attachmentId)
+    const { error } = await supabase
       .from('task_attachments')
       .delete()
       .eq('id', attachmentId)
-    
-    loadAttachments()
+
+    if (error) {
+      toast.error('Could not remove attachment', { description: error.message })
+      return
+    }
+
+    if (currentUser) {
+      logTaskActivity(
+        supabase,
+        taskId,
+        currentUser.id,
+        `removed attachment "${attachment?.file_name || 'Unknown'}"`
+      )
+    }
+    await loadAttachments()
+    toast.success('Attachment removed')
   }
 
   const handleToggleAssignee = async (userId: string) => {
@@ -616,11 +634,12 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const handleAddLink = async () => {
     if (!canEdit || !linkUrl.trim() || !currentUser) return
 
+    const resolvedTitle = linkTitle.trim() || linkUrl.trim()
     const { error } = await supabase
       .from('task_links')
       .insert({
         task_id: taskId,
-        title: linkTitle.trim() || linkUrl.trim(),
+        title: resolvedTitle,
         url: linkUrl.trim(),
         created_by: currentUser.id,
       })
@@ -630,6 +649,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       return
     }
 
+    logTaskActivity(supabase, taskId, currentUser.id, `added link "${resolvedTitle}"`)
     setLinkTitle('')
     setLinkUrl('')
     await loadLinks()
@@ -639,6 +659,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const handleDeleteLink = async (linkId: string) => {
     if (!canEdit) return
 
+    const link = links.find((candidate) => candidate.id === linkId)
     const { error } = await supabase
       .from('task_links')
       .delete()
@@ -649,43 +670,16 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       return
     }
 
+    if (currentUser) {
+      logTaskActivity(
+        supabase,
+        taskId,
+        currentUser.id,
+        `removed link "${link?.title || link?.url || 'Unknown'}"`
+      )
+    }
     await loadLinks()
     toast.success('Link removed')
-  }
-
-  const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this task?')) return
-
-    const { error } = await supabase
-      .from('tasks')
-      .update({ deleted_at: new Date().toISOString(), deleted_by: currentUserId })
-      .eq('id', taskId)
-
-    if (error) {
-      toast.error('Could not delete task', { description: error.message })
-      return
-    }
-
-    onUpdate()
-    onClose()
-    toast.success('Task deleted', {
-      description: 'You can undo this action for a short time.',
-      action: {
-        label: 'Undo',
-        onClick: async () => {
-          const { error: undoError } = await supabase
-            .from('tasks')
-            .update({ deleted_at: null, deleted_by: null })
-            .eq('id', taskId)
-          if (undoError) {
-            toast.error('Could not restore task')
-          } else {
-            toast.success('Task restored')
-            onUpdate()
-          }
-        },
-      },
-    })
   }
 
   const availableTags = allTags.filter(tag => !tags.find(t => t.id === tag.id))
@@ -1156,7 +1150,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                               >
                                 <Download className="w-4 h-4" />
                               </Button>
-                              {canDelete && (
+                              {canDeleteAttachments && (
                                 <Button
                                   variant="destructive"
                                   size="icon"
@@ -1306,14 +1300,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
           </Tabs>
 
           {/* Actions */}
-          <div className="flex justify-between pt-4">
-            {canDelete && (
-              <Button onClick={handleDelete} variant="destructive" size="sm">
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete Task
-              </Button>
-            )}
-            <div className="flex gap-2 ml-auto">
+          <div className="flex justify-end pt-4">
+            <div className="flex gap-2">
               <Button onClick={onClose} variant="outline">
                 Cancel
               </Button>

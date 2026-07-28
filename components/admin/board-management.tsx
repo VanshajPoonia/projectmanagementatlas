@@ -17,9 +17,10 @@ import { cleanBoardDescription } from '@/lib/display-text'
 
 interface BoardManagementProps {
   boards: any[]
+  isSuperAdmin?: boolean
 }
 
-export default function BoardManagement({ boards: initialBoards }: BoardManagementProps) {
+export default function BoardManagement({ boards: initialBoards, isSuperAdmin = false }: BoardManagementProps) {
   const [boards, setBoards] = useState(initialBoards)
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
   const [archivedBoards, setArchivedBoards] = useState<any[]>([])
@@ -79,10 +80,10 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
         defaultStatuses?.find((s: { key: string; label: string }) => s.key === key)?.label || fallback
 
       const columns = [
-        { title: labelFor('to_do', 'To Do'), position: 0, board_id: board.id },
-        { title: labelFor('in_progress', 'In Progress'), position: 1, board_id: board.id },
-        { title: labelFor('done', 'Completed'), position: 2, board_id: board.id },
-        { title: labelFor('cancelled', 'Cancelled'), position: 3, board_id: board.id },
+        { title: labelFor('to_do', 'To Do'), position: 0, board_id: board.id, status_key: 'to_do' },
+        { title: labelFor('in_progress', 'In Progress'), position: 1, board_id: board.id, status_key: 'in_progress' },
+        { title: labelFor('done', 'Completed'), position: 2, board_id: board.id, status_key: 'done' },
+        { title: labelFor('cancelled', 'Cancelled'), position: 3, board_id: board.id, status_key: 'cancelled' },
       ]
 
       await supabase.from('columns').insert(columns)
@@ -190,8 +191,9 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
     }
   }
 
-  // Archived boards are kept forever (never deleted) and visible only to admins.
+  // Archived boards are kept forever and exposed by RLS only to super admins.
   useEffect(() => {
+    if (!isSuperAdmin) return
     const loadArchived = async () => {
       const { data } = await supabase
         .from('boards')
@@ -201,7 +203,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
       if (data) setArchivedBoards(data)
     }
     loadArchived()
-  }, [])
+  }, [isSuperAdmin])
 
   const handleArchiveBoard = async (boardId: string, boardTitle: string, e: React.MouseEvent) => {
     e.preventDefault()
@@ -257,7 +259,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
     <div className="space-y-6">
       {/* Edit Board Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>Edit Board</DialogTitle>
             <DialogDescription>Update your board details and customize its appearance</DialogDescription>
@@ -299,7 +301,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                 <Palette className="w-4 h-4" />
                 Board Color
               </label>
-              <div className="flex gap-3 items-center">
+              <div className="flex flex-wrap items-center gap-3">
                 <Input
                   id="edit-color"
                   type="color"
@@ -308,7 +310,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                   className="w-20 h-10 cursor-pointer"
                   disabled={loading}
                 />
-                <div className="flex-1 flex gap-2">
+                <div className="flex min-w-48 flex-1 flex-wrap gap-2">
                   {['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4'].map(color => (
                     <button
                       key={color}
@@ -326,7 +328,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Visibility</label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => setIsPrivate(false)}
                   className={`flex items-center gap-1.5 rounded border px-3 py-2 text-sm transition-colors ${!isPrivate ? 'bg-foreground text-background border-foreground' : 'hover:bg-accent'}`}>
                   <Globe className="w-4 h-4" /> Everyone
@@ -353,11 +355,11 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                 </div>
               )}
             </div>
-            <div className="flex gap-2 justify-end pt-4">
-              <Button type="button" variant="outline" onClick={() => setEditOpen(false)} disabled={loading}>
+            <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setEditOpen(false)} disabled={loading}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" className="w-full sm:w-auto" disabled={loading}>
                 {loading ? 'Updating...' : 'Update Board'}
               </Button>
             </div>
@@ -365,13 +367,13 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
         </DialogContent>
       </Dialog>
 
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-2xl font-bold tracking-tight">Board Management</h2>
           <p className="text-muted-foreground">Create and manage project boards</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center border rounded-md">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+          <div className="flex shrink-0 items-center rounded-md border">
             <Button
               onClick={() => setViewMode('tile')}
               variant={viewMode === 'tile' ? 'default' : 'ghost'}
@@ -395,12 +397,12 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
           </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2">
+            <Button className="min-w-0 flex-1 gap-2 sm:flex-none">
               <Plus className="w-4 h-4" />
               New Board
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto p-4 sm:p-6">
             <DialogHeader>
               <DialogTitle>Create New Board</DialogTitle>
               <DialogDescription>
@@ -441,7 +443,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Visibility</label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => setIsPrivate(false)}
                     className={`flex items-center gap-1.5 rounded border px-3 py-2 text-sm transition-colors ${!isPrivate ? 'bg-foreground text-background border-foreground' : 'hover:bg-accent'}`}>
                     <Globe className="w-4 h-4" /> Everyone
@@ -482,21 +484,23 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
           {boards.map((board) => (
             <Card key={board.id} className="group relative hover:shadow-md transition-all">
               <Link href={`/admin/board/${board.id}`}>
-                <div className="flex cursor-pointer items-center gap-3 p-3 pr-12">
-                  <Kanban className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                <div className="flex cursor-pointer items-start gap-3 p-3 pr-12 sm:items-center">
+                  <Kanban className="mt-0.5 h-5 w-5 flex-shrink-0 text-muted-foreground sm:mt-0" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="truncate font-medium">{board.title}</span>
+                      <span className="line-clamp-2 break-words font-medium [overflow-wrap:anywhere]">{board.title}</span>
                       {board.is_private && <Lock className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />}
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Calendar className="w-3 h-3" />
-                      Last edited {new Date(board.updated_at ?? board.created_at).toLocaleDateString('en-US')}
-                      {(board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email) && (
-                        <span className="truncate">
-                          by {board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email}
-                        </span>
-                      )}
+                    <div className="mt-1 flex min-w-0 items-start gap-1 text-xs text-muted-foreground">
+                      <Calendar className="mt-0.5 h-3 w-3 shrink-0" />
+                      <p className="min-w-0">
+                        <span>Last edited {new Date(board.updated_at ?? board.created_at).toLocaleDateString('en-US')}</span>
+                        {(board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email) && (
+                          <span className="block truncate sm:inline">
+                            {' '}by {board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email}
+                          </span>
+                        )}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -507,7 +511,8 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus:opacity-100 transition-opacity bg-background/95 backdrop-blur-sm shadow-md hover:bg-background"
+                      className="bg-background/95 opacity-100 shadow-md backdrop-blur-sm transition-opacity hover:bg-background sm:opacity-0 sm:group-hover:opacity-100 sm:hover:opacity-100 sm:focus:opacity-100"
+                      aria-label={`Actions for ${board.title}`}
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
@@ -588,7 +593,8 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="opacity-0 group-hover:opacity-100 hover:opacity-100 focus:opacity-100 transition-opacity bg-background/95 backdrop-blur-sm shadow-md hover:bg-background"
+                    className="bg-background/95 opacity-100 shadow-md backdrop-blur-sm transition-opacity hover:bg-background sm:opacity-0 sm:group-hover:opacity-100 sm:hover:opacity-100 sm:focus:opacity-100"
+                    aria-label={`Actions for ${board.title}`}
                     onClick={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
@@ -621,7 +627,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
       )}
 
       {boards.length === 0 && (
-        <Card className="p-12 text-center">
+        <Card className="p-6 text-center sm:p-12">
           <Kanban className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-xl font-semibold mb-2">No boards yet</h3>
           <p className="text-muted-foreground mb-6">Create your first board to get started</p>
@@ -647,7 +653,7 @@ export default function BoardManagement({ boards: initialBoards }: BoardManageme
           {showArchived && (
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {archivedBoards.map((board) => (
-              <Card key={board.id} className="flex items-center justify-between gap-3 p-4 bg-muted/40">
+              <Card key={board.id} className="flex-row items-start justify-between gap-3 p-4 bg-muted/40">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{board.title}</p>
                   {board.archived_at && (

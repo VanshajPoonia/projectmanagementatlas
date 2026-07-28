@@ -108,8 +108,11 @@ export default function CalendarView({ tasks, users, isAdmin = false }: Calendar
   }
 
   const handleToggleComplete = async (task: any) => {
-    const currentStatus = statusOverrides[task.id] ?? task.status
-    const isDone = getNormalizedTaskStatus({ ...task, status: currentStatus }) === 'done'
+    const currentStatus = statusOverrides[task.id] ?? task.column?.status_key ?? task.status
+    // The override represents the pending destination status, so evaluate it on
+    // its own. Passing the stale embedded column would correctly win as source of
+    // truth, but make the optimistic toggle appear to do nothing.
+    const isDone = getNormalizedTaskStatus({ status: currentStatus }) === 'done'
     const newStatus = isDone ? 'to_do' : 'done'
 
     setStatusOverrides((prev) => ({ ...prev, [task.id]: newStatus }))

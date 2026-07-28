@@ -23,7 +23,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, Download, MessageSquare, Home, Lock, Kanban, ClipboardList, FileBarChart, Megaphone, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, Download, MessageSquare, Home, Lock, Kanban, ClipboardList, FileBarChart, Megaphone, SlidersHorizontal, Archive, ArchiveRestore } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import TaskCard from './task-card'
@@ -43,6 +43,7 @@ interface BoardViewProps {
   columns: any[]
   users: any[]
   isAdmin: boolean
+  isSuperAdmin?: boolean
   currentUserId: string
   /** The caller's board_members row for this board, if any (null = no row = full default access). */
   boardRole?: 'member' | 'guest' | 'client' | null
@@ -50,7 +51,7 @@ interface BoardViewProps {
 
 const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(id, full_name, email), task_assignees(user_id), task_tags(tag:tags(*)))'
 
-export default function BoardView({ board, columns: initialColumns, users, isAdmin, currentUserId, boardRole = null }: BoardViewProps) {
+export default function BoardView({ board, columns: initialColumns, users, isAdmin, isSuperAdmin = false, currentUserId, boardRole = null }: BoardViewProps) {
   // Mirrors the server-side restriction from migrations 065/067 (private.can_manage_task /
   // the tasks INSERT policy) — guest/client board members can view but not create/edit/delete.
   const isRestrictedMember = boardRole === 'guest' || boardRole === 'client'
@@ -241,6 +242,12 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   }
 
   const handleOpenCreateDialog = (column: any) => {
+    if (column.status_key === 'cancelled') {
+      toast.info('Cancelled is an archive destination', {
+        description: 'Create the task in an active status, then move it to Cancelled when needed.',
+      })
+      return
+    }
     setSelectedColumn(column)
     setCreateDialogOpen(true)
   }
@@ -268,9 +275,20 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   }
 
   const handleDeleteColumn = async (columnId: string) => {
-    if (!confirm('Are you sure? This will delete all tasks in this column.')) return
-    
-    await supabase.from('columns').delete().eq('id', columnId)
+    const column = columns.find((candidate) => candidate.id === columnId)
+    if ((column?.tasks || []).length > 0) {
+      toast.error('This column still contains tasks', {
+        description: 'Move active tasks and restore or retain archived tasks before removing the column.',
+      })
+      return
+    }
+    if (!confirm('Remove this empty column?')) return
+
+    const { error } = await supabase.from('columns').delete().eq('id', columnId)
+    if (error) {
+      toast.error('Could not remove column', { description: error.message })
+      return
+    }
     setColumns(columns.filter(col => col.id !== columnId))
   }
 
@@ -317,14 +335,51 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   // kept out of the column lists — otherwise every subtask also shows up as a loose
   // card and inflates the per-column counts.
   const boardTasks = (column: any) =>
-    (column.tasks || []).filter((task: any) => !task.deleted_at && !task.parent_task_id)
+    (column.tasks || []).filter((task: any) => !task.deleted_at && !task.archived_at && !task.parent_task_id)
+
+  const archivedTasks = useMemo(
+    () => columns
+      .flatMap((column) => (column.tasks || []).map((task: any) => ({ ...task, archivedColumn: column })))
+      .filter((task: any) => task.archived_at && !task.deleted_at && !task.parent_task_id)
+      .sort((a: any, b: any) => new Date(b.archived_at).getTime() - new Date(a.archived_at).getTime()),
+    [columns],
+  )
+
+  const handleRestoreTask = async (task: any) => {
+    const destination = columns.find((column) => column.status_key === 'to_do')
+    if (!destination) {
+      toast.error('This board has no To Do column', {
+        description: 'Link a column to the To Do status before restoring this task.',
+      })
+      return
+    }
+
+    const { error } = await supabase
+      .from('tasks')
+      .update({
+        column_id: destination.id,
+        status: 'to_do',
+        position: boardTasks(destination).length,
+        archived_at: null,
+        archived_by: null,
+      })
+      .eq('id', task.id)
+
+    if (error) {
+      toast.error('Could not restore task', { description: error.message })
+      return
+    }
+
+    toast.success('Task restored to To Do')
+    await refreshColumns()
+  }
 
   // Parent id -> its subtasks, so a card can show "3/5 done" without another query.
   const subtasksByParent = useMemo(() => {
     const map = new Map<string, any[]>()
     for (const column of columns) {
       for (const task of column.tasks || []) {
-        if (!task.parent_task_id || task.deleted_at) continue
+        if (!task.parent_task_id || task.deleted_at || task.archived_at) continue
         const existing = map.get(task.parent_task_id)
         if (existing) existing.push(task)
         else map.set(task.parent_task_id, [task])
@@ -1143,6 +1198,45 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         )}
       </main>
 
+      {isSuperAdmin && archivedTasks.length > 0 && (
+        <section className="container mx-auto px-4 pb-24 md:pb-8" aria-labelledby="archived-tasks-heading">
+          <Card className="border-dashed bg-muted/20">
+            <CardHeader className="pb-3">
+              <CardTitle id="archived-tasks-heading" className="flex items-center gap-2 text-base">
+                <Archive className="h-4 w-4" />
+                Archived tasks ({archivedTasks.length})
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Cancelled tasks stay preserved here. Only super admins can see or restore them.
+              </p>
+            </CardHeader>
+            <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {archivedTasks.map((task: any) => (
+                <div key={task.id} className="flex min-w-0 items-center justify-between gap-3 rounded-lg border bg-background p-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{task.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {task.archived_at
+                        ? `Archived ${new Date(task.archived_at).toLocaleDateString('en-US')}`
+                        : task.archivedColumn?.title}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                    onClick={() => handleRestoreTask(task)}
+                  >
+                    <ArchiveRestore className="h-4 w-4" />
+                    Restore
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
       <Dialog open={chatDialogOpen} onOpenChange={setChatDialogOpen}>
         <DialogContent className="max-w-3xl p-0">
           <DialogHeader className="sr-only">
@@ -1175,6 +1269,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         column={selectedColumn}
+        columns={columns}
         users={users}
         boardId={board.id}
         board={board}

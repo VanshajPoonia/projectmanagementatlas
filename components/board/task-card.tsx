@@ -7,14 +7,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar as CalendarPicker } from '@/components/ui/calendar'
-import { Calendar, User, MoreVertical, Tag, Clock, Repeat, History, ListChecks } from 'lucide-react'
+import { Calendar, User, Tag, Clock, Repeat, History, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { createClient } from '@/lib/supabase/client'
 import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
@@ -58,7 +52,6 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
   // Mirrors the server-side restriction from migrations 065/067 — guest/client board
   // members can view but not create/edit/delete tasks.
   const isRestrictedMember = boardRole === 'guest' || boardRole === 'client'
-  const canDelete = !isRestrictedMember && (isAdmin || task.created_by === currentUserId)
   // Mirrors TaskDetailModal's canEdit/canEditDueDate rules, so inline edits on the
   // tile follow the same permissions as the full modal.
   const canEdit = !isRestrictedMember && (isAdmin || task.created_by === currentUserId || assigneeIds.includes(currentUserId))
@@ -132,9 +125,8 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
       toast.error('Could not update status', { description: error.message })
       return
     }
-    const oldLabel = statuses.find(s => s.key === task.status)?.label || task.status
-    const newLabel = statuses.find(s => s.key === value)?.label || value
-    logTaskActivity(supabase, task.id, currentUserId, `changed status from "${oldLabel}" to "${newLabel}"`)
+    // Status history is written transactionally by the database lifecycle trigger.
+    // Logging it again here would double-count the transition in timing metrics.
     onUpdate?.()
   }
 
@@ -211,38 +203,6 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
     }
 
     onUpdate?.()
-  }
-
-  const handleDelete = async () => {
-    if (confirm('Are you sure you want to delete this task?')) {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ deleted_at: new Date().toISOString(), deleted_by: currentUserId })
-        .eq('id', task.id)
-      if (!error) {
-        onUpdate?.()
-        toast.success('Task deleted', {
-          description: 'You can undo this action for a short time.',
-          action: {
-            label: 'Undo',
-            onClick: async () => {
-              const { error: undoError } = await supabase
-                .from('tasks')
-                .update({ deleted_at: null, deleted_by: null })
-                .eq('id', task.id)
-              if (undoError) {
-                toast.error('Could not restore task')
-              } else {
-                toast.success('Task restored')
-                onUpdate?.()
-              }
-            },
-          },
-        })
-      } else {
-        toast.error('Could not delete task', { description: error.message })
-      }
-    }
   }
 
   const getPriorityColor = (priority: number) => {
@@ -338,23 +298,6 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
             >
               <History className="w-3.5 h-3.5" />
             </Button>
-            {canDelete && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <MoreVertical className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDetailInitialTab('comments'); setDetailOpen(true); }}>
-                    Open
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDelete(); }} className="text-red-600">
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
           </div>
 
           {editingDesc ? (

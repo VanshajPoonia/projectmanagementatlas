@@ -38,5 +38,5 @@ export default async function UserBoardPage({ params }: { params: Promise<{ id: 
     supabase.from('board_members').select('role').eq('board_id', id).eq('user_id', user.id).maybeSingle(),
   ])
 
-  return <BoardView board={board} columns={columns || []} users={users || []} isAdmin={false} currentUserId={user.id} boardRole={membership?.role ?? null} />
+  return <BoardView board={board} columns={columns || []} users={users || []} isAdmin={false} isSuperAdmin={profile?.role === 'super_admin'} currentUserId={user.id} boardRole={membership?.role ?? null} />
 }

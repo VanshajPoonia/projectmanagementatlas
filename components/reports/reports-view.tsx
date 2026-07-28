@@ -24,6 +24,7 @@ interface ReportsViewProps {
 }
 
 const UNASSIGNED_FILTER_VALUE = '__unassigned__'
+const reportStatusKey = (task: any) => task.column?.status_key || task.status
 
 export default function ReportsView({ tasks, users, boards }: ReportsViewProps) {
   const [filteredTasks, setFilteredTasks] = useState(tasks)
@@ -75,7 +76,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
     }
 
     if (filterStatus.length > 0) {
-      filtered = filtered.filter(task => filterStatus.includes(task.status))
+      filtered = filtered.filter(task => filterStatus.includes(reportStatusKey(task)))
     }
 
     if (filterBoard.length > 0) {
@@ -132,7 +133,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
         task.title,
         cleanTaskDescription(task.description),
         task.priority,
-        task.status,
+        getTaskStatusLabel(task),
         assigneeNames.length ? assigneeNames.join('; ') : 'Unassigned',
         board?.title || 'Unknown',
         new Date(task.created_at).toLocaleDateString('en-US'),
