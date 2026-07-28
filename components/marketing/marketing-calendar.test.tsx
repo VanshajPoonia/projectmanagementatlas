@@ -283,6 +283,21 @@ describe('MarketingCalendar controls', () => {
     expect(within(dialog).getByRole('button', { name: 'Create' })).toBeInTheDocument()
   })
 
+  it('opens a separate image attachment space for an event', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+
+    await screen.findByText("Kayla's Posting Board")
+    fireEvent.click(screen.getAllByRole('button', { name: 'Attach an image' })[0])
+
+    const dialog = await screen.findByRole('dialog', { name: 'Social media image' })
+    expect(within(dialog).getByText(/belongs only to this calendar event/i)).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Choose an image/i })).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Choose a social media image')).toHaveAttribute(
+      'accept',
+      'image/jpeg,image/png,image/webp,image/gif',
+    )
+  })
+
   it('lets a recurring event target one occurrence or the entire series', async () => {
     render(<MarketingCalendar userId="user-1" userName="Kayla" />)
 
