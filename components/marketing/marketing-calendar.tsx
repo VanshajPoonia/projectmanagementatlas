@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   BadgeCheck,
   CalendarDays,
@@ -26,12 +26,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { autoTextColor as autoText, withAlpha } from '@/lib/color'
 import { toast } from 'sonner'
 import {
+  buildRecurringSeriesScheduleUpdates,
   centeredScrollLeft,
   isImportedWeekendPlaceholder,
   reconcileCompanySelection,
@@ -95,6 +96,7 @@ const KAYLA_EMAIL = 'kayla@goatlasgo.us'
 const LS_VIEW_KEY = 'marketing_calendar_view'
 
 type ViewMode = 'week' | 'month' | 'grid'
+type EditScope = 'single' | 'series'
 
 const RECURRENCE_LABELS: Record<RecurrencePattern, string> = {
   none:      'No repeat',
@@ -457,6 +459,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const [editChannel,      setEditChannel]      = useState('')
   const [editContent,      setEditContent]      = useState('')
   const [editHighlighted,  setEditHighlighted]  = useState(false)
+  const [editScope,        setEditScope]        = useState<EditScope>('single')
   const [savingEdit,       setSavingEdit]       = useState(false)
 
   // Drag-and-drop reschedule
@@ -667,6 +670,9 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
   const weekLabel = `${dateFormatter.format(weekDays[0])} – ${dateFormatter.format(weekDays[6])}`
   const rangeLabel = viewMode === 'month' ? monthFormatter.format(calendarDate) : weekLabel
+  const editSeriesCount = editItem?.recurrence_group_id
+    ? items.filter(item => item.recurrence_group_id === editItem.recurrence_group_id).length
+    : 1
 
   /* ── agenda items (bottom panel) ────────────────────────────────── */
   const agendaItems = useMemo(() => {
@@ -832,6 +838,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     setEditChannel(item.channel)
     setEditContent(item.content)
     setEditHighlighted(item.is_highlighted)
+    setEditScope(item.recurrence_group_id ? 'series' : 'single')
   }
 
   const toggleEditCompany = (id: string) =>
@@ -842,8 +849,108 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     if (!editItem || !editContent.trim() || !editChannel || editCompanyIds.length === 0) return
     setSavingEdit(true)
 
+    const replaceCompanies = async (itemIds: string[]) => {
+      const { error: deleteError } = await supabase
+        .from('marketing_calendar_item_companies')
+        .delete()
+        .in('item_id', itemIds)
+      if (deleteError) return deleteError
+
+      const companyRows = itemIds.flatMap(itemId =>
+        editCompanyIds.map(companyId => ({ item_id: itemId, company_id: companyId })),
+      )
+      const { error: insertError } = await supabase
+        .from('marketing_calendar_item_companies')
+        .insert(companyRows)
+      return insertError
+    }
+
+    if (editItem.recurrence_group_id && editScope === 'series') {
+      const { data: seriesItems, error: seriesError } = await supabase
+        .from('marketing_calendar_items')
+        .select('id,date,channel')
+        .eq('recurrence_group_id', editItem.recurrence_group_id)
+
+      if (seriesError || !seriesItems?.length) {
+        setSavingEdit(false)
+        toast.error('Could not load this recurring series', { description: seriesError?.message })
+        return
+      }
+
+      const scheduleUpdates = buildRecurringSeriesScheduleUpdates(
+        seriesItems as Array<{ id: string; date: string; channel: string }>,
+        {
+          anchorDate: editItem.date,
+          nextDate: editDate,
+          anchorChannel: editItem.channel,
+          nextChannel: editChannel,
+        },
+      )
+
+      // Rows that end up with the same schedule can be updated together. IDs
+      // are used as the filter so shifting a daily series cannot accidentally
+      // move the same row twice as dates overlap.
+      const updateGroups = new Map<string, {
+        date: string
+        day_label: string
+        channel: string
+        ids: string[]
+      }>()
+      for (const update of scheduleUpdates) {
+        const key = `${update.date}::${update.day_label}::${update.channel}`
+        const group = updateGroups.get(key) ?? {
+          date: update.date,
+          day_label: update.day_label,
+          channel: update.channel,
+          ids: [],
+        }
+        group.ids.push(update.id)
+        updateGroups.set(key, group)
+      }
+
+      const updateResults = await Promise.all(
+        [...updateGroups.values()].map(group =>
+          supabase.from('marketing_calendar_items').update({
+            date: group.date,
+            day_label: group.day_label,
+            channel: group.channel,
+            content: editContent.trim(),
+            is_highlighted: editHighlighted,
+          }).in('id', group.ids),
+        ),
+      )
+      const updateError = updateResults.find(result => result.error)?.error
+      if (updateError) {
+        setSavingEdit(false)
+        setEditItem(null)
+        await loadCalendar()
+        toast.error('Could not update the entire series', {
+          description: `${updateError.message}. The calendar has been refreshed.`,
+        })
+        return
+      }
+
+      const itemIds = scheduleUpdates.map(update => update.id)
+      const companyError = await replaceCompanies(itemIds)
+      if (companyError) {
+        setSavingEdit(false)
+        setEditItem(null)
+        await loadCalendar()
+        toast.error('Series schedule updated, but companies could not be updated', {
+          description: companyError.message,
+        })
+        return
+      }
+
+      setSavingEdit(false)
+      toast.success(`Updated ${itemIds.length} events in this series`)
+      setEditItem(null)
+      loadCalendar()
+      return
+    }
+
     const dayLabel = ['SUN','MON','TUE','WED','THU','FRI','SAT'][parseDate(editDate).getDay()]
-    const { error: e2 } = await supabase.from('marketing_calendar_items').update({
+    const { error: updateError } = await supabase.from('marketing_calendar_items').update({
       date:           editDate,
       day_label:      dayLabel,
       channel:        editChannel,
@@ -851,40 +958,25 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       is_highlighted: editHighlighted,
     }).eq('id', editItem.id)
 
-    if (e2) {
+    if (updateError) {
       setSavingEdit(false)
-      toast.error('Could not update event', { description: e2.message })
+      toast.error('Could not update event', { description: updateError.message })
       return
     }
 
-    await supabase.from('marketing_calendar_item_companies').delete().eq('item_id', editItem.id)
-    await supabase.from('marketing_calendar_item_companies')
-      .insert(editCompanyIds.map(companyId => ({ item_id: editItem.id, company_id: companyId })))
-
-    // Editing any instance of a recurring series updates content/highlight/
-    // companies on every instance in that series (not its date or channel,
-    // which stay per-instance).
-    let updatedAll = false
-    if (editItem.recurrence_group_id) {
-      const { data: siblings } = await supabase
-        .from('marketing_calendar_items')
-        .select('id')
-        .eq('recurrence_group_id', editItem.recurrence_group_id)
-        .neq('id', editItem.id)
-      const siblingIds = (siblings ?? []).map((s: { id: string }) => s.id)
-      if (siblingIds.length) {
-        await supabase.from('marketing_calendar_items')
-          .update({ content: editContent.trim(), is_highlighted: editHighlighted })
-          .in('id', siblingIds)
-        await supabase.from('marketing_calendar_item_companies').delete().in('item_id', siblingIds)
-        const rows = siblingIds.flatMap((id: string) => editCompanyIds.map(companyId => ({ item_id: id, company_id: companyId })))
-        if (rows.length) await supabase.from('marketing_calendar_item_companies').insert(rows)
-        updatedAll = true
-      }
+    const companyError = await replaceCompanies([editItem.id])
+    if (companyError) {
+      setSavingEdit(false)
+      setEditItem(null)
+      await loadCalendar()
+      toast.error('Event updated, but companies could not be updated', {
+        description: companyError.message,
+      })
+      return
     }
 
     setSavingEdit(false)
-    toast.success(updatedAll ? 'Updated this event and all repeats' : 'Event updated')
+    toast.success('Event updated')
     setEditItem(null)
     loadCalendar()
   }
@@ -967,15 +1059,20 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   }
 
   // Returning to the current week must also reveal today's column inside the
-  // horizontally scrollable week board. Otherwise the date changes off-screen
-  // on narrow viewports and the Today button appears unresponsive.
-  useEffect(() => {
+  // horizontally scrollable week board. Run before paint and use an immediate
+  // scroll so mobile browsers cannot drop the navigation during the rerender.
+  useLayoutEffect(() => {
     if (todayNavigationRequest === 0 || viewMode !== 'week') return
 
-    const frame = requestAnimationFrame(() => {
+    let frame = 0
+    let attempts = 0
+    const revealToday = () => {
       const container = weekBoardScrollRef.current
       const today = container?.querySelector<HTMLElement>(`[data-calendar-date="${toDateKey(new Date())}"]`)
-      if (!container || !today) return
+      if (!container || !today) {
+        if (attempts++ < 2) frame = requestAnimationFrame(revealToday)
+        return
+      }
       const containerRect = container.getBoundingClientRect()
       const todayRect = today.getBoundingClientRect()
 
@@ -987,9 +1084,10 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
           targetLeft: todayRect.left,
           targetWidth: todayRect.width,
         }),
-        behavior: 'smooth',
+        behavior: 'auto',
       })
-    })
+    }
+    frame = requestAnimationFrame(revealToday)
 
     return () => cancelAnimationFrame(frame)
   }, [todayNavigationRequest, viewMode, weekStart])
@@ -1118,7 +1216,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       <>
           {/* ── Week board ───────────────────────────────────────────── */}
           {viewMode === 'week' && (
-            <div ref={weekBoardScrollRef} className="overflow-x-auto">
+            <div ref={weekBoardScrollRef} data-marketing-week-scroll className="overflow-x-auto">
               <div className="grid min-w-[1080px] grid-cols-7 divide-x">
                 {weekDays.map(date => {
                   const dateKey    = toDateKey(date)
@@ -1559,7 +1657,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                 ))}
               </div>
               {newRecurrence !== 'none' && (
-                <p className="text-xs text-muted-foreground">Editing any post in this series later updates them all.</p>
+                <p className="text-xs text-muted-foreground">You can later edit one occurrence or move and update the entire series.</p>
               )}
             </div>
 
@@ -1598,13 +1696,53 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                 </Badge>
               )}
             </DialogTitle>
+            <DialogDescription>
+              Change this event&apos;s schedule and posting details.
+            </DialogDescription>
           </DialogHeader>
           {editItem && (
             <form onSubmit={handleSaveEdit} className="space-y-4">
               {editItem.recurrence_group_id && (
-                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  This post repeats. Saving updates the content, companies, and campaign-block flag on every post in this series — the date and channel here only change this one.
-                </p>
+                <div className="space-y-2">
+                  <Label>Apply changes to</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setEditScope('single')}
+                      aria-pressed={editScope === 'single'}
+                      className={cn(
+                        'rounded-md border px-3 py-2.5 text-left transition-colors',
+                        editScope === 'single'
+                          ? 'border-[#111] bg-[#f5f5f5] ring-1 ring-[#111]'
+                          : 'bg-background hover:bg-accent',
+                      )}>
+                      <span className="flex items-center gap-1.5 text-sm font-semibold">
+                        <Circle className="h-3.5 w-3.5" /> This event
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        Only {dateFormatter.format(parseDate(editItem.date))}
+                      </span>
+                    </button>
+                    <button type="button" onClick={() => setEditScope('series')}
+                      aria-pressed={editScope === 'series'}
+                      className={cn(
+                        'rounded-md border px-3 py-2.5 text-left transition-colors',
+                        editScope === 'series'
+                          ? 'border-[#111] bg-[#fffde7] ring-1 ring-[#111]'
+                          : 'bg-background hover:bg-accent',
+                      )}>
+                      <span className="flex items-center gap-1.5 text-sm font-semibold">
+                        <Repeat className="h-3.5 w-3.5" /> Entire series
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        {editSeriesCount} scheduled event{editSeriesCount === 1 ? '' : 's'}
+                      </span>
+                    </button>
+                  </div>
+                  <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+                    {editScope === 'series'
+                      ? 'Changing the date shifts every repeat by the same amount, keeping the recurrence spacing intact.'
+                      : 'The other repeats will keep their current dates and details.'}
+                  </p>
+                </div>
               )}
               <EventFormFields
                 date={editDate} onDateChange={setEditDate}
@@ -1618,14 +1756,16 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="outline" size="icon" className="shrink-0 text-destructive hover:text-destructive"
-                  onClick={handleDeleteFromEdit} aria-label="Delete event">
+                  onClick={handleDeleteFromEdit} aria-label="Delete this event only">
                   <Trash2 className="h-4 w-4" />
                 </Button>
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setEditItem(null)}>
                   Cancel
                 </Button>
                 <Button type="submit" className="flex-1" disabled={savingEdit || !editContent.trim() || !editChannel || editCompanyIds.length === 0}>
-                  {savingEdit ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+                  {savingEdit
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : editItem.recurrence_group_id && editScope === 'series' ? 'Save series' : 'Save event'}
                 </Button>
               </div>
             </form>

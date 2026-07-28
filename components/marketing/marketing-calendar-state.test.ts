@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildRecurringSeriesScheduleUpdates,
   centeredScrollLeft,
   isImportedWeekendPlaceholder,
   reconcileCompanySelection,
@@ -52,6 +53,46 @@ describe('marketing calendar Today navigation', () => {
       targetLeft: 120,
       targetWidth: 150,
     })).toBe(0)
+  })
+})
+
+describe('recurring marketing event editing', () => {
+  it('moves every repeat by the same date offset', () => {
+    expect(buildRecurringSeriesScheduleUpdates(
+      [
+        { id: 'first', date: '2026-07-28', channel: 'social' },
+        { id: 'second', date: '2026-08-04', channel: 'social' },
+        { id: 'third', date: '2026-08-11', channel: 'social' },
+      ],
+      {
+        anchorDate: '2026-07-28',
+        nextDate: '2026-07-30',
+        anchorChannel: 'social',
+        nextChannel: 'instagram',
+      },
+    )).toEqual([
+      { id: 'first', date: '2026-07-30', day_label: 'THU', channel: 'instagram' },
+      { id: 'second', date: '2026-08-06', day_label: 'THU', channel: 'instagram' },
+      { id: 'third', date: '2026-08-13', day_label: 'THU', channel: 'instagram' },
+    ])
+  })
+
+  it('keeps other channel streams intact while moving their dates', () => {
+    expect(buildRecurringSeriesScheduleUpdates(
+      [
+        { id: 'social', date: '2026-07-31', channel: 'social' },
+        { id: 'email', date: '2026-07-31', channel: 'email' },
+      ],
+      {
+        anchorDate: '2026-07-31',
+        nextDate: '2026-08-01',
+        anchorChannel: 'social',
+        nextChannel: 'instagram',
+      },
+    )).toEqual([
+      { id: 'social', date: '2026-08-01', day_label: 'SAT', channel: 'instagram' },
+      { id: 'email', date: '2026-08-01', day_label: 'SAT', channel: 'email' },
+    ])
   })
 })
 

@@ -70,7 +70,7 @@ describe('MarketingCalendar controls', () => {
               is_highlighted: false,
               position: 0,
               source_sheet: null,
-              recurrence_group_id: null,
+              recurrence_group_id: 'series-1',
               marketing_calendar_item_companies: [{ company: companies[0] }],
             },
             {
@@ -142,6 +142,7 @@ describe('MarketingCalendar controls', () => {
   afterEach(() => {
     fromMock.mockReset()
     scrollTo.mockReset()
+    vi.restoreAllMocks()
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
       configurable: true,
       value: originalScrollTo,
@@ -186,9 +187,37 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('returns to the current week and reveals todays column', async () => {
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    const { container } = render(<MarketingCalendar userId="user-1" userName="Kayla" />)
 
     await screen.findByText("Kayla's Posting Board")
+    const weekScroll = container.querySelector<HTMLElement>('[data-marketing-week-scroll]')
+    const todayColumn = container.querySelector<HTMLElement>(`[data-calendar-date="${toDateKey(new Date())}"]`)
+    expect(weekScroll).not.toBeNull()
+    expect(todayColumn).not.toBeNull()
+
+    Object.defineProperty(weekScroll!, 'scrollLeft', { configurable: true, value: 640 })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.hasAttribute('data-marketing-week-scroll')) {
+        return {
+          left: 80, right: 440, top: 0, bottom: 360,
+          width: 360, height: 360, x: 80, y: 0,
+          toJSON: () => ({}),
+        }
+      }
+      if (this.dataset.calendarDate === toDateKey(new Date())) {
+        return {
+          left: 410, right: 560, top: 0, bottom: 360,
+          width: 150, height: 360, x: 410, y: 0,
+          toJSON: () => ({}),
+        }
+      }
+      return {
+        left: 0, right: 0, top: 0, bottom: 0,
+        width: 0, height: 0, x: 0, y: 0,
+        toJSON: () => ({}),
+      }
+    })
+
     const nextWeek = screen.getByRole('button', { name: 'Next week' })
     const weekLabel = nextWeek.previousElementSibling
     const currentWeekLabel = weekLabel?.textContent
@@ -200,7 +229,7 @@ describe('MarketingCalendar controls', () => {
 
     await waitFor(() => {
       expect(weekLabel?.textContent).toBe(currentWeekLabel)
-      expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }))
+      expect(scrollTo).toHaveBeenCalledWith({ left: 865, behavior: 'auto' })
     })
   })
 
@@ -252,5 +281,24 @@ describe('MarketingCalendar controls', () => {
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveClass('max-h-[calc(100dvh-2rem)]', 'overflow-y-auto')
     expect(within(dialog).getByRole('button', { name: 'Create' })).toBeInTheDocument()
+  })
+
+  it('lets a recurring event target one occurrence or the entire series', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+
+    await screen.findByText("Kayla's Posting Board")
+    const recurringEvent = screen.getAllByText('SRG post')[0].closest('[role="button"]')
+    expect(recurringEvent).not.toBeNull()
+    fireEvent.click(recurringEvent!)
+
+    const dialog = await screen.findByRole('dialog')
+    const entireSeries = within(dialog).getByRole('button', { name: /Entire series/i })
+    const thisEvent = within(dialog).getByRole('button', { name: /^This event/i })
+    expect(entireSeries).toHaveAttribute('aria-pressed', 'true')
+    expect(within(dialog).getByRole('button', { name: 'Save series' })).toBeInTheDocument()
+
+    fireEvent.click(thisEvent)
+    expect(thisEvent).toHaveAttribute('aria-pressed', 'true')
+    expect(within(dialog).getByRole('button', { name: 'Save event' })).toBeInTheDocument()
   })
 })
