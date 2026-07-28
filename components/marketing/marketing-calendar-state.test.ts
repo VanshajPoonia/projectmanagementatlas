@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildRecurringDateKeys,
   buildRecurringSeriesScheduleUpdates,
   centeredScrollLeft,
+  dayLabelForDateKey,
   isImportedWeekendPlaceholder,
+  MAX_SCHEDULED_MARKETING_POSTS,
   reconcileCompanySelection,
   toggleCompanySelection,
 } from './marketing-calendar-state'
@@ -93,6 +96,87 @@ describe('recurring marketing event editing', () => {
       { id: 'social', date: '2026-08-01', day_label: 'SAT', channel: 'instagram' },
       { id: 'email', date: '2026-08-01', day_label: 'SAT', channel: 'email' },
     ])
+  })
+})
+
+describe('recurring marketing event creation', () => {
+  it('matches the screenshot weekly range using an inclusive cutoff', () => {
+    const dates = buildRecurringDateKeys(
+      '2026-07-31',
+      'weekly',
+      '2026-12-31',
+    )
+
+    expect(dates).toHaveLength(22)
+    expect(dates.slice(0, 3)).toEqual([
+      '2026-07-31',
+      '2026-08-07',
+      '2026-08-14',
+    ])
+    expect(dates.at(-1)).toBe('2026-12-25')
+    expect(dates.every(date => dayLabelForDateKey(date) === 'FRI')).toBe(true)
+  })
+
+  it('does not silently stop daily schedules after 104 dates', () => {
+    const dates = buildRecurringDateKeys(
+      '2026-07-31',
+      'daily',
+      '2026-12-31',
+    )
+
+    expect(dates).toHaveLength(154)
+    expect(dates.at(-1)).toBe('2026-12-31')
+  })
+
+  it('keeps the original day-of-month after a short month', () => {
+    expect(buildRecurringDateKeys(
+      '2027-01-31',
+      'monthly',
+      '2027-05-31',
+    )).toEqual([
+      '2027-01-31',
+      '2027-02-28',
+      '2027-03-31',
+      '2027-04-30',
+      '2027-05-31',
+    ])
+  })
+
+  it('handles leap years and quarterly month-end clamping', () => {
+    expect(buildRecurringDateKeys(
+      '2028-01-31',
+      'monthly',
+      '2028-03-31',
+    )).toEqual([
+      '2028-01-31',
+      '2028-02-29',
+      '2028-03-31',
+    ])
+
+    expect(buildRecurringDateKeys(
+      '2026-11-30',
+      'quarterly',
+      '2027-08-31',
+    )).toEqual([
+      '2026-11-30',
+      '2027-02-28',
+      '2027-05-30',
+      '2027-08-30',
+    ])
+  })
+
+  it('returns no dates for invalid or reversed ranges', () => {
+    expect(buildRecurringDateKeys('2026-02-30', 'daily', '2026-03-10')).toEqual([])
+    expect(buildRecurringDateKeys('2026-08-01', 'weekly', '2026-07-01')).toEqual([])
+  })
+
+  it('returns one extra date so oversized schedules can be rejected explicitly', () => {
+    const dates = buildRecurringDateKeys(
+      '2020-01-01',
+      'daily',
+      '2030-01-01',
+    )
+    expect(dates).toHaveLength(MAX_SCHEDULED_MARKETING_POSTS + 1)
   })
 })
 
