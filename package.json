@@ -15,7 +15,8 @@
     "migrate:baseline": "node --env-file=.env.local scripts/migrate.mjs --baseline",
     "check:isolation": "node --env-file=.env.local scripts/check-isolation.mjs",
     "check:board-roles": "node --env-file=.env.local scripts/check-board-roles.mjs",
-    "check:task-lifecycle": "node --env-file=.env.local scripts/check-task-lifecycle.mjs"
+    "check:task-lifecycle": "node --env-file=.env.local scripts/check-task-lifecycle.mjs",
+    "check:marketing-attachments": "node --env-file=.env.local scripts/check-marketing-attachments.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",
