@@ -283,6 +283,32 @@ describe('MarketingCalendar controls', () => {
     expect(within(dialog).getByRole('button', { name: 'Create' })).toBeInTheDocument()
   })
 
+  it('previews exact recurrence dates separately from channel post count', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+
+    await screen.findByText("Kayla's Posting Board")
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }))
+
+    const dialog = await screen.findByRole('dialog')
+    const firstDateInput = dialog.querySelector<HTMLInputElement>('input[type="date"]')
+    expect(firstDateInput).not.toBeNull()
+    fireEvent.change(firstDateInput!, { target: { value: '2026-07-31' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Social' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weekly' }))
+
+    const dateInputs = dialog.querySelectorAll<HTMLInputElement>('input[type="date"]')
+    expect(dateInputs).toHaveLength(2)
+    fireEvent.change(dateInputs[1], { target: { value: '2026-12-31' } })
+
+    expect(within(dialog).getByText(
+      /22 recurring dates × 1 channel = 22 scheduled posts/,
+    )).toBeInTheDocument()
+    expect(within(dialog).getByText(
+      /The end date is a cutoff\. The last matching weekly date is Fri, Dec 25\./,
+    )).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Create series' })).toBeInTheDocument()
+  })
+
   it('opens a separate image attachment space for an event', async () => {
     render(<MarketingCalendar userId="user-1" userName="Kayla" />)
 
