@@ -213,7 +213,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
         </aside>
 
         {/* Main Content */}
-        <div className="flex-1 min-w-0 px-4 py-8 overflow-x-hidden">
+        <div className="min-w-0 flex-1 overflow-x-hidden px-3 py-5 sm:px-4 sm:py-8">
           <div className="mb-6">
             <GlobalSearch isAdmin={isAdmin} />
           </div>
@@ -282,15 +282,15 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                         href={task.column?.board_id ? `/dashboard/board/${task.column.board_id}` : '#'}
                         className="block group"
                       >
-                        <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent transition-all cursor-pointer hover:shadow-md hover:border-primary/30">
-                          <div className="flex-1">
+                        <div className="flex flex-col items-stretch gap-3 rounded-lg border p-4 transition-all hover:border-primary/30 hover:bg-accent hover:shadow-md sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0 flex-1">
                             {task.parent?.title && (
                               <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
                                 <CornerDownRight className="w-3 h-3 flex-shrink-0" />
                                 {task.parent.title}
                               </p>
                             )}
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                               <h4 className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">{task.title}</h4>
                               <Badge
                                 variant={taskStatus === 'done' ? 'default' : taskStatus === 'in_progress' ? 'secondary' : 'outline'}
@@ -310,7 +310,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                                 {cleanTaskDescription(task.description)}
                               </p>
                             )}
-                            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                               {task.column?.board && (
                                 <span className="flex items-center gap-1">
                                   <Kanban className="w-3 h-3" />
@@ -328,13 +328,14 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                           {task.priority && (
                             <Badge
                               variant="outline"
-                              className={
+                              className={cn(
+                                'self-start sm:self-auto',
                                 task.priority <= 2
                                   ? 'border-red-500 text-red-500'
                                   : task.priority === 3
                                   ? 'border-orange-500 text-orange-500'
-                                  : 'border-blue-500 text-blue-500'
-                              }
+                                  : 'border-blue-500 text-blue-500',
+                              )}
                             >
                               {task.priority}
                             </Badge>
@@ -359,7 +360,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                       href={task.column?.board_id ? `/dashboard/board/${task.column.board_id}` : '#'}
                       className="block group"
                     >
-                      <div className="flex items-center justify-between gap-3 p-4 border rounded-lg bg-secondary/40 hover:bg-accent transition-all cursor-pointer hover:shadow-md hover:border-primary/30">
+                      <div className="flex items-start justify-between gap-3 rounded-lg border bg-secondary/40 p-4 transition-all hover:border-primary/30 hover:bg-accent hover:shadow-md">
                         <div className="flex-1 min-w-0">
                           {task.parent?.title && (
                             <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
@@ -367,7 +368,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                               {task.parent.title}
                             </p>
                           )}
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <h4 className="min-w-0 break-words font-medium text-muted-foreground line-through decoration-2 [overflow-wrap:anywhere]">{task.title}</h4>
                             <Badge className="bg-green-600">
                               {task.column?.title || getTaskStatusLabel(task)}
@@ -378,7 +379,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                               {cleanTaskDescription(task.description)}
                             </p>
                           )}
-                          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                             {task.column?.board && (
                               <span className="flex items-center gap-1">
                                 <Kanban className="w-3 h-3" />
@@ -421,12 +422,12 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
 
           <TabsContent value="boards">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <div>
+              <CardHeader className="flex flex-col items-start justify-between gap-4 space-y-0 px-4 sm:flex-row sm:items-center sm:px-6">
+                <div className="min-w-0">
                   <CardTitle>Project Boards</CardTitle>
                   <CardDescription>View all project boards</CardDescription>
                 </div>
-                <div className="flex items-center border rounded-md">
+                <div className="flex shrink-0 items-center rounded-md border">
                   <Button
                     onClick={() => setBoardsViewMode('tile')}
                     variant={boardsViewMode === 'tile' ? 'default' : 'ghost'}
@@ -447,15 +448,15 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-4 sm:px-6">
                 {boardsViewMode === 'list' ? (
                   <div className="space-y-2">
                     {boards.map((board) => (
-                      <Link key={board.id} href={`/dashboard/board/${board.id}`}>
-                        <Card className="flex items-center gap-3 p-3 hover:shadow-md transition-all cursor-pointer hover:border-primary/30">
-                          <Kanban className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                      <Link key={board.id} href={`/dashboard/board/${board.id}`} className="block">
+                        <Card className="flex-row items-start gap-3 p-3 transition-all hover:border-primary/30 hover:shadow-md sm:items-center">
+                          <Kanban className="mt-0.5 h-5 w-5 flex-shrink-0 text-muted-foreground sm:mt-0" />
                           <div className="min-w-0 flex-1">
-                            <div className="truncate font-medium">{board.title}</div>
+                            <div className="line-clamp-2 break-words font-medium [overflow-wrap:anywhere]">{board.title}</div>
                             {(board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email) && (
                               <p className="truncate text-xs text-muted-foreground">
                                 Last edited by {board.editor?.full_name || board.editor?.email || board.creator?.full_name || board.creator?.email}
@@ -471,7 +472,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                   {boards.map((board) => (
                     <Link key={board.id} href={`/dashboard/board/${board.id}`}>
                       <Card className="hover:shadow-md transition-all cursor-pointer hover:border-primary/30">
-                        <CardHeader>
+                        <CardHeader className="px-4 sm:px-6">
                           <div className="flex items-start gap-3">
                             <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
                               <Kanban className="w-5 h-5 text-primary-foreground" />

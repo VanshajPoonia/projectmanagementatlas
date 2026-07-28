@@ -19,22 +19,24 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
+        <div className="container mx-auto px-3 py-3 sm:px-4 sm:py-4">
+          <div className="flex items-start gap-3 sm:items-center sm:gap-4">
             <Button
               variant="outline"
               size="sm"
+              className="h-9 w-9 shrink-0 p-0 sm:w-auto sm:px-3"
               onClick={() => (window.history.length > 1 ? router.back() : router.push('/admin'))}
+              aria-label="Back to admin dashboard"
             >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
+              <ArrowLeft className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Back</span>
             </Button>
-            <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary">
                 <ShieldCheck className="h-5 w-5 text-primary-foreground" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold tracking-tight">Super Admin</h1>
+              <div className="min-w-0">
+                <h1 className="text-lg font-bold tracking-tight sm:text-xl">Super Admin</h1>
                 <p className="text-sm text-muted-foreground">Manage users and company entities</p>
               </div>
             </div>
@@ -42,18 +44,18 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-3 py-5 sm:px-4 sm:py-8">
         <Tabs defaultValue="companies" className="space-y-6">
-          <TabsList className="grid w-full max-w-lg grid-cols-3">
-            <TabsTrigger value="companies" className="flex items-center gap-2">
+          <TabsList className="grid h-auto w-full max-w-lg grid-cols-3 rounded-lg p-1">
+            <TabsTrigger value="companies" className="min-w-0 gap-1 px-1.5 py-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
               <Building2 className="h-4 w-4" />
               Companies
             </TabsTrigger>
-            <TabsTrigger value="users" className="flex items-center gap-2">
+            <TabsTrigger value="users" className="min-w-0 gap-1 px-1.5 py-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
               <Users className="h-4 w-4" />
               Users
             </TabsTrigger>
-            <TabsTrigger value="statuses" className="flex items-center gap-2">
+            <TabsTrigger value="statuses" className="min-w-0 gap-1 px-1.5 py-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
               <SlidersHorizontal className="h-4 w-4" />
               Statuses
             </TabsTrigger>
