@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BadgeCheck,
   CalendarDays,
+  CalendarRange,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -30,6 +31,11 @@ import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { autoTextColor as autoText, withAlpha } from '@/lib/color'
 import { toast } from 'sonner'
+import {
+  isImportedWeekendPlaceholder,
+  reconcileCompanySelection,
+  toggleCompanySelection,
+} from './marketing-calendar-state'
 
 type RecurrencePattern = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly'
 
@@ -87,7 +93,7 @@ interface MarketingProfile {
 const KAYLA_EMAIL = 'kayla@goatlasgo.us'
 const LS_VIEW_KEY = 'marketing_calendar_view'
 
-type ViewMode = 'week' | 'grid'
+type ViewMode = 'week' | 'month' | 'grid'
 
 const RECURRENCE_LABELS: Record<RecurrencePattern, string> = {
   none:      'No repeat',
@@ -104,7 +110,7 @@ function loadViewMode(): ViewMode {
   if (typeof window === 'undefined') return 'week'
   try {
     const raw = localStorage.getItem(LS_VIEW_KEY)
-    if (raw === 'week' || raw === 'grid') return raw
+    if (raw === 'week' || raw === 'month' || raw === 'grid') return raw
   } catch { /* ignore */ }
   return 'week'
 }
@@ -113,6 +119,7 @@ function loadViewMode(): ViewMode {
 
 const dateFormatter     = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
 const fullDateFormatter = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+const monthFormatter    = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
 
 function parseDate(date: string) {
   const [year, month, day] = date.split('-').map(Number)
@@ -134,6 +141,20 @@ function addDays(date: Date, days: number) {
 }
 function addMonths(date: Date, months: number) {
   const d = new Date(date); d.setMonth(d.getMonth() + months); return d
+}
+function shiftCalendarMonth(date: Date, months: number) {
+  const day = date.getDate()
+  const shifted = new Date(date)
+  shifted.setDate(1)
+  shifted.setMonth(shifted.getMonth() + months)
+  const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate()
+  shifted.setDate(Math.min(day, lastDay))
+  return shifted
+}
+function monthGridDays(date: Date) {
+  const firstOfMonth = new Date(date.getFullYear(), date.getMonth(), 1)
+  const firstVisible = startOfWeek(firstOfMonth)
+  return Array.from({ length: 42 }, (_, index) => addDays(firstVisible, index))
 }
 
 function itemKey(date: string, channel: string) {
@@ -391,14 +412,16 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const [checkUserId,   setCheckUserId]   = useState(userId)
   const [checkUserName, setCheckUserName] = useState(userName)
   const [kaylaId,       setKaylaId]       = useState<string | null>(null)
-  const [weekStart,     setWeekStart]     = useState(() => startOfWeek(new Date()))
+  const [calendarDate,  setCalendarDate]  = useState(() => new Date())
   const [loading,       setLoading]       = useState(true)
   const [busyItemId,    setBusyItemId]    = useState<string | null>(null)
   const [error,         setError]         = useState<string | null>(null)
+  const weekBoardScrollRef = useRef<HTMLDivElement>(null)
+  const [todayNavigationRequest, setTodayNavigationRequest] = useState(0)
 
   // Companies (business units) — dynamic, managed from the Super Admin page.
   const [companies,        setCompanies]        = useState<Company[]>([])
-  // Which companies are shown in the board/grid. Mix-and-match — e.g. SRG + AGC.
+  // Which companies are shown in the board/grid. An empty list means "All".
   const [activeCompanyIds, setActiveCompanyIds] = useState<string[]>([])
 
   // Shared, editable channel list (loaded from marketing_channels). Flat —
@@ -483,18 +506,20 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
     setLoading(false)
     if (itemsError || checksError) { setError('Marketing calendar is not ready yet.'); return }
-    const mapped = ((itemRows ?? []) as any[]).map((row): MarketingCalendarItem => ({
-      id: row.id,
-      date: row.date,
-      day_label: row.day_label,
-      channel: row.channel,
-      content: row.content,
-      is_highlighted: row.is_highlighted,
-      position: row.position,
-      source_sheet: row.source_sheet,
-      recurrence_group_id: row.recurrence_group_id,
-      companies: (row.marketing_calendar_item_companies ?? []).map((r: any) => r.company).filter(Boolean),
-    }))
+    const mapped = ((itemRows ?? []) as any[])
+      .filter(row => !isImportedWeekendPlaceholder(row))
+      .map((row): MarketingCalendarItem => ({
+        id: row.id,
+        date: row.date,
+        day_label: row.day_label,
+        channel: row.channel,
+        content: row.content,
+        is_highlighted: row.is_highlighted,
+        position: row.position,
+        source_sheet: row.source_sheet,
+        recurrence_group_id: row.recurrence_group_id,
+        companies: (row.marketing_calendar_item_companies ?? []).map((r: any) => r.company).filter(Boolean),
+      }))
     setItems(mapped)
     // Older rows created before the status column default to 'posted'.
     setStatusByItem(new Map(((checkRows ?? []) as any[]).map(c => [
@@ -505,8 +530,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
   useEffect(() => { loadCalendar() }, [loadCalendar])
 
-  // Load companies. Defaults the active filter to "everything" the first
-  // time only, so a later refresh doesn't clobber a filter the user already set.
+  // Load companies and drop filters that point at companies archived since the
+  // previous refresh. [] remains the canonical "All" state.
   const loadCompanies = useCallback(async () => {
     const { data } = await supabase
       .from('companies')
@@ -515,7 +540,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     if (!data) return
     const active = (data as Array<Company & { position: number; is_archived: boolean }>).filter(c => !c.is_archived)
     setCompanies(active)
-    setActiveCompanyIds(prev => prev.length === 0 ? active.map(c => c.id) : prev)
+    setActiveCompanyIds(prev => reconcileCompanySelection(prev, active.map(c => c.id)))
   }, [supabase])
 
   useEffect(() => { loadCompanies() }, [loadCompanies])
@@ -568,9 +593,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     items.filter(i => companyVisible(i.companies)),
   [items, companyVisible])
 
+  const weekStart   = useMemo(() => startOfWeek(calendarDate), [calendarDate])
   const weekDays    = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
   const weekKeys    = useMemo(() => new Set(weekDays.map(toDateKey)), [weekDays])
   const weekItems   = visibleItems.filter(i => weekKeys.has(i.date))
+  const monthDays   = useMemo(() => monthGridDays(calendarDate), [calendarDate])
+  const monthKeys   = useMemo(() => new Set(monthDays.map(toDateKey)), [monthDays])
+  const monthPrefix = toDateKey(new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1)).slice(0, 7)
+  const monthItems  = visibleItems.filter(i => i.date.startsWith(monthPrefix))
 
   const itemsByDateChannel = useMemo(() => {
     const m = new Map<string, MarketingCalendarItem[]>()
@@ -599,6 +629,20 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     return m
   }, [visibleItems, weekKeys])
 
+  const monthItemsByDate = useMemo(() => {
+    const m = new Map<string, MarketingCalendarItem[]>()
+    for (const item of visibleItems) {
+      if (!monthKeys.has(item.date)) continue
+      const arr = m.get(item.date) ?? []
+      arr.push(item)
+      m.set(item.date, arr)
+    }
+    for (const arr of m.values()) {
+      arr.sort((a, b) => a.position - b.position || a.channel.localeCompare(b.channel))
+    }
+    return m
+  }, [visibleItems, monthKeys])
+
   const todayKey  = toDateKey(new Date())
 
   // Posted if stored so; missed if stored so OR if the date has already passed with
@@ -616,10 +660,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const totalVisible = visibleItems.length
   const checkedVisible = visibleItems.filter(isPosted).length
   const missedVisible = visibleItems.filter(i => stateOf(i) === 'missed').length
-  const checkedWeek = weekItems.filter(isPosted).length
+  const periodItems = viewMode === 'month' ? monthItems : weekItems
+  const checkedPeriod = periodItems.filter(isPosted).length
   const completionPercent = totalVisible ? Math.round((checkedVisible / totalVisible) * 100) : 0
 
   const weekLabel = `${dateFormatter.format(weekDays[0])} – ${dateFormatter.format(weekDays[6])}`
+  const rangeLabel = viewMode === 'month' ? monthFormatter.format(calendarDate) : weekLabel
 
   /* ── agenda items (bottom panel) ────────────────────────────────── */
   const agendaItems = useMemo(() => {
@@ -906,7 +952,38 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     await moveItem(item, date, item.channel)
   }
 
-  const resetToToday = () => setWeekStart(startOfWeek(new Date()))
+  const resetToToday = () => {
+    setCalendarDate(new Date())
+    setTodayNavigationRequest(request => request + 1)
+  }
+
+  const moveCalendar = (direction: -1 | 1) => {
+    setCalendarDate(current =>
+      viewMode === 'month'
+        ? shiftCalendarMonth(current, direction)
+        : addDays(current, direction * 7),
+    )
+  }
+
+  // Returning to the current week must also reveal today's column inside the
+  // horizontally scrollable week board. Otherwise the date changes off-screen
+  // on narrow viewports and the Today button appears unresponsive.
+  useEffect(() => {
+    if (todayNavigationRequest === 0 || viewMode !== 'week') return
+
+    const frame = requestAnimationFrame(() => {
+      const container = weekBoardScrollRef.current
+      const today = container?.querySelector<HTMLElement>(`[data-calendar-date="${toDateKey(new Date())}"]`)
+      if (!container || !today) return
+
+      container.scrollTo({
+        left: Math.max(0, today.offsetLeft - (container.clientWidth - today.clientWidth) / 2),
+        behavior: 'smooth',
+      })
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [todayNavigationRequest, viewMode, weekStart])
 
   /* ── loading ────────────────────────────────────────────────────── */
   if (loading) {
@@ -942,8 +1019,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               <div className="text-xs text-white/70">Posted</div>
             </div>
             <div className="rounded-md border border-white/15 bg-white/10 p-3">
-              <div className="text-xl font-semibold">{checkedWeek}/{weekItems.length}</div>
-              <div className="text-xs text-white/70">This week</div>
+              <div className="text-xl font-semibold">{checkedPeriod}/{periodItems.length}</div>
+              <div className="text-xs text-white/70">{viewMode === 'month' ? 'This month' : 'This week'}</div>
             </div>
             <div className="rounded-md border border-white/15 bg-white/10 p-3">
               <div className="text-xl font-semibold">{checkedVisible}/{totalVisible}</div>
@@ -957,23 +1034,27 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       <div className="border-b bg-[#fbfbfb] px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => setWeekStart(addDays(weekStart, -7))} aria-label="Previous week">
+            <Button type="button" variant="outline" size="icon" onClick={() => moveCalendar(-1)}
+              aria-label={viewMode === 'month' ? 'Previous month' : 'Previous week'}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <div className="min-w-[168px] rounded-md border bg-background px-3 py-2 text-center text-sm font-semibold">
-              {weekLabel}
+              {rangeLabel}
             </div>
-            <Button variant="outline" size="icon" onClick={() => setWeekStart(addDays(weekStart, 7))} aria-label="Next week">
+            <Button type="button" variant="outline" size="icon" onClick={() => moveCalendar(1)}
+              aria-label={viewMode === 'month' ? 'Next month' : 'Next week'}>
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" onClick={resetToToday}>Today</Button>
+            <Button type="button" variant="outline" size="sm" onClick={resetToToday}>Today</Button>
 
             <div className="ml-1 flex overflow-hidden rounded-md border">
               {([
                 { mode: 'week' as ViewMode, label: 'Week',     Icon: Columns3 },
+                { mode: 'month' as ViewMode, label: 'Month',   Icon: CalendarRange },
                 { mode: 'grid' as ViewMode, label: 'Channels', Icon: Table2 },
               ]).map(({ mode, label, Icon }) => (
                 <button key={mode} type="button" onClick={() => setViewMode(mode)}
+                  aria-pressed={viewMode === mode}
                   className={cn('flex items-center gap-1.5 px-3 py-2 text-xs font-semibold transition-colors',
                     viewMode === mode ? 'bg-foreground text-background' : 'bg-background text-muted-foreground hover:text-foreground')}>
                   <Icon className="h-3.5 w-3.5" />
@@ -984,23 +1065,23 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Company filter — mix and match (e.g. SRG + AGC). "All" selects every company. */}
-            <Button type="button" size="sm" variant={activeCompanyIds.length === companies.length ? 'default' : 'outline'}
-              onClick={() => setActiveCompanyIds(companies.map(c => c.id))} className="min-w-14">
+            {/* Company filter — mix and match; an empty selection means "All". */}
+            <Button type="button" size="sm" variant={activeCompanyIds.length === 0 ? 'default' : 'outline'}
+              aria-pressed={activeCompanyIds.length === 0}
+              onClick={() => setActiveCompanyIds([])} className="min-w-14">
               All
             </Button>
             {companies.map(c => {
               const on = activeCompanyIds.includes(c.id)
-              const isolated = on && activeCompanyIds.length < companies.length
               return (
                 <Button key={c.id} type="button" size="sm"
-                  variant={isolated ? 'default' : 'outline'}
-                  onClick={() => setActiveCompanyIds(prev => {
-                    const next = prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id]
-                    return next.length === 0 ? companies.map(co => co.id) : next
-                  })}
+                  variant={on ? 'default' : 'outline'}
+                  aria-pressed={on}
+                  onClick={() => setActiveCompanyIds(prev =>
+                    toggleCompanySelection(prev, c.id, companies.map(company => company.id))
+                  )}
                   className="min-w-14"
-                  style={isolated ? { backgroundColor: c.color, borderColor: c.color } : {}}>
+                  style={on ? { backgroundColor: c.color, borderColor: c.color } : {}}>
                   {c.code}
                 </Button>
               )
@@ -1028,7 +1109,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       <>
           {/* ── Week board ───────────────────────────────────────────── */}
           {viewMode === 'week' && (
-            <div className="overflow-x-auto">
+            <div ref={weekBoardScrollRef} className="overflow-x-auto">
               <div className="grid min-w-[1080px] grid-cols-7 divide-x">
                 {weekDays.map(date => {
                   const dateKey    = toDateKey(date)
@@ -1039,7 +1120,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                   const isDragOver = dragOverKey === dayKey
 
                   return (
-                    <div key={dateKey}
+                    <div key={dateKey} data-calendar-date={dateKey}
                       className={cn('flex min-h-[360px] flex-col border-b transition-colors', isDragOver && 'bg-primary/5')}
                       onDragOver={handleCellDragOver(dayKey)}
                       onDragLeave={() => setDragOverKey(cur => cur === dayKey ? null : cur)}
@@ -1101,6 +1182,102 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                   )
                 })}
               </div>
+            </div>
+          )}
+
+          {/* ── Month board ──────────────────────────────────────────── */}
+          {viewMode === 'month' && (
+            <div className="overflow-hidden">
+                <div className="grid grid-cols-7 border-b bg-[#111] text-white">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+                    <div key={day} className="border-r px-0.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide last:border-r-0 sm:px-2">
+                      <span className="sm:hidden">{day[0]}</span>
+                      <span className="hidden sm:inline">{day}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7">
+                  {monthDays.map(date => {
+                    const dateKey = toDateKey(date)
+                    const dayItems = monthItemsByDate.get(dateKey) ?? []
+                    const shownItems = dayItems.slice(0, 3)
+                    const hiddenCount = dayItems.length - shownItems.length
+                    const inCurrentMonth = date.getMonth() === calendarDate.getMonth()
+                      && date.getFullYear() === calendarDate.getFullYear()
+                    const isToday = dateKey === todayKey
+                    const isWeekend = date.getDay() === 0 || date.getDay() === 6
+
+                    return (
+                      <div key={dateKey} data-month-date={dateKey}
+                        className={cn(
+                          'group/month flex min-h-[92px] min-w-0 flex-col border-b border-r p-1 transition-colors sm:min-h-[132px] sm:p-1.5',
+                          inCurrentMonth ? 'bg-background' : 'bg-[#f5f5f5] text-muted-foreground',
+                          isWeekend && inCurrentMonth && 'bg-[#fafafa]',
+                          isToday && 'ring-2 ring-inset ring-[#111]',
+                        )}>
+                        <div className="mb-1 flex items-center justify-between gap-1">
+                          <span className={cn(
+                            'flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-bold',
+                            isToday && 'bg-[#111] text-[#fff842]',
+                          )}>
+                            {date.getDate()}
+                          </span>
+                          {dayItems.length > 0 && (
+                            <span className="text-[10px] font-medium text-muted-foreground">
+                              {dayItems.filter(isPosted).length}/{dayItems.length}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-1 flex-col gap-1">
+                          {shownItems.map(item => {
+                            const itemState = stateOf(item)
+                            const editable = isEditable(item)
+                            const primaryColor = item.companies[0]?.color ?? '#64748b'
+                            return (
+                              <button key={item.id} type="button"
+                                disabled={busyItemId === item.id}
+                                onClick={() => editable ? openEditDialog(item) : toggleItem(item)}
+                                aria-label={`${item.content}, ${item.channel}`}
+                                title={`${item.content} · ${item.channel}`}
+                                className={cn(
+                                  'flex min-w-0 items-center gap-1 rounded border bg-background px-1 py-1 text-left text-[11px] leading-tight transition-colors hover:border-foreground/30 sm:px-1.5',
+                                  itemState === 'posted' && 'text-muted-foreground line-through',
+                                  itemState === 'missed' && 'border-red-200 bg-red-50 text-red-700',
+                                )}>
+                                <span className="flex flex-shrink-0 -space-x-0.5">
+                                  {(item.companies.length ? item.companies : [{ id: 'none', color: '#9ca3af' }]).slice(0, 2).map((company, index) => (
+                                    <span key={company.id ?? index} className="h-2 w-2 rounded-full ring-1 ring-background"
+                                      style={{ backgroundColor: company.color ?? primaryColor }} />
+                                  ))}
+                                </span>
+                                <span className="hidden truncate font-medium sm:block">{item.content}</span>
+                              </button>
+                            )
+                          })}
+
+                          {hiddenCount > 0 && (
+                            <button type="button"
+                              onClick={() => { setCalendarDate(date); setViewMode('week') }}
+                              className="rounded px-1.5 py-0.5 text-left text-[10px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground">
+                              <span className="sm:hidden">+{hiddenCount}</span>
+                              <span className="hidden sm:inline">+{hiddenCount} more — open week</span>
+                            </button>
+                          )}
+
+                          <button type="button"
+                            aria-label={`Add event on ${fullDateFormatter.format(date)}`}
+                            aria-current={isToday ? 'date' : undefined}
+                            onClick={() => openCreateDialog({ date: dateKey })}
+                            className="mt-auto flex min-h-7 items-center justify-center rounded border border-dashed border-transparent text-[10px] font-medium text-muted-foreground/60 opacity-100 transition-all hover:border-foreground/30 hover:text-foreground sm:opacity-0 sm:group-hover/month:opacity-100 sm:focus-visible:opacity-100">
+                            <Plus className="h-3 w-3 sm:mr-1" /><span className="hidden sm:inline">Add</span>
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
             </div>
           )}
 
@@ -1342,7 +1519,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
       {/* ── Create Event Dialog ──────────────────────────────────────── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="force-light-theme max-w-md">
+        <DialogContent className="force-light-theme max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="h-4 w-4" /> New Marketing Event
@@ -1402,7 +1579,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
       {/* ── Edit Event Dialog ───────────────────────────────────────── */}
       <Dialog open={!!editItem} onOpenChange={open => !open && setEditItem(null)}>
-        <DialogContent className="force-light-theme max-w-md">
+        <DialogContent className="force-light-theme max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-4 w-4" /> Edit Marketing Event
