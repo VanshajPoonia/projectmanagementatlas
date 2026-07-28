@@ -10,6 +10,9 @@ import {
   ChevronRight,
   Circle,
   Columns3,
+  Download,
+  ImageIcon,
+  ImagePlus,
   Loader2,
   Megaphone,
   Pencil,
@@ -19,6 +22,7 @@ import {
   Sparkles,
   Table2,
   Trash2,
+  Upload,
   XCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -30,16 +34,25 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { autoTextColor as autoText, withAlpha } from '@/lib/color'
+import {
+  buildMarketingAssetPath,
+  formatMarketingImageSize,
+  MARKETING_ASSET_BUCKET,
+  MARKETING_IMAGE_TYPES,
+  validateMarketingImage,
+} from '@/lib/marketing-assets'
 import { toast } from 'sonner'
 import {
+  buildRecurringDateKeys,
   buildRecurringSeriesScheduleUpdates,
   centeredScrollLeft,
+  dayLabelForDateKey,
   isImportedWeekendPlaceholder,
+  MAX_SCHEDULED_MARKETING_POSTS,
+  type MarketingRecurrencePattern,
   reconcileCompanySelection,
   toggleCompanySelection,
 } from './marketing-calendar-state'
-
-type RecurrencePattern = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly'
 
 // A day's item can be posted, explicitly/automatically missed, or still pending.
 // "missed" is either stored (with an optional reason) or inferred for any past item
@@ -70,6 +83,17 @@ interface MarketingCalendarItem {
   source_sheet?: string | null
   recurrence_group_id?: string | null
   companies: Company[]
+  attachment: MarketingCalendarAttachment | null
+}
+
+interface MarketingCalendarAttachment {
+  id: string
+  item_id: string
+  storage_path: string
+  file_name: string
+  mime_type: string
+  file_size: number
+  created_at: string
 }
 
 interface MarketingCalendarCheck {
@@ -98,7 +122,7 @@ const LS_VIEW_KEY = 'marketing_calendar_view'
 type ViewMode = 'week' | 'month' | 'grid'
 type EditScope = 'single' | 'series'
 
-const RECURRENCE_LABELS: Record<RecurrencePattern, string> = {
+const RECURRENCE_LABELS: Record<MarketingRecurrencePattern, string> = {
   none:      'No repeat',
   daily:     'Daily',
   weekly:    'Weekly',
@@ -142,9 +166,6 @@ function startOfWeek(date: Date) {
 function addDays(date: Date, days: number) {
   const d = new Date(date); d.setDate(d.getDate() + days); return d
 }
-function addMonths(date: Date, months: number) {
-  const d = new Date(date); d.setMonth(d.getMonth() + months); return d
-}
 function shiftCalendarMonth(date: Date, months: number) {
   const day = date.getDate()
   const shifted = new Date(date)
@@ -162,24 +183,6 @@ function monthGridDays(date: Date) {
 
 function itemKey(date: string, channel: string) {
   return `${date}::${channel}`
-}
-
-/* ─── generate recurrence dates ─────────────────────────────────────── */
-
-function generateDates(start: Date, pattern: RecurrencePattern, endDate: Date): Date[] {
-  if (pattern === 'none') return [start]
-  const dates: Date[] = []
-  let cur = new Date(start)
-  const limit = new Date(endDate)
-  while (cur <= limit && dates.length < 104) {
-    dates.push(new Date(cur))
-    if (pattern === 'daily')     cur = addDays(cur, 1)
-    if (pattern === 'weekly')    cur = addDays(cur, 7)
-    if (pattern === 'biweekly')  cur = addDays(cur, 14)
-    if (pattern === 'monthly')   cur = addMonths(cur, 1)
-    if (pattern === 'quarterly') cur = addMonths(cur, 3)
-  }
-  return dates
 }
 
 /* ─── shared create/edit form fields ────────────────────────────────── */
@@ -321,6 +324,7 @@ interface EventEntryProps {
   showChannelLabel: boolean
   channelLabel: string
   onOpen: () => void
+  onOpenAttachment: () => void
   onToggle: () => void
   onEditReason: () => void
   onDragStart: (e: React.DragEvent) => void
@@ -329,7 +333,7 @@ interface EventEntryProps {
 
 function EventEntry({
   item, state, note, busy, editable, dragging, showChannelLabel, channelLabel,
-  onOpen, onToggle, onEditReason, onDragStart, onDragEnd,
+  onOpen, onOpenAttachment, onToggle, onEditReason, onDragStart, onDragEnd,
 }: EventEntryProps) {
   const posted = state === 'posted'
   const missed = state === 'missed'
@@ -373,6 +377,20 @@ function EventEntry({
           )}
         </span>
         <span className="flex flex-shrink-0 items-center gap-1">
+          <button type="button"
+            onClick={e => { e.stopPropagation(); onOpenAttachment() }}
+            aria-label={item.attachment ? 'Open attached image' : 'Attach an image'}
+            title={item.attachment ? 'Open attached image' : 'Attach an image'}
+            className={cn(
+              'rounded p-0.5 transition-colors',
+              item.attachment
+                ? 'bg-sky-100 text-sky-700 hover:bg-sky-200'
+                : 'text-muted-foreground/50 hover:bg-muted hover:text-foreground',
+            )}>
+            {item.attachment
+              ? <ImageIcon className="h-3.5 w-3.5" />
+              : <ImagePlus className="h-3.5 w-3.5" />}
+          </button>
           {item.recurrence_group_id && <Repeat className="h-3 w-3 text-muted-foreground" />}
           {item.is_highlighted && <Sparkles className="h-3 w-3" style={{ color: primaryColor }} />}
           <button type="button" disabled={busy}
@@ -446,7 +464,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const [newChannels,      setNewChannels]      = useState<string[]>([])
   const [newContent,       setNewContent]       = useState('')
   const [newHighlighted,   setNewHighlighted]   = useState(false)
-  const [newRecurrence,    setNewRecurrence]    = useState<RecurrencePattern>('none')
+  const [newRecurrence,    setNewRecurrence]    = useState<MarketingRecurrencePattern>('none')
   const [newEndDate,       setNewEndDate]       = useState(toInputDate(addDays(new Date(), 28)))
   const [creating,         setCreating]         = useState(false)
 
@@ -474,6 +492,31 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const [reasonText,   setReasonText]   = useState('')
   const [savingReason, setSavingReason] = useState(false)
 
+  // One private social image per event. The dialog is intentionally separate
+  // from editing so imported calendar blocks can also keep an asset.
+  const [attachmentItem,       setAttachmentItem]       = useState<MarketingCalendarItem | null>(null)
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null)
+  const [attachmentBusy,       setAttachmentBusy]       = useState<'preview' | 'upload' | 'download' | 'delete' | null>(null)
+  const [attachmentError,      setAttachmentError]      = useState<string | null>(null)
+  const attachmentInputRef = useRef<HTMLInputElement>(null)
+
+  const newRecurrenceDates = useMemo(
+    () => buildRecurringDateKeys(newDate, newRecurrence, newEndDate),
+    [newDate, newEndDate, newRecurrence],
+  )
+  const newScheduledPostCount = newRecurrenceDates.length * newChannels.length
+  const newScheduleInvalid = newRecurrenceDates.length === 0
+  const newScheduleDateLimitReached =
+    newRecurrenceDates.length > MAX_SCHEDULED_MARKETING_POSTS
+  const newScheduleTooLarge = newScheduledPostCount > MAX_SCHEDULED_MARKETING_POSTS
+  const newSchedulePreview = useMemo(() => {
+    if (newRecurrenceDates.length <= 4) return newRecurrenceDates
+    return [
+      ...newRecurrenceDates.slice(0, 3),
+      newRecurrenceDates[newRecurrenceDates.length - 1],
+    ]
+  }, [newRecurrenceDates])
+
   const loadCalendar = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -500,7 +543,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
     const [{ data: itemRows, error: itemsError }, { data: checkRows, error: checksError }] = await Promise.all([
       supabase.from('marketing_calendar_items')
-        .select('id,date,day_label,channel,content,is_highlighted,position,source_sheet,recurrence_group_id,marketing_calendar_item_companies(company:companies(id,code,name,color))')
+        .select('id,date,day_label,channel,content,is_highlighted,position,source_sheet,recurrence_group_id,marketing_calendar_item_companies(company:companies(id,code,name,color)),marketing_calendar_attachments(id,item_id,storage_path,file_name,mime_type,file_size,created_at)')
         .eq('assigned_to', targetUserId)
         .order('date', { ascending: true })
         .order('position', { ascending: true }),
@@ -512,18 +555,25 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     if (itemsError || checksError) { setError('Marketing calendar is not ready yet.'); return }
     const mapped = ((itemRows ?? []) as any[])
       .filter(row => !isImportedWeekendPlaceholder(row))
-      .map((row): MarketingCalendarItem => ({
-        id: row.id,
-        date: row.date,
-        day_label: row.day_label,
-        channel: row.channel,
-        content: row.content,
-        is_highlighted: row.is_highlighted,
-        position: row.position,
-        source_sheet: row.source_sheet,
-        recurrence_group_id: row.recurrence_group_id,
-        companies: (row.marketing_calendar_item_companies ?? []).map((r: any) => r.company).filter(Boolean),
-      }))
+      .map((row): MarketingCalendarItem => {
+        const attachmentRelation = row.marketing_calendar_attachments
+        const attachment = Array.isArray(attachmentRelation)
+          ? attachmentRelation[0] ?? null
+          : attachmentRelation ?? null
+        return {
+          id: row.id,
+          date: row.date,
+          day_label: row.day_label,
+          channel: row.channel,
+          content: row.content,
+          is_highlighted: row.is_highlighted,
+          position: row.position,
+          source_sheet: row.source_sheet,
+          recurrence_group_id: row.recurrence_group_id,
+          companies: (row.marketing_calendar_item_companies ?? []).map((r: any) => r.company).filter(Boolean),
+          attachment,
+        }
+      })
     setItems(mapped)
     // Older rows created before the status column default to 'posted'.
     setStatusByItem(new Map(((checkRows ?? []) as any[]).map(c => [
@@ -670,9 +720,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
   const weekLabel = `${dateFormatter.format(weekDays[0])} – ${dateFormatter.format(weekDays[6])}`
   const rangeLabel = viewMode === 'month' ? monthFormatter.format(calendarDate) : weekLabel
-  const editSeriesCount = editItem?.recurrence_group_id
-    ? items.filter(item => item.recurrence_group_id === editItem.recurrence_group_id).length
-    : 1
+  const editSeriesItems = editItem?.recurrence_group_id
+    ? items.filter(item => item.recurrence_group_id === editItem.recurrence_group_id)
+    : editItem ? [editItem] : []
+  const editSeriesDateCount = new Set(editSeriesItems.map(item => item.date)).size
+  const editSeriesChannelCount = new Set(editSeriesItems.map(item => item.channel)).size
 
   /* ── agenda items (bottom panel) ────────────────────────────────── */
   const agendaItems = useMemo(() => {
@@ -742,29 +794,226 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     setReasonItem(null)
   }
 
+  /* ── event image attachment ────────────────────────────────────── */
+  const openAttachmentDialog = (item: MarketingCalendarItem) => {
+    setAttachmentError(null)
+    setAttachmentItem(item)
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    let objectUrl: string | null = null
+    const attachment = attachmentItem?.attachment
+
+    setAttachmentPreviewUrl(null)
+    if (!attachment) {
+      setAttachmentBusy(null)
+      return
+    }
+
+    setAttachmentBusy('preview')
+    setAttachmentError(null)
+    const loadPreview = async () => {
+      const { data, error: downloadError } = await supabase.storage
+        .from(MARKETING_ASSET_BUCKET)
+        .download(attachment.storage_path)
+      if (cancelled) return
+      if (downloadError || !data) {
+        setAttachmentError('The image preview could not be loaded. You can try downloading it instead.')
+        setAttachmentBusy(null)
+        return
+      }
+      objectUrl = URL.createObjectURL(data)
+      setAttachmentPreviewUrl(objectUrl)
+      setAttachmentBusy(null)
+    }
+    void loadPreview()
+
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [attachmentItem?.attachment?.storage_path, attachmentItem?.id, supabase])
+
+  const setItemAttachment = (
+    itemId: string,
+    attachment: MarketingCalendarAttachment | null,
+  ) => {
+    setItems(current => current.map(item =>
+      item.id === itemId ? { ...item, attachment } : item,
+    ))
+    setAttachmentItem(current =>
+      current?.id === itemId ? { ...current, attachment } : current,
+    )
+  }
+
+  const handleAttachmentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || !attachmentItem) return
+
+    const validationError = validateMarketingImage(file)
+    if (validationError) {
+      setAttachmentError(validationError)
+      return
+    }
+
+    const item = attachmentItem
+    const previousAttachment = item.attachment
+    const mimeType = file.type as (typeof MARKETING_IMAGE_TYPES)[number]
+    const storagePath = buildMarketingAssetPath(item.id, mimeType)
+
+    setAttachmentBusy('upload')
+    setAttachmentError(null)
+
+    const { error: uploadError } = await supabase.storage
+      .from(MARKETING_ASSET_BUCKET)
+      .upload(storagePath, file, {
+        cacheControl: '3600',
+        contentType: mimeType,
+        upsert: false,
+      })
+
+    if (uploadError) {
+      setAttachmentBusy(null)
+      setAttachmentError(uploadError.message)
+      return
+    }
+
+    const { data: savedAttachment, error: metadataError } = await supabase
+      .from('marketing_calendar_attachments')
+      .upsert({
+        item_id: item.id,
+        storage_path: storagePath,
+        file_name: file.name,
+        mime_type: mimeType,
+        file_size: file.size,
+        uploaded_by: userId,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'item_id' })
+      .select('id,item_id,storage_path,file_name,mime_type,file_size,created_at')
+      .single()
+
+    if (metadataError || !savedAttachment) {
+      await supabase.storage.from(MARKETING_ASSET_BUCKET).remove([storagePath])
+      setAttachmentBusy(null)
+      setAttachmentError(metadataError?.message ?? 'The image could not be linked to this event.')
+      return
+    }
+
+    if (previousAttachment && previousAttachment.storage_path !== storagePath) {
+      const { error: cleanupError } = await supabase.storage
+        .from(MARKETING_ASSET_BUCKET)
+        .remove([previousAttachment.storage_path])
+      if (cleanupError) {
+        toast.error('Image replaced, but the old file could not be cleaned up', {
+          description: cleanupError.message,
+        })
+      }
+    }
+
+    setItemAttachment(item.id, savedAttachment as MarketingCalendarAttachment)
+    setAttachmentBusy(null)
+    toast.success(previousAttachment ? 'Image replaced' : 'Image attached')
+  }
+
+  const handleAttachmentDownload = async () => {
+    const attachment = attachmentItem?.attachment
+    if (!attachment) return
+
+    setAttachmentBusy('download')
+    setAttachmentError(null)
+    const { data, error: downloadError } = await supabase.storage
+      .from(MARKETING_ASSET_BUCKET)
+      .download(attachment.storage_path)
+
+    if (downloadError || !data) {
+      setAttachmentBusy(null)
+      setAttachmentError(downloadError?.message ?? 'The image could not be downloaded.')
+      return
+    }
+
+    const objectUrl = URL.createObjectURL(data)
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = attachment.file_name
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+    setAttachmentBusy(null)
+    toast.success('Image downloaded')
+  }
+
+  const handleAttachmentDelete = async () => {
+    const item = attachmentItem
+    const attachment = item?.attachment
+    if (!item || !attachment) return
+
+    setAttachmentBusy('delete')
+    setAttachmentError(null)
+    const { error: metadataError } = await supabase
+      .from('marketing_calendar_attachments')
+      .delete()
+      .eq('id', attachment.id)
+
+    if (metadataError) {
+      setAttachmentBusy(null)
+      setAttachmentError(metadataError.message)
+      return
+    }
+
+    const { error: storageError } = await supabase.storage
+      .from(MARKETING_ASSET_BUCKET)
+      .remove([attachment.storage_path])
+
+    setItemAttachment(item.id, null)
+    setAttachmentBusy(null)
+    if (storageError) {
+      toast.error('Attachment removed, but the stored file needs cleanup', {
+        description: storageError.message,
+      })
+    } else {
+      toast.success('Image removed')
+    }
+  }
+
   /* ── create event ───────────────────────────────────────────────── */
   const toggleNewCompany = (id: string) =>
     setNewCompanyIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   const toggleNewChannel = (channel: string) =>
     setNewChannels(prev => prev.includes(channel) ? prev.filter(c => c !== channel) : [...prev, channel])
+  const handleNewDateChange = (date: string) => {
+    setNewDate(date)
+    setNewEndDate(currentEnd =>
+      currentEnd < date ? toInputDate(addDays(parseDate(date), 28)) : currentEnd,
+    )
+  }
 
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newContent.trim() || !kaylaId || newChannels.length === 0 || newCompanyIds.length === 0) return
+    if (newScheduleInvalid) {
+      toast.error('Choose a repeat-until date on or after the first date')
+      return
+    }
+    if (newScheduleTooLarge) {
+      toast.error('This schedule is too large', {
+        description: `Narrow the date range or select fewer channels. The limit is ${MAX_SCHEDULED_MARKETING_POSTS.toLocaleString()} scheduled posts.`,
+      })
+      return
+    }
     setCreating(true)
 
-    const startDate = parseDate(newDate)
-    const endDate   = newRecurrence === 'none' ? startDate : parseDate(newEndDate)
-    const dates     = generateDates(startDate, newRecurrence, endDate)
     // Give every row from this submission a shared id when it's a recurring
     // series, so editing any single instance can update them all later.
     const recurrenceGroupId = newRecurrence !== 'none' ? crypto.randomUUID() : null
 
-    const rows = dates.flatMap((d, i) =>
+    const rows = newRecurrenceDates.flatMap((date, i) =>
       newChannels.map(channel => ({
         assigned_to:    kaylaId,
-        date:           toDateKey(d),
-        day_label:      ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()],
+        date,
+        day_label:      dayLabelForDateKey(date),
         channel,
         content:        newContent.trim(),
         is_highlighted: newHighlighted,
@@ -791,7 +1040,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     if (compErr) {
       toast.error('Event created, but companies could not be attached', { description: compErr.message })
     } else {
-      toast.success(`Created ${inserted.length} event${inserted.length > 1 ? 's' : ''}`)
+      toast.success(
+        newRecurrence === 'none'
+          ? `Created ${inserted.length} scheduled post${inserted.length === 1 ? '' : 's'}`
+          : `Created a ${newRecurrenceDates.length}-date series`,
+        newRecurrence === 'none' ? undefined : {
+          description: `${inserted.length} channel post${inserted.length === 1 ? '' : 's'} scheduled in total.`,
+        },
+      )
     }
     setCreateOpen(false)
     setNewContent('')
@@ -803,7 +1059,9 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   // Open the create dialog, optionally pre-selecting a date and channel
   // (used when clicking an empty cell in the grid or an empty day column).
   const openCreateDialog = (opts?: { date?: string; channel?: string }) => {
-    setNewDate(opts?.date ?? toInputDate(new Date()))
+    const startDate = opts?.date ?? toInputDate(new Date())
+    setNewDate(startDate)
+    setNewEndDate(toInputDate(addDays(parseDate(startDate), 28)))
     setNewContent('')
     setNewHighlighted(false)
     setNewRecurrence('none')
@@ -887,69 +1145,50 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
         },
       )
 
-      // Rows that end up with the same schedule can be updated together. IDs
-      // are used as the filter so shifting a daily series cannot accidentally
-      // move the same row twice as dates overlap.
-      const updateGroups = new Map<string, {
-        date: string
-        day_label: string
-        channel: string
-        ids: string[]
-      }>()
-      for (const update of scheduleUpdates) {
-        const key = `${update.date}::${update.day_label}::${update.channel}`
-        const group = updateGroups.get(key) ?? {
-          date: update.date,
-          day_label: update.day_label,
-          channel: update.channel,
-          ids: [],
-        }
-        group.ids.push(update.id)
-        updateGroups.set(key, group)
+      if (
+        scheduleUpdates.length !== seriesItems.length
+        || scheduleUpdates.some(update => !update.day_label)
+      ) {
+        setSavingEdit(false)
+        toast.error('The series contains an invalid date and was not changed')
+        return
       }
 
-      const updateResults = await Promise.all(
-        [...updateGroups.values()].map(group =>
-          supabase.from('marketing_calendar_items').update({
-            date: group.date,
-            day_label: group.day_label,
-            channel: group.channel,
-            content: editContent.trim(),
-            is_highlighted: editHighlighted,
-          }).in('id', group.ids),
-        ),
-      )
-      const updateError = updateResults.find(result => result.error)?.error
+      // One RPC transaction updates every schedule row and every company link.
+      // If any row fails validation or RLS, PostgreSQL rolls back the full
+      // series instead of leaving a partially shifted timeline.
+      const { data: updatedCount, error: updateError } = await supabase
+        .rpc('update_marketing_calendar_series_atomic', {
+          p_recurrence_group_id: editItem.recurrence_group_id,
+          p_updates: scheduleUpdates,
+          p_content: editContent.trim(),
+          p_is_highlighted: editHighlighted,
+          p_company_ids: editCompanyIds,
+        })
+
       if (updateError) {
         setSavingEdit(false)
         setEditItem(null)
         await loadCalendar()
-        toast.error('Could not update the entire series', {
-          description: `${updateError.message}. The calendar has been refreshed.`,
-        })
-        return
-      }
-
-      const itemIds = scheduleUpdates.map(update => update.id)
-      const companyError = await replaceCompanies(itemIds)
-      if (companyError) {
-        setSavingEdit(false)
-        setEditItem(null)
-        await loadCalendar()
-        toast.error('Series schedule updated, but companies could not be updated', {
-          description: companyError.message,
+        toast.error('The series was not changed', {
+          description: `${updateError.message}. Every occurrence remains on its previous date.`,
         })
         return
       }
 
       setSavingEdit(false)
-      toast.success(`Updated ${itemIds.length} events in this series`)
+      toast.success(
+        `Updated ${editSeriesDateCount} date${editSeriesDateCount === 1 ? '' : 's'} across ${editSeriesChannelCount} channel${editSeriesChannelCount === 1 ? '' : 's'}`,
+        updatedCount === scheduleUpdates.length ? undefined : {
+          description: 'The calendar is refreshing to confirm the saved series.',
+        },
+      )
       setEditItem(null)
       loadCalendar()
       return
     }
 
-    const dayLabel = ['SUN','MON','TUE','WED','THU','FRI','SAT'][parseDate(editDate).getDay()]
+    const dayLabel = dayLabelForDateKey(editDate)
     const { error: updateError } = await supabase.from('marketing_calendar_items').update({
       date:           editDate,
       day_label:      dayLabel,
@@ -1010,7 +1249,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const moveItem = async (item: MarketingCalendarItem, date: string, channel: string) => {
     if (item.date === date && item.channel === channel) return
 
-    const dayLabel = ['SUN','MON','TUE','WED','THU','FRI','SAT'][parseDate(date).getDay()]
+    const dayLabel = dayLabelForDateKey(date)
     const previous = items
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, date, channel, day_label: dayLabel } : i))
 
@@ -1265,6 +1504,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                               showChannelLabel
                               channelLabel={chLabel}
                               onOpen={() => editable ? openEditDialog(item) : toggleItem(item)}
+                              onOpenAttachment={() => openAttachmentDialog(item)}
                               onToggle={() => toggleItem(item)}
                               onEditReason={() => openReasonDialog(item)}
                               onDragStart={handleDragStart(item)}
@@ -1343,24 +1583,38 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                             const editable = isEditable(item)
                             const primaryColor = item.companies[0]?.color ?? '#64748b'
                             return (
-                              <button key={item.id} type="button"
-                                disabled={busyItemId === item.id}
-                                onClick={() => editable ? openEditDialog(item) : toggleItem(item)}
-                                aria-label={`${item.content}, ${item.channel}`}
-                                title={`${item.content} · ${item.channel}`}
+                              <div key={item.id}
                                 className={cn(
                                   'flex min-w-0 items-center gap-1 rounded border bg-background px-1 py-1 text-left text-[11px] leading-tight transition-colors hover:border-foreground/30 sm:px-1.5',
                                   itemState === 'posted' && 'text-muted-foreground line-through',
                                   itemState === 'missed' && 'border-red-200 bg-red-50 text-red-700',
                                 )}>
-                                <span className="flex flex-shrink-0 -space-x-0.5">
-                                  {(item.companies.length ? item.companies : [{ id: 'none', color: '#9ca3af' }]).slice(0, 2).map((company, index) => (
-                                    <span key={company.id ?? index} className="h-2 w-2 rounded-full ring-1 ring-background"
-                                      style={{ backgroundColor: company.color ?? primaryColor }} />
-                                  ))}
-                                </span>
-                                <span className="hidden truncate font-medium sm:block">{item.content}</span>
-                              </button>
+                                <button type="button"
+                                  disabled={busyItemId === item.id}
+                                  onClick={() => editable ? openEditDialog(item) : toggleItem(item)}
+                                  aria-label={`${item.content}, ${item.channel}`}
+                                  title={`${item.content} · ${item.channel}`}
+                                  className="flex min-w-0 flex-1 items-center gap-1 text-left">
+                                  <span className="flex flex-shrink-0 -space-x-0.5">
+                                    {(item.companies.length ? item.companies : [{ id: 'none', color: '#9ca3af' }]).slice(0, 2).map((company, index) => (
+                                      <span key={company.id ?? index} className="h-2 w-2 rounded-full ring-1 ring-background"
+                                        style={{ backgroundColor: company.color ?? primaryColor }} />
+                                    ))}
+                                  </span>
+                                  <span className="hidden truncate font-medium sm:block">{item.content}</span>
+                                </button>
+                                <button type="button"
+                                  onClick={() => openAttachmentDialog(item)}
+                                  aria-label={item.attachment ? `Open image for ${item.content}` : `Attach image to ${item.content}`}
+                                  className={cn(
+                                    'flex-shrink-0 rounded p-0.5',
+                                    item.attachment ? 'text-sky-700' : 'text-muted-foreground/50 hover:text-foreground',
+                                  )}>
+                                  {item.attachment
+                                    ? <ImageIcon className="h-3 w-3" />
+                                    : <ImagePlus className="h-3 w-3" />}
+                                </button>
+                              </div>
                             )
                           })}
 
@@ -1451,6 +1705,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                                     showChannelLabel={false}
                                     channelLabel={ch.label}
                                     onOpen={() => editable ? openEditDialog(item) : toggleItem(item)}
+                                    onOpenAttachment={() => openAttachmentDialog(item)}
                                     onToggle={() => toggleItem(item)}
                                     onEditReason={() => openReasonDialog(item)}
                                     onDragStart={handleDragStart(item)}
@@ -1592,6 +1847,19 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
                               {/* Badges */}
                               <div className="flex flex-shrink-0 items-center gap-1.5">
+                                <button type="button" onClick={() => openAttachmentDialog(item)}
+                                  aria-label={item.attachment ? `Open image for ${item.content}` : `Attach image to ${item.content}`}
+                                  title={item.attachment ? 'Open attached image' : 'Attach an image'}
+                                  className={cn(
+                                    'rounded p-1 transition-colors',
+                                    item.attachment
+                                      ? 'bg-sky-100 text-sky-700 hover:bg-sky-200'
+                                      : 'text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground group-hover:opacity-100',
+                                  )}>
+                                  {item.attachment
+                                    ? <ImageIcon className="h-3.5 w-3.5" />
+                                    : <ImagePlus className="h-3.5 w-3.5" />}
+                                </button>
                                 {missed && (
                                   <span className="rounded bg-red-600 px-1 text-[9px] font-bold uppercase tracking-wide text-white">Missed</span>
                                 )}
@@ -1635,7 +1903,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
           <form onSubmit={handleCreateEvent} className="space-y-4">
 
             <EventFormFields
-              date={newDate} onDateChange={setNewDate}
+              date={newDate} onDateChange={handleNewDateChange}
               content={newContent} onContentChange={setNewContent}
               highlighted={newHighlighted} onToggleHighlighted={() => setNewHighlighted(h => !h)}
               companies={companies} selectedCompanyIds={newCompanyIds} onToggleCompany={toggleNewCompany}
@@ -1648,7 +1916,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                 <Repeat className="h-3.5 w-3.5" /> Repeat
               </Label>
               <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(RECURRENCE_LABELS) as RecurrencePattern[]).map(p => (
+                {(Object.keys(RECURRENCE_LABELS) as MarketingRecurrencePattern[]).map(p => (
                   <button key={p} type="button" onClick={() => setNewRecurrence(p)}
                     className={cn('rounded border px-2.5 py-1 text-xs font-medium transition-colors',
                       newRecurrence === p ? 'bg-foreground text-background border-foreground' : 'bg-background hover:bg-accent')}>
@@ -1662,13 +1930,58 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
             </div>
 
             {newRecurrence !== 'none' && (
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label>Repeat until</Label>
                 <Input type="date" value={newEndDate} min={newDate}
                   onChange={e => setNewEndDate(e.target.value)} required />
-                <p className="text-xs text-muted-foreground">
-                  Will create {generateDates(parseDate(newDate), newRecurrence, parseDate(newEndDate)).length * Math.max(newChannels.length, 1)} event{generateDates(parseDate(newDate), newRecurrence, parseDate(newEndDate)).length * Math.max(newChannels.length, 1) !== 1 ? 's' : ''}
-                </p>
+                {newScheduleInvalid ? (
+                  <p role="alert" className="text-xs font-medium text-red-600">
+                    Repeat until must be on or after the first date.
+                  </p>
+                ) : (
+                  <div className={cn(
+                    'rounded-md border px-3 py-2.5 text-xs',
+                    newScheduleTooLarge
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : 'border-sky-200 bg-sky-50/70 text-sky-950',
+                  )}>
+                    <p className="font-semibold">
+                      {newScheduleDateLimitReached ? (
+                        <>More than {MAX_SCHEDULED_MARKETING_POSTS.toLocaleString()} recurring dates</>
+                      ) : (
+                        <>
+                          {newRecurrenceDates.length} recurring date{newRecurrenceDates.length === 1 ? '' : 's'}
+                          {' × '}
+                          {newChannels.length || 0} channel{newChannels.length === 1 ? '' : 's'}
+                          {' = '}
+                          {newScheduledPostCount} scheduled post{newScheduledPostCount === 1 ? '' : 's'}
+                        </>
+                      )}
+                    </p>
+                    {newSchedulePreview.length > 0 && (
+                      <p className="mt-1 leading-relaxed text-current/75">
+                        {newSchedulePreview.map((date, index) => (
+                          <span key={date}>
+                            {index === newSchedulePreview.length - 1 && newRecurrenceDates.length > 4 ? '… ' : ''}
+                            {fullDateFormatter.format(parseDate(date))}
+                            {index < newSchedulePreview.length - 1 ? ' · ' : ''}
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                    {!newScheduleDateLimitReached && newRecurrenceDates.at(-1) !== newEndDate && (
+                      <p className="mt-1 text-current/75">
+                        The end date is a cutoff. The last matching {RECURRENCE_LABELS[newRecurrence].toLowerCase()} date is{' '}
+                        {fullDateFormatter.format(parseDate(newRecurrenceDates.at(-1)!))}.
+                      </p>
+                    )}
+                    {newScheduleTooLarge && (
+                      <p className="mt-1 font-medium">
+                        Narrow the range or select fewer channels. The limit is {MAX_SCHEDULED_MARKETING_POSTS.toLocaleString()} posts.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1676,8 +1989,15 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               <Button type="button" variant="outline" className="flex-1" onClick={() => setCreateOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" className="flex-1" disabled={creating || !newContent.trim() || newChannels.length === 0 || newCompanyIds.length === 0}>
-                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : `Create${newChannels.length > 1 ? ` (${newChannels.length})` : ''}`}
+              <Button type="submit" className="flex-1"
+                disabled={creating || !newContent.trim() || newChannels.length === 0 || newCompanyIds.length === 0 || newScheduleInvalid || newScheduleTooLarge}>
+                {creating
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : newChannels.length === 0
+                    ? 'Create'
+                    : newRecurrence === 'none'
+                    ? `Create ${newScheduledPostCount} post${newScheduledPostCount === 1 ? '' : 's'}`
+                    : 'Create series'}
               </Button>
             </div>
           </form>
@@ -1733,7 +2053,9 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                         <Repeat className="h-3.5 w-3.5" /> Entire series
                       </span>
                       <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                        {editSeriesCount} scheduled event{editSeriesCount === 1 ? '' : 's'}
+                        {editSeriesDateCount} date{editSeriesDateCount === 1 ? '' : 's'}
+                        {' · '}
+                        {editSeriesChannelCount} channel{editSeriesChannelCount === 1 ? '' : 's'}
                       </span>
                     </button>
                   </div>
@@ -1769,6 +2091,147 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                 </Button>
               </div>
             </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Event Image Dialog ───────────────────────────────────────── */}
+      <Dialog
+        open={!!attachmentItem}
+        onOpenChange={open => {
+          if (!open) {
+            setAttachmentItem(null)
+            setAttachmentError(null)
+          }
+        }}
+      >
+        <DialogContent className="force-light-theme max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="h-4 w-4" /> Social media image
+            </DialogTitle>
+            <DialogDescription>
+              This image belongs only to this calendar event and stays available to download later.
+            </DialogDescription>
+          </DialogHeader>
+
+          {attachmentItem && (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
+                <p className="truncate text-sm font-semibold">{attachmentItem.content}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {fullDateFormatter.format(parseDate(attachmentItem.date))} · {attachmentItem.channel}
+                </p>
+              </div>
+
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                accept={MARKETING_IMAGE_TYPES.join(',')}
+                onChange={handleAttachmentUpload}
+                className="sr-only"
+                aria-label="Choose a social media image"
+              />
+
+              {attachmentItem.attachment ? (
+                <>
+                  <div className="overflow-hidden rounded-xl border bg-[linear-gradient(45deg,#f1f5f9_25%,transparent_25%,transparent_75%,#f1f5f9_75%),linear-gradient(45deg,#f1f5f9_25%,white_25%,white_75%,#f1f5f9_75%)] bg-[length:20px_20px] bg-[position:0_0,10px_10px]">
+                    <div className="flex min-h-52 items-center justify-center">
+                      {attachmentBusy === 'preview' ? (
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      ) : attachmentPreviewUrl ? (
+                        <img
+                          src={attachmentPreviewUrl}
+                          alt={attachmentItem.attachment.file_name}
+                          className="max-h-[52dvh] w-full object-contain"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center gap-2 px-6 py-10 text-center text-sm text-muted-foreground">
+                          <ImageIcon className="h-8 w-8" />
+                          Preview unavailable
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t bg-white/95 px-3 py-2.5">
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">
+                          {attachmentItem.attachment.file_name}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {formatMarketingImageSize(attachmentItem.attachment.file_size)}
+                        </span>
+                      </span>
+                      <ImageIcon className="h-4 w-4 flex-shrink-0 text-sky-700" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <Button
+                      type="button"
+                      onClick={handleAttachmentDownload}
+                      disabled={attachmentBusy !== null}
+                      className="gap-1.5"
+                    >
+                      {attachmentBusy === 'download'
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <Download className="h-4 w-4" />}
+                      Download
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => attachmentInputRef.current?.click()}
+                      disabled={attachmentBusy !== null}
+                      className="gap-1.5"
+                    >
+                      {attachmentBusy === 'upload'
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <Upload className="h-4 w-4" />}
+                      Replace
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleAttachmentDelete}
+                      disabled={attachmentBusy !== null}
+                      className="gap-1.5 text-destructive hover:text-destructive"
+                    >
+                      {attachmentBusy === 'delete'
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <Trash2 className="h-4 w-4" />}
+                      Remove
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  disabled={attachmentBusy !== null}
+                  className="group flex min-h-56 w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-sky-200 bg-sky-50/60 px-6 text-center transition-colors hover:border-sky-400 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sky-700 shadow-sm ring-1 ring-sky-100 transition-transform group-hover:-translate-y-0.5">
+                    {attachmentBusy === 'upload'
+                      ? <Loader2 className="h-5 w-5 animate-spin" />
+                      : <ImagePlus className="h-5 w-5" />}
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold text-foreground">
+                      {attachmentBusy === 'upload' ? 'Uploading image…' : 'Choose an image'}
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      JPEG, PNG, WebP, or GIF · up to 10 MB
+                    </span>
+                  </span>
+                </button>
+              )}
+
+              {attachmentError && (
+                <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {attachmentError}
+                </p>
+              )}
+            </div>
           )}
         </DialogContent>
       </Dialog>
