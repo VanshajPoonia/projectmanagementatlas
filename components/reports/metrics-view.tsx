@@ -6,22 +6,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Clock, CheckCircle2, XCircle, Timer, Users as UsersIcon } from 'lucide-react'
 import { getAssigneeIds } from '@/lib/assignees'
 import { getNormalizedTaskStatus } from '@/lib/task-status'
+import {
+  buildStatusEventMap,
+  findRecordedClose,
+  getVerifiedStatusIntervals,
+  summarizeActivityCoverage,
+  type StatusEvent,
+} from './metrics-activity'
 
 interface MetricsViewProps {
   tasks: any[]
   users: any[]
   boards: any[]
-}
-
-// task_activity logs status changes as: changed status from "<old>" to "<new>" (display labels).
-const STATUS_RE = /changed status from "(.+?)" to "(.+?)"/
-
-// Local mirror of lib/task-status's bucketFromText (not exported) — classify a status *label*.
-function bucketOf(label: string): 'to_do' | 'in_progress' | 'done' {
-  const v = (label || '').toLowerCase()
-  if (v.includes('done') || v.includes('complete') || v.includes('cancel')) return 'done'
-  if (v.includes('progress') || v.includes('going') || v.includes('ongoing')) return 'in_progress'
-  return 'to_do'
 }
 
 function fmtDuration(ms: number): string {
@@ -40,29 +36,24 @@ function median(nums: number[]): number {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2
 }
 
-type StatusEvent = { from: string; to: string; at: number }
-
 export default function MetricsView({ tasks, users, boards }: MetricsViewProps) {
   const supabase = createClient()
   const [activityByTask, setActivityByTask] = useState<Record<string, StatusEvent[]>>({})
+  const [activityError, setActivityError] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let active = true
     supabase
       .from('task_activity')
-      .select('task_id, action, created_at')
-      .ilike('action', 'changed status%')
+      // Select every activity shape so deployments can read structured events when the
+      // new fields exist while retaining compatibility with legacy action-only rows.
+      .select('*')
       .order('created_at', { ascending: true })
-      .then(({ data }: { data: any[] | null }) => {
+      .then(({ data, error }: { data: any[] | null; error: unknown }) => {
         if (!active) return
-        const map: Record<string, StatusEvent[]> = {}
-        for (const row of data || []) {
-          const m = STATUS_RE.exec(row.action || '')
-          if (!m) continue
-          ;(map[row.task_id] ||= []).push({ from: m[1], to: m[2], at: new Date(row.created_at).getTime() })
-        }
-        setActivityByTask(map)
+        setActivityByTask(buildStatusEventMap(data || []))
+        setActivityError(Boolean(error))
         setLoading(false)
       })
     return () => { active = false }
@@ -74,53 +65,73 @@ export default function MetricsView({ tasks, users, boards }: MetricsViewProps) 
     return m
   }, [boards])
 
-  // Per-task derived metrics: bucket, cancelled-ness, close time, cycle time (entry → close).
+  const visibleActivityByTask = useMemo(() => {
+    const visible: Record<string, StatusEvent[]> = {}
+    for (const task of tasks) {
+      if (activityByTask[task.id]) visible[task.id] = activityByTask[task.id]
+    }
+    return visible
+  }, [tasks, activityByTask])
+
+  // Per-task derived metrics: close time comes only from an explicit status transition.
+  // updated_at can mean any edit, so it is deliberately never used as a closure timestamp.
   const taskMetrics = useMemo(() => {
     return tasks.map((task) => {
       const created = task.created_at ? new Date(task.created_at).getTime() : NaN
-      const events = activityByTask[task.id] || []
+      const events = visibleActivityByTask[task.id] || []
       const bucket = getNormalizedTaskStatus(task)
       const skey = (task.column?.status_key || '').toLowerCase()
-      const cancelled = bucket === 'done' && skey.includes('cancel')
-      // Close time = the last transition INTO a done-bucket status; fall back to updated_at.
-      let closedAt: number | null = null
-      for (let i = events.length - 1; i >= 0; i--) {
-        if (bucketOf(events[i].to) === 'done') { closedAt = events[i].at; break }
-      }
-      if (closedAt === null && bucket === 'done' && task.updated_at) closedAt = new Date(task.updated_at).getTime()
+      const rawStatus = String(task.status || '').toLowerCase()
+      const columnTitle = String(task.column?.title || '').toLowerCase()
+      const cancelled = bucket === 'done' && (
+        skey ? skey.includes('cancel') : rawStatus.includes('cancel') || columnTitle.includes('cancel')
+      )
+      const closedAt = bucket === 'done'
+        ? findRecordedClose(events, cancelled ? 'cancelled' : 'completed')
+        : null
       const cycleMs = bucket === 'done' && closedAt !== null && isFinite(created) ? closedAt - created : null
       return { task, created, events, bucket, cancelled, closedAt, cycleMs }
     })
-  }, [tasks, activityByTask])
+  }, [tasks, visibleActivityByTask])
 
-  const completed = taskMetrics.filter((t) => t.bucket === 'done' && !t.cancelled && t.cycleMs !== null && (t.cycleMs as number) >= 0)
+  const completedTasks = taskMetrics.filter((t) => t.bucket === 'done' && !t.cancelled)
+  const completed = completedTasks.filter((t) => t.cycleMs !== null && (t.cycleMs as number) >= 0)
   const cancelledTasks = taskMetrics.filter((t) => t.cancelled)
   const cycleValues = completed.map((t) => t.cycleMs as number)
   const avgCycle = cycleValues.length ? cycleValues.reduce((a, b) => a + b, 0) / cycleValues.length : NaN
   const medCycle = median(cycleValues)
+  const verifiedIntervals = useMemo(
+    () => getVerifiedStatusIntervals(visibleActivityByTask),
+    [visibleActivityByTask],
+  )
 
-  // Average time a task sits in each status before moving on (completed intervals only).
+  // Average time in a status uses only matching entry/exit event pairs.
   const timeInStatus = useMemo(() => {
-    const agg: Record<string, { total: number; count: number }> = {}
-    for (const { created, events } of taskMetrics) {
-      if (!events.length || !isFinite(created)) continue
-      let prevAt = created
-      let prevStatus = events[0].from // the status it was in before the first recorded change
-      for (const ev of events) {
-        const dur = ev.at - prevAt
-        if (dur >= 0 && prevStatus) {
-          agg[prevStatus] ||= { total: 0, count: 0 }
-          agg[prevStatus].total += dur
-          agg[prevStatus].count += 1
-        }
-        prevAt = ev.at
-        prevStatus = ev.to
-      }
+    const agg: Record<string, { total: number; count: number; label: string }> = {}
+    for (const interval of verifiedIntervals) {
+      agg[interval.key] ||= { total: 0, count: 0, label: interval.label }
+      agg[interval.key].total += interval.durationMs
+      agg[interval.key].count += 1
     }
     return Object.entries(agg)
-      .map(([label, { total, count }]) => ({ label, avg: total / count, count }))
+      .map(([key, { total, count, label }]) => ({
+        key,
+        label,
+        avg: total / count,
+        count,
+      }))
       .sort((a, b) => b.avg - a.avg)
-  }, [taskMetrics])
+  }, [verifiedIntervals])
+
+  const coverage = useMemo(
+    () => summarizeActivityCoverage({
+      taskIds: taskMetrics.map(({ task }) => task.id),
+      completedTaskIds: completedTasks.map(({ task }) => task.id),
+      activityByTask: visibleActivityByTask,
+      intervals: verifiedIntervals,
+    }),
+    [taskMetrics, completedTasks, visibleActivityByTask, verifiedIntervals],
+  )
 
   const personnel = useMemo(() => {
     return users
@@ -158,11 +169,34 @@ export default function MetricsView({ tasks, users, boards }: MetricsViewProps) 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stat(<Timer className="h-4 w-4" />, 'Avg entry → close', fmtDuration(avgCycle), `${completed.length} completed`)}
-        {stat(<Clock className="h-4 w-4" />, 'Median entry → close', fmtDuration(medCycle), 'typical task')}
-        {stat(<CheckCircle2 className="h-4 w-4" />, 'Completed', String(completed.length), 'measurable cycle')}
+        {stat(<Timer className="h-4 w-4" />, 'Avg entry → close', fmtDuration(avgCycle), `${completed.length} of ${completedTasks.length} completed`)}
+        {stat(<Clock className="h-4 w-4" />, 'Median entry → close', fmtDuration(medCycle), 'recorded closes only')}
+        {stat(<CheckCircle2 className="h-4 w-4" />, 'Completed', String(completedTasks.length), `${completed.length} with timing data`)}
         {stat(<XCircle className="h-4 w-4" />, 'Cancelled', String(cancelledTasks.length), 'archived, not done')}
       </div>
+
+      <Card className="border-dashed">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base"><Clock className="h-4 w-4" /> Timing data coverage</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-1 text-sm text-muted-foreground">
+          {activityError ? (
+            <p className="text-destructive">Activity history could not be loaded. Timing metrics are unavailable until it can be read.</p>
+          ) : (
+            <>
+              <p>
+                Recorded close events cover <span className="font-medium text-foreground">{coverage.completedWithRecordedClose} of {coverage.completedTasks}</span> completed tasks.
+                {' '}Status history exists for <span className="font-medium text-foreground">{coverage.tasksWithStatusHistory} of {coverage.totalTasks}</span> tasks.
+              </p>
+              <p>
+                Time-in-status uses <span className="font-medium text-foreground">{coverage.verifiedIntervals}</span> verified interval{coverage.verifiedIntervals === 1 ? '' : 's'} across {coverage.tasksWithVerifiedIntervals} task{coverage.tasksWithVerifiedIntervals === 1 ? '' : 's'}.
+                {' '}{coverage.structuredEvents} structured and {coverage.legacyEvents} legacy status event{coverage.structuredEvents + coverage.legacyEvents === 1 ? '' : 's'} were read.
+              </p>
+              <p>Tasks without matching activity are excluded; ordinary edits are never treated as close events.</p>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-3">
@@ -174,7 +208,7 @@ export default function MetricsView({ tasks, users, boards }: MetricsViewProps) 
           ) : (
             <div className="space-y-3">
               {timeInStatus.map((s) => (
-                <div key={s.label} className="space-y-1">
+                <div key={s.key} className="space-y-1">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium">{s.label}</span>
                     <span className="text-muted-foreground">{fmtDuration(s.avg)} avg · {s.count} move{s.count === 1 ? '' : 's'}</span>
