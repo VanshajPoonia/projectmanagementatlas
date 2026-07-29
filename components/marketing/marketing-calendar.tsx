@@ -11,10 +11,11 @@ import {
   Circle,
   Columns3,
   Download,
+  FileText,
   ImageIcon,
-  ImagePlus,
   Loader2,
   Megaphone,
+  Paperclip,
   Pencil,
   Plus,
   RefreshCw,
@@ -36,10 +37,12 @@ import { cn } from '@/lib/utils'
 import { autoTextColor as autoText, withAlpha } from '@/lib/color'
 import {
   buildMarketingAssetPath,
-  formatMarketingImageSize,
+  formatMarketingAssetSize,
+  isMarketingAssetPreviewable,
+  MARKETING_ASSET_ACCEPT,
   MARKETING_ASSET_BUCKET,
-  MARKETING_IMAGE_TYPES,
-  validateMarketingImage,
+  resolveMarketingAssetMimeType,
+  validateMarketingAsset,
 } from '@/lib/marketing-assets'
 import { toast } from 'sonner'
 import {
@@ -379,8 +382,8 @@ function EventEntry({
         <span className="flex flex-shrink-0 items-center gap-1">
           <button type="button"
             onClick={e => { e.stopPropagation(); onOpenAttachment() }}
-            aria-label={item.attachment ? 'Open attached image' : 'Attach an image'}
-            title={item.attachment ? 'Open attached image' : 'Attach an image'}
+            aria-label={item.attachment ? 'Open attached file' : 'Attach a file'}
+            title={item.attachment ? 'Open attached file' : 'Attach a file'}
             className={cn(
               'rounded p-0.5 transition-colors',
               item.attachment
@@ -388,8 +391,8 @@ function EventEntry({
                 : 'text-muted-foreground/50 hover:bg-muted hover:text-foreground',
             )}>
             {item.attachment
-              ? <ImageIcon className="h-3.5 w-3.5" />
-              : <ImagePlus className="h-3.5 w-3.5" />}
+              ? <FileText className="h-3.5 w-3.5" />
+              : <Paperclip className="h-3.5 w-3.5" />}
           </button>
           {item.recurrence_group_id && <Repeat className="h-3 w-3 text-muted-foreground" />}
           {item.is_highlighted && <Sparkles className="h-3 w-3" style={{ color: primaryColor }} />}
@@ -814,7 +817,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     setReasonItem(null)
   }
 
-  /* ── event image attachment ────────────────────────────────────── */
+  /* ── event file attachment ─────────────────────────────────────── */
   const openAttachmentDialog = (item: MarketingCalendarItem) => {
     setAttachmentError(null)
     setAttachmentItem(item)
@@ -826,20 +829,20 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     const attachment = attachmentItem?.attachment
 
     setAttachmentPreviewUrl(null)
-    if (!attachment) {
+    setAttachmentError(null)
+    if (!attachment || !isMarketingAssetPreviewable(attachment.mime_type)) {
       setAttachmentBusy(null)
       return
     }
 
     setAttachmentBusy('preview')
-    setAttachmentError(null)
     const loadPreview = async () => {
       const { data, error: downloadError } = await supabase.storage
         .from(MARKETING_ASSET_BUCKET)
         .download(attachment.storage_path)
       if (cancelled) return
       if (downloadError || !data) {
-        setAttachmentError('The image preview could not be loaded. You can try downloading it instead.')
+        setAttachmentError('The file preview could not be loaded. You can try downloading it instead.')
         setAttachmentBusy(null)
         return
       }
@@ -853,7 +856,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [attachmentItem?.attachment?.storage_path, attachmentItem?.id, supabase])
+  }, [
+    attachmentItem?.attachment?.mime_type,
+    attachmentItem?.attachment?.storage_path,
+    attachmentItem?.id,
+    supabase,
+  ])
 
   const setItemAttachment = (
     itemId: string,
@@ -872,7 +880,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     event.target.value = ''
     if (!file || !attachmentItem) return
 
-    const validationError = validateMarketingImage(file)
+    const validationError = validateMarketingAsset(file)
     if (validationError) {
       setAttachmentError(validationError)
       return
@@ -880,7 +888,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
     const item = attachmentItem
     const previousAttachment = item.attachment
-    const mimeType = file.type as (typeof MARKETING_IMAGE_TYPES)[number]
+    const mimeType = resolveMarketingAssetMimeType(file)
+    if (!mimeType) {
+      setAttachmentError('This file type is not supported.')
+      return
+    }
     const storagePath = buildMarketingAssetPath(item.id, mimeType)
 
     setAttachmentBusy('upload')
@@ -917,7 +929,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     if (metadataError || !savedAttachment) {
       await supabase.storage.from(MARKETING_ASSET_BUCKET).remove([storagePath])
       setAttachmentBusy(null)
-      setAttachmentError(metadataError?.message ?? 'The image could not be linked to this event.')
+      setAttachmentError(metadataError?.message ?? 'The file could not be linked to this event.')
       return
     }
 
@@ -926,7 +938,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
         .from(MARKETING_ASSET_BUCKET)
         .remove([previousAttachment.storage_path])
       if (cleanupError) {
-        toast.error('Image replaced, but the old file could not be cleaned up', {
+        toast.error('File replaced, but the old file could not be cleaned up', {
           description: cleanupError.message,
         })
       }
@@ -934,7 +946,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
     setItemAttachment(item.id, savedAttachment as MarketingCalendarAttachment)
     setAttachmentBusy(null)
-    toast.success(previousAttachment ? 'Image replaced' : 'Image attached')
+    toast.success(previousAttachment ? 'File replaced' : 'File attached')
   }
 
   const handleAttachmentDownload = async () => {
@@ -949,7 +961,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
     if (downloadError || !data) {
       setAttachmentBusy(null)
-      setAttachmentError(downloadError?.message ?? 'The image could not be downloaded.')
+      setAttachmentError(downloadError?.message ?? 'The file could not be downloaded.')
       return
     }
 
@@ -962,7 +974,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     link.remove()
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
     setAttachmentBusy(null)
-    toast.success('Image downloaded')
+    toast.success('File downloaded')
   }
 
   const handleAttachmentDelete = async () => {
@@ -1625,14 +1637,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                                 </button>
                                 <button type="button"
                                   onClick={() => openAttachmentDialog(item)}
-                                  aria-label={item.attachment ? `Open image for ${item.content}` : `Attach image to ${item.content}`}
+                                  aria-label={item.attachment ? `Open file for ${item.content}` : `Attach file to ${item.content}`}
                                   className={cn(
                                     'flex-shrink-0 rounded p-0.5',
                                     item.attachment ? 'text-sky-700' : 'text-muted-foreground/50 hover:text-foreground',
                                   )}>
                                   {item.attachment
-                                    ? <ImageIcon className="h-3 w-3" />
-                                    : <ImagePlus className="h-3 w-3" />}
+                                    ? <FileText className="h-3 w-3" />
+                                    : <Paperclip className="h-3 w-3" />}
                                 </button>
                               </div>
                             )
@@ -1868,8 +1880,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                               {/* Badges */}
                               <div className="flex flex-shrink-0 items-center gap-1.5">
                                 <button type="button" onClick={() => openAttachmentDialog(item)}
-                                  aria-label={item.attachment ? `Open image for ${item.content}` : `Attach image to ${item.content}`}
-                                  title={item.attachment ? 'Open attached image' : 'Attach an image'}
+                                  aria-label={item.attachment ? `Open file for ${item.content}` : `Attach file to ${item.content}`}
+                                  title={item.attachment ? 'Open attached file' : 'Attach a file'}
                                   className={cn(
                                     'rounded p-1 transition-colors',
                                     item.attachment
@@ -1877,8 +1889,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                                       : 'text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground group-hover:opacity-100',
                                   )}>
                                   {item.attachment
-                                    ? <ImageIcon className="h-3.5 w-3.5" />
-                                    : <ImagePlus className="h-3.5 w-3.5" />}
+                                    ? <FileText className="h-3.5 w-3.5" />
+                                    : <Paperclip className="h-3.5 w-3.5" />}
                                 </button>
                                 {missed && (
                                   <span className="rounded bg-red-600 px-1 text-[9px] font-bold uppercase tracking-wide text-white">Missed</span>
@@ -2115,7 +2127,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
         </DialogContent>
       </Dialog>
 
-      {/* ── Event Image Dialog ───────────────────────────────────────── */}
+      {/* ── Event File Dialog ────────────────────────────────────────── */}
       <Dialog
         open={!!attachmentItem}
         onOpenChange={open => {
@@ -2128,10 +2140,10 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
         <DialogContent className="force-light-theme max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ImageIcon className="h-4 w-4" /> Social media image
+              <Paperclip className="h-4 w-4" /> Event file
             </DialogTitle>
             <DialogDescription>
-              This image belongs only to this calendar event and stays available to download later.
+              This file belongs only to this calendar event and stays available to download later.
             </DialogDescription>
           </DialogHeader>
 
@@ -2147,15 +2159,20 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               <input
                 ref={attachmentInputRef}
                 type="file"
-                accept={MARKETING_IMAGE_TYPES.join(',')}
+                accept={MARKETING_ASSET_ACCEPT}
                 onChange={handleAttachmentUpload}
                 className="sr-only"
-                aria-label="Choose a social media image"
+                aria-label="Choose an event file"
               />
 
               {attachmentItem.attachment ? (
                 <>
-                  <div className="overflow-hidden rounded-xl border bg-[linear-gradient(45deg,#f1f5f9_25%,transparent_25%,transparent_75%,#f1f5f9_75%),linear-gradient(45deg,#f1f5f9_25%,white_25%,white_75%,#f1f5f9_75%)] bg-[length:20px_20px] bg-[position:0_0,10px_10px]">
+                  <div className={cn(
+                    'overflow-hidden rounded-xl border',
+                    isMarketingAssetPreviewable(attachmentItem.attachment.mime_type)
+                      ? 'bg-[linear-gradient(45deg,#f1f5f9_25%,transparent_25%,transparent_75%,#f1f5f9_75%),linear-gradient(45deg,#f1f5f9_25%,white_25%,white_75%,#f1f5f9_75%)] bg-[length:20px_20px] bg-[position:0_0,10px_10px]'
+                      : 'bg-muted/30',
+                  )}>
                     <div className="flex min-h-52 items-center justify-center">
                       {attachmentBusy === 'preview' ? (
                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -2165,6 +2182,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                           alt={attachmentItem.attachment.file_name}
                           className="max-h-[52dvh] w-full object-contain"
                         />
+                      ) : !isMarketingAssetPreviewable(attachmentItem.attachment.mime_type) ? (
+                        <div className="flex flex-col items-center gap-2 px-6 py-10 text-center text-sm text-muted-foreground">
+                          <FileText className="h-10 w-10 text-sky-700" />
+                          Preview is not available for this file type
+                        </div>
                       ) : (
                         <div className="flex flex-col items-center gap-2 px-6 py-10 text-center text-sm text-muted-foreground">
                           <ImageIcon className="h-8 w-8" />
@@ -2178,10 +2200,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                           {attachmentItem.attachment.file_name}
                         </span>
                         <span className="block text-xs text-muted-foreground">
-                          {formatMarketingImageSize(attachmentItem.attachment.file_size)}
+                          {formatMarketingAssetSize(attachmentItem.attachment.file_size)}
                         </span>
                       </span>
-                      <ImageIcon className="h-4 w-4 flex-shrink-0 text-sky-700" />
+                      {isMarketingAssetPreviewable(attachmentItem.attachment.mime_type)
+                        ? <ImageIcon className="h-4 w-4 flex-shrink-0 text-sky-700" />
+                        : <FileText className="h-4 w-4 flex-shrink-0 text-sky-700" />}
                     </div>
                   </div>
 
@@ -2233,14 +2257,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sky-700 shadow-sm ring-1 ring-sky-100 transition-transform group-hover:-translate-y-0.5">
                     {attachmentBusy === 'upload'
                       ? <Loader2 className="h-5 w-5 animate-spin" />
-                      : <ImagePlus className="h-5 w-5" />}
+                      : <Paperclip className="h-5 w-5" />}
                   </span>
                   <span>
                     <span className="block text-sm font-semibold text-foreground">
-                      {attachmentBusy === 'upload' ? 'Uploading image…' : 'Choose an image'}
+                      {attachmentBusy === 'upload' ? 'Uploading file…' : 'Choose a file'}
                     </span>
                     <span className="mt-1 block text-xs text-muted-foreground">
-                      JPEG, PNG, WebP, or GIF · up to 10 MB
+                      Images, video, PDF, Office, text, or ZIP · up to 50 MB
                     </span>
                   </span>
                 </button>

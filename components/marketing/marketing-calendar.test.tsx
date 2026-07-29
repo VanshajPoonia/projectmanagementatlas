@@ -333,19 +333,20 @@ describe('MarketingCalendar controls', () => {
     expect(within(dialog).getByRole('button', { name: 'Create series' })).toBeInTheDocument()
   })
 
-  it('opens a separate image attachment space for an event', async () => {
+  it('opens a separate file attachment space for an event', async () => {
     render(<MarketingCalendar userId="user-1" userName="Kayla" />)
 
     await screen.findByText("Kayla's Posting Board")
-    fireEvent.click(screen.getAllByRole('button', { name: 'Attach an image' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Attach a file' })[0])
 
-    const dialog = await screen.findByRole('dialog', { name: 'Social media image' })
+    const dialog = await screen.findByRole('dialog', { name: 'Event file' })
     expect(within(dialog).getByText(/belongs only to this calendar event/i)).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: /Choose an image/i })).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Choose a social media image')).toHaveAttribute(
-      'accept',
-      'image/jpeg,image/png,image/webp,image/gif',
-    )
+    expect(within(dialog).getByRole('button', { name: /Choose a file/i })).toBeInTheDocument()
+    const input = within(dialog).getByLabelText('Choose an event file')
+    expect(input.getAttribute('accept')).toEqual(expect.stringContaining('application/pdf'))
+    expect(input.getAttribute('accept')).toEqual(expect.stringContaining('video/mp4'))
+    expect(input.getAttribute('accept')).toEqual(expect.stringContaining('.heic'))
+    expect(within(dialog).getByText(/up to 50 MB/i)).toBeInTheDocument()
   })
 
   it('lets a recurring event target one occurrence or the entire series', async () => {
