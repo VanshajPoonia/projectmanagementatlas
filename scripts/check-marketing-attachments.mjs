@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// End-to-end RLS gate for private Marketing PM images.
+// End-to-end gate for private Marketing PM event files.
 // Creates two throwaway dev users and one event, verifies that the event owner
-// can upload/download while the other signed-in user cannot read either the
-// attachment row or Storage object, then removes every fixture in finally.
+// can upload/download a non-image larger than the old 10 MB limit while the
+// other signed-in user cannot read either the attachment row or Storage object,
+// then removes every fixture in finally.
 
 import { createClient } from '@supabase/supabase-js'
 import { assertDevDatabase } from './guard-db.mjs'
@@ -92,20 +93,21 @@ try {
     .single()
   if (itemError) throw new Error(`create event: ${itemError.message}`)
   itemId = item.id
-  storagePath = `${itemId}/verification.png`
+  storagePath = `${itemId}/verification.pdf`
 
-  // Valid 1×1 transparent PNG.
-  const png = new Blob([
-    Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-      'base64',
-    ),
-  ], { type: 'image/png' })
+  // A minimal PDF-shaped payload one byte larger than the former 10 MB cap.
+  // It verifies both the expanded MIME allowlist and the raised bucket/table limit.
+  const oldLimit = 10 * 1024 * 1024
+  const pdfHeader = Buffer.from('%PDF-1.7\n')
+  const pdf = new Blob([
+    pdfHeader,
+    Buffer.alloc(oldLimit + 1 - pdfHeader.length),
+  ], { type: 'application/pdf' })
 
   const { error: uploadError } = await owner.storage
     .from('marketing-assets')
-    .upload(storagePath, png, { contentType: 'image/png', upsert: false })
-  check('event owner can upload an image', !uploadError)
+    .upload(storagePath, pdf, { contentType: 'application/pdf', upsert: false })
+  check('event owner can upload a PDF larger than the former 10 MB limit', !uploadError)
   if (uploadError) throw new Error(`owner upload: ${uploadError.message}`)
 
   const { data: attachment, error: attachmentError } = await owner
@@ -113,21 +115,21 @@ try {
     .insert({
       item_id: itemId,
       storage_path: storagePath,
-      file_name: 'verification.png',
-      mime_type: 'image/png',
-      file_size: png.size,
+      file_name: 'verification.pdf',
+      mime_type: 'application/pdf',
+      file_size: pdf.size,
       uploaded_by: ownerId,
     })
     .select('id')
     .single()
-  check('event owner can link the image to the event', Boolean(attachment) && !attachmentError)
+  check('event owner can link the file to the event', Boolean(attachment) && !attachmentError)
 
   const { data: ownerDownload, error: ownerDownloadError } = await owner.storage
     .from('marketing-assets')
     .download(storagePath)
   check(
-    'event owner can download the same image',
-    !ownerDownloadError && ownerDownload?.size === png.size,
+    'event owner can download the same file',
+    !ownerDownloadError && ownerDownload?.size === pdf.size,
   )
 
   const { data: outsiderRows, error: outsiderRowsError } = await outsider
@@ -143,7 +145,7 @@ try {
     .from('marketing-assets')
     .download(storagePath)
   check(
-    'another signed-in user cannot download the image',
+    'another signed-in user cannot download the file',
     Boolean(outsiderDownloadError) && !outsiderDownload,
   )
 
