@@ -50,8 +50,10 @@ describe('MarketingCalendar controls', () => {
   const originalRequestAnimationFrame = window.requestAnimationFrame
   const originalCancelAnimationFrame = window.cancelAnimationFrame
   const scrollTo = vi.fn()
+  let attachmentLoadError: { code: string; message: string } | null
 
   beforeEach(() => {
+    attachmentLoadError = null
     const now = new Date()
     const today = toDateKey(now)
     const nextSaturday = new Date(now)
@@ -115,6 +117,9 @@ describe('MarketingCalendar controls', () => {
       }
       if (table === 'marketing_calendar_checks') {
         return makeQuery({ data: [], error: null })
+      }
+      if (table === 'marketing_calendar_attachments') {
+        return makeQuery({ data: [], error: attachmentLoadError })
       }
       if (table === 'companies') {
         return makeQuery({ data: companies, error: null })
@@ -184,6 +189,25 @@ describe('MarketingCalendar controls', () => {
     })
     expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'AGC' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('keeps events visible when optional attachment metadata is unavailable', async () => {
+    attachmentLoadError = {
+      code: 'PGRST205',
+      message: "Could not find the table 'public.marketing_calendar_attachments' in the schema cache",
+    }
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+
+    await screen.findByText("Kayla's Posting Board")
+    expect(screen.queryAllByText('SRG post').length).toBeGreaterThan(0)
+    expect(screen.queryAllByText('AGC post').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Marketing calendar is empty/i)).not.toBeInTheDocument()
+    expect(console.warn).toHaveBeenCalledWith(
+      '[marketing-calendar] Attachment metadata is unavailable',
+      expect.objectContaining({ code: 'PGRST205' }),
+    )
   })
 
   it('returns to the current week and reveals todays column', async () => {

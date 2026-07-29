@@ -541,39 +541,59 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     setCheckUserId(targetUserId)
     setCheckUserName(targetUserName)
 
-    const [{ data: itemRows, error: itemsError }, { data: checkRows, error: checksError }] = await Promise.all([
+    const [
+      { data: itemRows, error: itemsError },
+      { data: checkRows, error: checksError },
+      { data: attachmentRows, error: attachmentsError },
+    ] = await Promise.all([
       supabase.from('marketing_calendar_items')
-        .select('id,date,day_label,channel,content,is_highlighted,position,source_sheet,recurrence_group_id,marketing_calendar_item_companies(company:companies(id,code,name,color)),marketing_calendar_attachments(id,item_id,storage_path,file_name,mime_type,file_size,created_at)')
+        .select('id,date,day_label,channel,content,is_highlighted,position,source_sheet,recurrence_group_id,marketing_calendar_item_companies(company:companies(id,code,name,color))')
         .eq('assigned_to', targetUserId)
         .order('date', { ascending: true })
         .order('position', { ascending: true }),
       supabase.from('marketing_calendar_checks')
         .select('id,item_id,checked_at,status,note').eq('user_id', targetUserId),
+      // Attachment metadata is optional. Loading it separately prevents a
+      // missing migration or stale PostgREST relationship cache from failing
+      // the core item query and making a populated calendar appear empty.
+      supabase.from('marketing_calendar_attachments')
+        .select('id,item_id,storage_path,file_name,mime_type,file_size,created_at'),
     ])
 
     setLoading(false)
-    if (itemsError || checksError) { setError('Marketing calendar is not ready yet.'); return }
+    if (itemsError || checksError) {
+      console.error('[marketing-calendar] Core calendar load failed', {
+        items: itemsError?.message,
+        checks: checksError?.message,
+      })
+      setError('Marketing calendar is not ready yet.')
+      return
+    }
+    if (attachmentsError) {
+      console.warn('[marketing-calendar] Attachment metadata is unavailable', {
+        code: attachmentsError.code,
+        message: attachmentsError.message,
+      })
+    }
+    const attachmentsByItemId = new Map(
+      ((attachmentRows ?? []) as MarketingCalendarAttachment[])
+        .map(attachment => [attachment.item_id, attachment]),
+    )
     const mapped = ((itemRows ?? []) as any[])
       .filter(row => !isImportedWeekendPlaceholder(row))
-      .map((row): MarketingCalendarItem => {
-        const attachmentRelation = row.marketing_calendar_attachments
-        const attachment = Array.isArray(attachmentRelation)
-          ? attachmentRelation[0] ?? null
-          : attachmentRelation ?? null
-        return {
-          id: row.id,
-          date: row.date,
-          day_label: row.day_label,
-          channel: row.channel,
-          content: row.content,
-          is_highlighted: row.is_highlighted,
-          position: row.position,
-          source_sheet: row.source_sheet,
-          recurrence_group_id: row.recurrence_group_id,
-          companies: (row.marketing_calendar_item_companies ?? []).map((r: any) => r.company).filter(Boolean),
-          attachment,
-        }
-      })
+      .map((row): MarketingCalendarItem => ({
+        id: row.id,
+        date: row.date,
+        day_label: row.day_label,
+        channel: row.channel,
+        content: row.content,
+        is_highlighted: row.is_highlighted,
+        position: row.position,
+        source_sheet: row.source_sheet,
+        recurrence_group_id: row.recurrence_group_id,
+        companies: (row.marketing_calendar_item_companies ?? []).map((r: any) => r.company).filter(Boolean),
+        attachment: attachmentsByItemId.get(row.id) ?? null,
+      }))
     setItems(mapped)
     // Older rows created before the status column default to 'posted'.
     setStatusByItem(new Map(((checkRows ?? []) as any[]).map(c => [
@@ -1447,7 +1467,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       </div>
 
-      {items.length === 0 && (
+      {items.length === 0 && !error && (
         <div className="border-b px-4 py-3 text-sm text-muted-foreground sm:px-6">
           Marketing calendar is empty. Click any slot below (or &quot;New event&quot;) to add one.
         </div>
