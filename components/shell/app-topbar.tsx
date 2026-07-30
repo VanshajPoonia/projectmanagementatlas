@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import ThemeToggle from '@/components/theme-toggle'
 import { Breadcrumbs, type Crumb } from './breadcrumbs'
+import { HelpDialog } from './help-dialog'
 
 interface AppTopbarProps {
   user: { full_name?: string | null; email?: string | null }
@@ -61,6 +62,8 @@ export function AppTopbar({ user, breadcrumbs, onOpenCommand, actions }: AppTopb
           ⌘K
         </kbd>
       </Button>
+
+      <HelpDialog />
 
       {actions ?? (
         <>

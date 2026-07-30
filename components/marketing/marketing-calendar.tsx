@@ -24,6 +24,7 @@ import {
   Table2,
   Trash2,
   Upload,
+  X,
   XCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -121,6 +122,10 @@ interface MarketingProfile {
 
 const KAYLA_EMAIL = 'kayla@goatlasgo.us'
 const LS_VIEW_KEY = 'marketing_calendar_view'
+// Attaching a file at creation time fans it out to every instance the submission
+// creates (recurrence x channels); cap it well below MAX_SCHEDULED_MARKETING_POSTS
+// so a large recurring series can't re-upload the same file hundreds of times.
+const MAX_CREATE_ATTACHMENT_FANOUT = 25
 
 type ViewMode = 'week' | 'month' | 'grid'
 type EditScope = 'single' | 'series'
@@ -360,7 +365,7 @@ function EventEntry({
         posted ? 'border-transparent bg-[#f3f4f6] text-muted-foreground'
                : missed ? 'border-red-300 bg-red-50 hover:bg-red-100'
                : item.is_highlighted ? 'border-amber-300 bg-amber-100 hover:bg-amber-200'
-                                     : 'border-border bg-white shadow-xs hover:bg-accent',
+                                     : 'border-gray-300 bg-white shadow-xs hover:bg-accent',
         dragging && 'opacity-40',
       )}>
       <div className="flex items-center justify-between gap-1.5">
@@ -470,6 +475,9 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const [newRecurrence,    setNewRecurrence]    = useState<MarketingRecurrencePattern>('none')
   const [newEndDate,       setNewEndDate]       = useState(toInputDate(addDays(new Date(), 28)))
   const [creating,         setCreating]         = useState(false)
+  const [newAttachmentFile,  setNewAttachmentFile]  = useState<File | null>(null)
+  const [newAttachmentError, setNewAttachmentError] = useState<string | null>(null)
+  const newAttachmentInputRef = useRef<HTMLInputElement>(null)
 
   // Edit-event dialog (single channel). Editing a recurring instance updates
   // every instance in its series (content/highlight/companies), per how this
@@ -875,6 +883,46 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     )
   }
 
+  // Shared by the per-event attachment dialog and by create-time attaching:
+  // uploads to storage, then links the row via the item_id-keyed upsert.
+  const uploadMarketingAssetForItem = useCallback(async (
+    itemId: string,
+    file: File,
+  ): Promise<{ attachment: MarketingCalendarAttachment | null; error: string | null }> => {
+    const mimeType = resolveMarketingAssetMimeType(file)
+    if (!mimeType) return { attachment: null, error: 'This file type is not supported.' }
+    const storagePath = buildMarketingAssetPath(itemId, mimeType)
+
+    const { error: uploadError } = await supabase.storage
+      .from(MARKETING_ASSET_BUCKET)
+      .upload(storagePath, file, {
+        cacheControl: '3600',
+        contentType: mimeType,
+        upsert: false,
+      })
+    if (uploadError) return { attachment: null, error: uploadError.message }
+
+    const { data: savedAttachment, error: metadataError } = await supabase
+      .from('marketing_calendar_attachments')
+      .upsert({
+        item_id: itemId,
+        storage_path: storagePath,
+        file_name: file.name,
+        mime_type: mimeType,
+        file_size: file.size,
+        uploaded_by: userId,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'item_id' })
+      .select('id,item_id,storage_path,file_name,mime_type,file_size,created_at')
+      .single()
+
+    if (metadataError || !savedAttachment) {
+      await supabase.storage.from(MARKETING_ASSET_BUCKET).remove([storagePath])
+      return { attachment: null, error: metadataError?.message ?? 'The file could not be linked to this event.' }
+    }
+    return { attachment: savedAttachment as MarketingCalendarAttachment, error: null }
+  }, [supabase, userId])
+
   const handleAttachmentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
@@ -888,52 +936,18 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
     const item = attachmentItem
     const previousAttachment = item.attachment
-    const mimeType = resolveMarketingAssetMimeType(file)
-    if (!mimeType) {
-      setAttachmentError('This file type is not supported.')
-      return
-    }
-    const storagePath = buildMarketingAssetPath(item.id, mimeType)
 
     setAttachmentBusy('upload')
     setAttachmentError(null)
 
-    const { error: uploadError } = await supabase.storage
-      .from(MARKETING_ASSET_BUCKET)
-      .upload(storagePath, file, {
-        cacheControl: '3600',
-        contentType: mimeType,
-        upsert: false,
-      })
-
-    if (uploadError) {
+    const { attachment, error } = await uploadMarketingAssetForItem(item.id, file)
+    if (!attachment) {
       setAttachmentBusy(null)
-      setAttachmentError(uploadError.message)
+      setAttachmentError(error)
       return
     }
 
-    const { data: savedAttachment, error: metadataError } = await supabase
-      .from('marketing_calendar_attachments')
-      .upsert({
-        item_id: item.id,
-        storage_path: storagePath,
-        file_name: file.name,
-        mime_type: mimeType,
-        file_size: file.size,
-        uploaded_by: userId,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'item_id' })
-      .select('id,item_id,storage_path,file_name,mime_type,file_size,created_at')
-      .single()
-
-    if (metadataError || !savedAttachment) {
-      await supabase.storage.from(MARKETING_ASSET_BUCKET).remove([storagePath])
-      setAttachmentBusy(null)
-      setAttachmentError(metadataError?.message ?? 'The file could not be linked to this event.')
-      return
-    }
-
-    if (previousAttachment && previousAttachment.storage_path !== storagePath) {
+    if (previousAttachment && previousAttachment.storage_path !== attachment.storage_path) {
       const { error: cleanupError } = await supabase.storage
         .from(MARKETING_ASSET_BUCKET)
         .remove([previousAttachment.storage_path])
@@ -944,7 +958,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       }
     }
 
-    setItemAttachment(item.id, savedAttachment as MarketingCalendarAttachment)
+    setItemAttachment(item.id, attachment)
     setAttachmentBusy(null)
     toast.success(previousAttachment ? 'File replaced' : 'File attached')
   }
@@ -1022,6 +1036,19 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     )
   }
 
+  const handleNewAttachmentChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const validationError = validateMarketingAsset(file)
+    if (validationError) {
+      setNewAttachmentError(validationError)
+      return
+    }
+    setNewAttachmentError(null)
+    setNewAttachmentFile(file)
+  }
+
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newContent.trim() || !kaylaId || newChannels.length === 0 || newCompanyIds.length === 0) return
@@ -1067,7 +1094,6 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
     const companyRows = inserted.flatMap((row: { id: string }) => newCompanyIds.map(companyId => ({ item_id: row.id, company_id: companyId })))
     const { error: compErr } = await supabase.from('marketing_calendar_item_companies').insert(companyRows)
-    setCreating(false)
 
     if (compErr) {
       toast.error('Event created, but companies could not be attached', { description: compErr.message })
@@ -1081,10 +1107,37 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
         },
       )
     }
+
+    // Each event instance stores its own attachment row (item_id-keyed), so a
+    // recurring/multi-channel submission fans the same file out to every
+    // instance it just created. Capped so a huge recurring series doesn't
+    // silently re-upload the same file hundreds of times.
+    if (newAttachmentFile) {
+      const fanoutTargets = inserted.slice(0, MAX_CREATE_ATTACHMENT_FANOUT)
+      const results = await Promise.all(
+        fanoutTargets.map((row: { id: string }) => uploadMarketingAssetForItem(row.id, newAttachmentFile)),
+      )
+      const failed = results.filter(r => !r.attachment).length
+      if (inserted.length > fanoutTargets.length) {
+        toast.error('File not attached to every post', {
+          description: `Only the first ${fanoutTargets.length} posts got the file — attach it to the rest individually.`,
+        })
+      } else if (failed > 0) {
+        toast.error(
+          failed === results.length
+            ? 'Event created, but the file could not be attached'
+            : `Event created, but the file could not be attached to ${failed} post${failed === 1 ? '' : 's'}`,
+        )
+      }
+    }
+
+    setCreating(false)
     setCreateOpen(false)
     setNewContent('')
     setNewHighlighted(false)
     setNewRecurrence('none')
+    setNewAttachmentFile(null)
+    setNewAttachmentError(null)
     loadCalendar()
   }
 
@@ -1099,6 +1152,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     setNewRecurrence('none')
     setNewCompanyIds([])
     setNewChannels(opts?.channel ? [opts.channel] : [])
+    setNewAttachmentFile(null)
+    setNewAttachmentError(null)
     setCreateOpen(true)
   }
 
@@ -1942,6 +1997,49 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               channels={channels} selectedChannels={newChannels} onToggleChannel={toggleNewChannel} multiChannel
               onAddChannel={handleAddChannel}
             />
+
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <Paperclip className="h-3.5 w-3.5" /> Attachment (optional)
+              </Label>
+              <input
+                ref={newAttachmentInputRef}
+                type="file"
+                accept={MARKETING_ASSET_ACCEPT}
+                onChange={handleNewAttachmentChange}
+                className="sr-only"
+                aria-label="Choose a file to attach"
+              />
+              {newAttachmentFile ? (
+                <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                  <span className="flex min-w-0 items-center gap-1.5 text-sm">
+                    <FileText className="h-3.5 w-3.5 flex-shrink-0 text-sky-700" />
+                    <span className="truncate font-medium">{newAttachmentFile.name}</span>
+                    <span className="flex-shrink-0 text-xs text-muted-foreground">
+                      {formatMarketingAssetSize(newAttachmentFile.size)}
+                    </span>
+                  </span>
+                  <button type="button" onClick={() => setNewAttachmentFile(null)}
+                    aria-label="Remove attachment" className="flex-shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => newAttachmentInputRef.current?.click()}
+                  className="flex w-full items-center gap-1.5 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-sky-400 hover:bg-sky-50/60 hover:text-sky-700">
+                  <Upload className="h-3.5 w-3.5" />
+                  Choose a file
+                </button>
+              )}
+              {newAttachmentError && (
+                <p role="alert" className="text-xs font-medium text-red-600">{newAttachmentError}</p>
+              )}
+              {(newRecurrence !== 'none' || newChannels.length > 1) && newAttachmentFile && (
+                <p className="text-xs text-muted-foreground">
+                  This file will be attached to every post this creates.
+                </p>
+              )}
+            </div>
 
             <div className="space-y-1.5">
               <Label className="flex items-center gap-1.5">
