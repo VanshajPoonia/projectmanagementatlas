@@ -1,6 +1,7 @@
 import {
   Bell,
   Calendar,
+  CalendarClock,
   Crown,
   FileBarChart,
   Home,
@@ -22,6 +23,7 @@ const ICONS: Record<string, LucideIcon> = {
   kanban: Kanban,
   bell: Bell,
   calendar: Calendar,
+  appointments: CalendarClock,
   megaphone: Megaphone,
   lock: Lock,
   message: MessageSquare,

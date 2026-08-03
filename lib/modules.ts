@@ -10,6 +10,7 @@ export type ModuleKey =
   | 'marketing_calendar'
   | 'reports'
   | 'ai_assistant'
+  | 'appointments'
 
 export interface AppModule {
   module_key: ModuleKey
@@ -28,6 +29,10 @@ export const DEFAULT_MODULES: AppModule[] = [
   { module_key: 'marketing_calendar', enabled: true },
   { module_key: 'reports', enabled: true },
   { module_key: 'ai_assistant', enabled: true },
+  // The one module that defaults OFF (migration 080 seeds enabled=false). It stays off in the
+  // fallback too: if app_modules can't be read we must not reveal a module a super admin has
+  // never switched on, which is the opposite of the every-module-stays-available rule above.
+  { module_key: 'appointments', enabled: false },
 ]
 
 export function useAppModules() {

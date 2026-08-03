@@ -13,6 +13,7 @@ import { AppShell } from '../shell/app-shell'
 import type { SidebarNavGroup } from '../shell/app-sidebar'
 import Link from 'next/link'
 import ChatPanel from '../chat/chat-panel'
+import AppointmentsView from '../appointments/appointments-view'
 import CalendarView from '../calendar/calendar-view'
 import NotificationInfo from '../notifications/notification-info'
 import TaskNotificationToasts from '../notifications/task-notification-toasts'
@@ -70,6 +71,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const showMarketing = canUseMarketingCalendar && isModuleEnabled(modules, 'marketing_calendar')
   const showBoards = isModuleEnabled(modules, 'boards')
   const showChat = isModuleEnabled(modules, 'chat')
+  // Unlike the modules above, 'appointments' is seeded enabled=false (migration 080), so this
+  // stays hidden until a super_admin switches it on.
+  const showAppointments = isModuleEnabled(modules, 'appointments')
 
   // Tabs are the visible sections; only these are addressable via ?tab=.
   const allowedTabs = useMemo(
@@ -80,8 +84,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
       ...(showMarketing ? ['marketing'] : []),
       ...(showBoards ? ['boards'] : []),
       ...(showChat ? ['chat'] : []),
+      ...(showAppointments ? ['appointments'] : []),
     ],
-    [showPersonal, showCalendar, showMarketing, showBoards, showChat],
+    [showPersonal, showCalendar, showMarketing, showBoards, showChat, showAppointments],
   )
 
   // Keep the active tab in sync with the URL so sections are deep-linkable and the
@@ -152,6 +157,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
             </span>
           ),
         }]
+          : []),
+        ...(showAppointments
+          ? [{ id: 'appointments', label: 'Appointments', icon: 'appointments', href: '/dashboard?tab=appointments', status: 'live' as const }]
           : []),
       ],
     },
@@ -512,6 +520,12 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
           <TabsContent value="chat">
             <ChatPanel currentUserId={user.id} isAdmin={false} />
           </TabsContent>
+
+          {showAppointments && (
+            <TabsContent value="appointments">
+              <AppointmentsView userId={user.id} />
+            </TabsContent>
+          )}
           </Tabs>
         </div>
       </div>
