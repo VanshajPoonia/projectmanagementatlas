@@ -30,16 +30,27 @@ if (!DB_URL) {
   process.exit(1)
 }
 
-// CLI: [--status | --baseline | --apply] [--allow-prod] [--through=NNN]
+// CLI: [--status | --baseline | --apply] [--allow-prod] [--through=NNN] [--only=NNN,NNN]
 //   --allow-prod   deliberate opt-in required to target the live database
 //   --through=NNN  with --baseline, record only files numbered <= NNN (the rest stay pending),
 //                  which is how a DB that is already at migration NNN gets adopted by the runner
 //                  without marking later, genuinely-unapplied files as done.
+//   --only=NNN,NNN with --apply, run only these numbered migrations and leave every other
+//                  pending file pending. Needed when an earlier pending file is destructive and
+//                  still awaiting sign-off, but a later additive one must ship to fix a live bug.
+//                  Skipping a predecessor is the caller's responsibility — check the dependency.
 const ARGS = process.argv.slice(2)
 const ALLOW_PROD = ARGS.includes('--allow-prod')
 const throughArg = ARGS.find((a) => a.startsWith('--through='))
 const THROUGH = throughArg ? Number.parseInt(throughArg.split('=')[1], 10) : null
+const onlyArg = ARGS.find((a) => a.startsWith('--only='))
+const ONLY = onlyArg
+  ? new Set(onlyArg.split('=')[1].split(',').map((s) => Number.parseInt(s.trim(), 10)))
+  : null
 const mode = ARGS.find((a) => ['--status', '--baseline', '--apply'].includes(a)) || '--apply'
+
+// Zero-padded numeric prefix of a migration filename, e.g. 076_foo.sql -> 76.
+const prefixNum = (f) => Number.parseInt(f.match(/^(\d+)/)[1], 10)
 
 // Dev is always allowed; prod requires --allow-prod. Aborts before any psql connection.
 assertMigrationTarget({ allowProd: ALLOW_PROD })
@@ -114,7 +125,6 @@ if (mode === '--status') {
 }
 
 if (mode === '--baseline') {
-  const prefixNum = (f) => Number.parseInt(f.match(/^(\d+)/)[1], 10)
   let toRecord = files.filter((f) => !applied.has(f))
   if (THROUGH !== null) toRecord = toRecord.filter((f) => prefixNum(f) <= THROUGH)
   if (!toRecord.length) { console.log('nothing to baseline — all files already recorded.'); process.exit(0) }
@@ -130,7 +140,20 @@ if (mode === '--baseline') {
 
 if (!pending.length) { console.log('up to date — no pending migrations.'); process.exit(0) }
 
-for (const f of pending) {
+// --only runs a subset; everything it skips stays pending and is reported, so a deliberately
+// held-back migration can never be mistaken for one that already ran.
+const toApply = ONLY ? pending.filter((f) => ONLY.has(prefixNum(f))) : pending
+if (ONLY) {
+  const missing = [...ONLY].filter((n) => !toApply.some((f) => prefixNum(f) === n))
+  if (missing.length) {
+    console.error(`--only named migration(s) that are not pending: ${missing.join(', ')}`)
+    process.exit(1)
+  }
+  const held = pending.filter((f) => !ONLY.has(prefixNum(f)))
+  if (held.length) console.log(`holding back ${held.length} pending migration(s):\n  ${held.join('\n  ')}\n`)
+}
+
+for (const f of toApply) {
   process.stdout.write(`applying ${f} ... `)
   try {
     psql(['-f', join(SCRIPTS_DIR, f)]) // the file owns its BEGIN/COMMIT
@@ -143,4 +166,4 @@ for (const f of pending) {
     process.exit(1)
   }
 }
-console.log(`applied ${pending.length} migration(s).`)
+console.log(`applied ${toApply.length} migration(s).`)
