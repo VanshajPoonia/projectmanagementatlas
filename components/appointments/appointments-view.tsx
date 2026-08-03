@@ -17,6 +17,7 @@ import RestrictionDialog, {
   type RestrictionDraft,
   type RestrictionRow,
 } from './restriction-dialog'
+import BookingLinkPanel from './booking-link-panel'
 
 interface SettingsRow {
   min_duration_minutes: number
@@ -304,6 +305,8 @@ export default function AppointmentsView({ userId }: { userId: string }) {
           )}
         </CardContent>
       </Card>
+
+      <BookingLinkPanel userId={userId} />
 
       <RestrictionDialog
         open={dialogOpen}
