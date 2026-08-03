@@ -509,6 +509,9 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null)
   const [attachmentBusy,       setAttachmentBusy]       = useState<'preview' | 'upload' | 'download' | 'delete' | null>(null)
   const [attachmentError,      setAttachmentError]      = useState<string | null>(null)
+  // Set when attachment metadata could not be read at all (missing table, RLS, stale
+  // schema cache). Distinct from attachmentError, which is about one dialog action.
+  const [attachmentsUnavailable, setAttachmentsUnavailable] = useState<string | null>(null)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
 
   const newRecurrenceDates = useMemo(
@@ -580,11 +583,18 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       setError('Marketing calendar is not ready yet.')
       return
     }
+    // Keep the calendar rendering (see the query comment above), but never let this fail
+    // silently: with no signal, an event whose file genuinely failed to load looks
+    // identical to one that never had a file, and users reasonably conclude the upload
+    // was lost. Surface it as a non-blocking banner instead of a console-only warning.
     if (attachmentsError) {
       console.warn('[marketing-calendar] Attachment metadata is unavailable', {
         code: attachmentsError.code,
         message: attachmentsError.message,
       })
+      setAttachmentsUnavailable(attachmentsError.message)
+    } else {
+      setAttachmentsUnavailable(null)
     }
     const attachmentsByItemId = new Map(
       ((attachmentRows ?? []) as MarketingCalendarAttachment[])
@@ -1117,16 +1127,21 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       const results = await Promise.all(
         fanoutTargets.map((row: { id: string }) => uploadMarketingAssetForItem(row.id, newAttachmentFile)),
       )
-      const failed = results.filter(r => !r.attachment).length
+      const failures = results.filter(r => !r.attachment)
+      // Surface the underlying reason. Without it an infrastructure fault (a missing
+      // storage bucket, a revoked policy) is indistinguishable from "my file vanished",
+      // which is exactly how a broken attachment path stayed undiagnosed before.
+      const reason = failures.find(r => r.error)?.error ?? undefined
       if (inserted.length > fanoutTargets.length) {
         toast.error('File not attached to every post', {
           description: `Only the first ${fanoutTargets.length} posts got the file — attach it to the rest individually.`,
         })
-      } else if (failed > 0) {
+      } else if (failures.length > 0) {
         toast.error(
-          failed === results.length
+          failures.length === results.length
             ? 'Event created, but the file could not be attached'
-            : `Event created, but the file could not be attached to ${failed} post${failed === 1 ? '' : 's'}`,
+            : `Event created, but the file could not be attached to ${failures.length} post${failures.length === 1 ? '' : 's'}`,
+          reason ? { description: reason } : undefined,
         )
       }
     }
@@ -1532,6 +1547,13 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
         </div>
 
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+
+        {attachmentsUnavailable && (
+          <p role="alert" className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Event files can&apos;t be loaded right now, so attachments are hidden. Nothing you
+            uploaded has been deleted. ({attachmentsUnavailable})
+          </p>
+        )}
       </div>
 
       {items.length === 0 && !error && (
