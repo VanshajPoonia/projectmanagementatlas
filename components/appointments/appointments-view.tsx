@@ -18,6 +18,7 @@ import RestrictionDialog, {
   type RestrictionRow,
 } from './restriction-dialog'
 import BookingLinkPanel from './booking-link-panel'
+import AppointmentList from './appointment-list'
 
 interface SettingsRow {
   min_duration_minutes: number
@@ -145,6 +146,8 @@ export default function AppointmentsView({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-6">
+      <AppointmentList userId={userId} timezone={settings.timezone} />
+
       <Card>
         <CardHeader>
           <CardTitle>Booking preferences</CardTitle>

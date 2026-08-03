@@ -120,3 +120,37 @@ export async function sendBookingConfirmationEmails(params: {
     )
   }
 }
+
+/**
+ * Only fired for a GUEST-initiated cancellation (the public /book/cancel/[token]
+ * route). A host cancelling their own appointment from the in-app list already
+ * knows it happened, so that path deliberately does not call this — sending
+ * someone an email about their own just-completed action would be noise, not
+ * information.
+ */
+export async function sendCancellationNoticeToHost(params: {
+  hostEmail: string | null
+  guestName: string
+  guestEmail: string
+  startsAt: string
+  endsAt: string
+  timeZone: string
+}) {
+  const { hostEmail, guestName, guestEmail, startsAt, endsAt, timeZone } = params
+  if (!hostEmail) return
+
+  const when = formatWhen(startsAt, endsAt, timeZone)
+  await send(
+    hostEmail,
+    `Appointment cancelled: ${when}`,
+    renderEmail(
+      '❌ Appointment Cancelled',
+      [
+        { label: 'Guest', value: guestName },
+        { label: 'Guest Email', value: guestEmail },
+        { label: 'Was scheduled for', value: when },
+      ],
+      'This slot is open again.',
+    ),
+  )
+}
