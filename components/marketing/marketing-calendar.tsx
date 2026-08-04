@@ -47,6 +47,7 @@ import {
 } from '@/lib/marketing-assets'
 import { toast } from 'sonner'
 import {
+  buildCustomWeekdayDateKeys,
   buildRecurringDateKeys,
   buildRecurringSeriesScheduleUpdates,
   centeredScrollLeft,
@@ -79,6 +80,7 @@ interface Channel {
 interface MarketingCalendarItem {
   id: string
   date: string
+  time: string | null
   day_label: string
   channel: string
   content: string
@@ -137,7 +139,27 @@ const RECURRENCE_LABELS: Record<MarketingRecurrencePattern, string> = {
   biweekly:  'Every 2 weeks',
   monthly:   'Monthly',
   quarterly: 'Quarterly',
+  custom:    'Custom',
 }
+
+// Sunday-first, matching restriction-dialog.tsx's weekday row and the
+// 0=Sunday convention buildCustomWeekdayDateKeys expects.
+const WEEKDAYS = [
+  { value: 0, label: 'Sun' },
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+  { value: 6, label: 'Sat' },
+]
+
+// Above this many generated dates, the interactive per-date skip checklist
+// stops rendering (perf + usability — pruning a large series one row at a
+// time is worse than the already-solved single-occurrence-delete path).
+// Manual additions stay available either way since those are one explicit
+// action at a time, not a per-row render cost.
+const MAX_INTERACTIVE_SCHEDULE_PREVIEW = 60
 
 /* ─── view-mode persistence ────────────────────────────────────────────── */
 
@@ -198,6 +220,8 @@ function itemKey(date: string, channel: string) {
 interface EventFormFieldsProps {
   date: string
   onDateChange: (v: string) => void
+  time: string
+  onTimeChange: (v: string) => void
   content: string
   onContentChange: (v: string) => void
   highlighted: boolean
@@ -217,7 +241,7 @@ interface EventFormFieldsProps {
 }
 
 function EventFormFields({
-  date, onDateChange, content, onContentChange, highlighted, onToggleHighlighted,
+  date, onDateChange, time, onTimeChange, content, onContentChange, highlighted, onToggleHighlighted,
   companies, selectedCompanyIds, onToggleCompany,
   channels, selectedChannels, onToggleChannel, multiChannel = false, onAddChannel,
 }: EventFormFieldsProps) {
@@ -238,9 +262,15 @@ function EventFormFields({
 
   return (
     <>
-      <div className="space-y-1.5">
-        <Label>Date</Label>
-        <Input type="date" value={date} onChange={e => onDateChange(e.target.value)} required />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label>Date</Label>
+          <Input type="date" value={date} onChange={e => onDateChange(e.target.value)} required />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Time <span className="font-normal text-muted-foreground">(optional)</span></Label>
+          <Input type="time" value={time} onChange={e => onTimeChange(e.target.value)} />
+        </div>
       </div>
 
       <div className="space-y-1.5">
@@ -474,6 +504,15 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const [newHighlighted,   setNewHighlighted]   = useState(false)
   const [newRecurrence,    setNewRecurrence]    = useState<MarketingRecurrencePattern>('none')
   const [newEndDate,       setNewEndDate]       = useState(toInputDate(addDays(new Date(), 28)))
+  const [newTime,          setNewTime]          = useState('')
+  // Only meaningful when newRecurrence === 'custom'.
+  const [newCustomWeekdays, setNewCustomWeekdays] = useState<number[]>([])
+  // Exceptions to whatever the pattern generated, applied before submit.
+  // Skip is a toggle (dates stay visible, struck through) rather than a
+  // removal, so the user can see and undo what they excluded.
+  const [newSkippedDates,  setNewSkippedDates]  = useState<Set<string>>(new Set())
+  const [newAddedDates,    setNewAddedDates]    = useState<string[]>([])
+  const [newExtraDate,     setNewExtraDate]     = useState('')
   const [creating,         setCreating]         = useState(false)
   const [newAttachmentFile,  setNewAttachmentFile]  = useState<File | null>(null)
   const [newAttachmentError, setNewAttachmentError] = useState<string | null>(null)
@@ -484,12 +523,19 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   // team wants recurring edits to behave.
   const [editItem,         setEditItem]         = useState<MarketingCalendarItem | null>(null)
   const [editDate,         setEditDate]         = useState('')
+  const [editTime,         setEditTime]         = useState('')
   const [editCompanyIds,   setEditCompanyIds]   = useState<string[]>([])
   const [editChannel,      setEditChannel]      = useState('')
   const [editContent,      setEditContent]      = useState('')
   const [editHighlighted,  setEditHighlighted]  = useState(false)
   const [editScope,        setEditScope]        = useState<EditScope>('single')
   const [savingEdit,       setSavingEdit]       = useState(false)
+
+  // "Add another date to this series" — a lightweight extra insert, separate
+  // from the Save button, available only when editing an existing series.
+  const [addDateValue, setAddDateValue] = useState('')
+  const [addTimeValue, setAddTimeValue] = useState('')
+  const [addingDate,   setAddingDate]   = useState(false)
 
   // Drag-and-drop reschedule
   const [draggingId,  setDraggingId]  = useState<string | null>(null)
@@ -515,21 +561,71 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   const attachmentInputRef = useRef<HTMLInputElement>(null)
 
   const newRecurrenceDates = useMemo(
-    () => buildRecurringDateKeys(newDate, newRecurrence, newEndDate),
-    [newDate, newEndDate, newRecurrence],
+    () => newRecurrence === 'custom'
+      ? buildCustomWeekdayDateKeys(newDate, newEndDate, newCustomWeekdays)
+      : buildRecurringDateKeys(newDate, newRecurrence, newEndDate),
+    [newDate, newEndDate, newRecurrence, newCustomWeekdays],
   )
-  const newScheduledPostCount = newRecurrenceDates.length * newChannels.length
-  const newScheduleInvalid = newRecurrenceDates.length === 0
+  // Density of the pattern itself — gates whether the interactive skip
+  // checklist is even worth rendering. Distinct from what the user prunes
+  // afterward (finalScheduleDates, below).
   const newScheduleDateLimitReached =
     newRecurrenceDates.length > MAX_SCHEDULED_MARKETING_POSTS
+  const newInteractiveScheduleTooLarge =
+    newRecurrenceDates.length > MAX_INTERACTIVE_SCHEDULE_PREVIEW
+
+  // What will actually be submitted: pattern-generated dates minus skips,
+  // plus manual additions, deduped and sorted.
+  const finalScheduleDates = useMemo(() => {
+    const kept = newRecurrenceDates.filter(d => !newSkippedDates.has(d))
+    return Array.from(new Set([...kept, ...newAddedDates])).sort()
+  }, [newRecurrenceDates, newSkippedDates, newAddedDates])
+
+  const newScheduledPostCount = finalScheduleDates.length * newChannels.length
   const newScheduleTooLarge = newScheduledPostCount > MAX_SCHEDULED_MARKETING_POSTS
+  // Distinguishes *why* nothing will be created — each cause needs a
+  // different instruction, and "repeat until must be on/after the first
+  // date" is actively misleading when the real problem is e.g. no weekday
+  // selected on a Custom pattern.
+  const newScheduleInvalidReason: string | null =
+    finalScheduleDates.length > 0 ? null
+    : newRecurrence === 'custom' && newCustomWeekdays.length === 0
+      ? 'Select at least one weekday, or add specific dates below.'
+    : newRecurrenceDates.length === 0
+      ? 'Repeat until must be on or after the first date.'
+      : 'Every generated date was skipped. Add at least one date to continue.'
+  const newScheduleInvalid = newScheduleInvalidReason !== null
   const newSchedulePreview = useMemo(() => {
-    if (newRecurrenceDates.length <= 4) return newRecurrenceDates
+    if (finalScheduleDates.length <= 4) return finalScheduleDates
     return [
-      ...newRecurrenceDates.slice(0, 3),
-      newRecurrenceDates[newRecurrenceDates.length - 1],
+      ...finalScheduleDates.slice(0, 3),
+      finalScheduleDates[finalScheduleDates.length - 1],
     ]
-  }, [newRecurrenceDates])
+  }, [finalScheduleDates])
+
+  const toggleNewSkippedDate = (date: string) => {
+    setNewSkippedDates(prev => {
+      const next = new Set(prev)
+      if (next.has(date)) next.delete(date)
+      else next.add(date)
+      return next
+    })
+  }
+
+  const toggleNewCustomWeekday = (day: number) => {
+    setNewCustomWeekdays(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort((a, b) => a - b),
+    )
+  }
+
+  const addNewExtraDate = () => {
+    if (!newExtraDate) return
+    setNewAddedDates(prev => prev.includes(newExtraDate) ? prev : [...prev, newExtraDate])
+    setNewExtraDate('')
+  }
+
+  const removeNewAddedDate = (date: string) =>
+    setNewAddedDates(prev => prev.filter(d => d !== date))
 
   const loadCalendar = useCallback(async () => {
     setLoading(true)
@@ -561,7 +657,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       { data: attachmentRows, error: attachmentsError },
     ] = await Promise.all([
       supabase.from('marketing_calendar_items')
-        .select('id,date,day_label,channel,content,is_highlighted,position,source_sheet,recurrence_group_id,marketing_calendar_item_companies(company:companies(id,code,name,color))')
+        .select('id,date,time,day_label,channel,content,is_highlighted,position,source_sheet,recurrence_group_id,marketing_calendar_item_companies(company:companies(id,code,name,color))')
         .eq('assigned_to', targetUserId)
         .order('date', { ascending: true })
         .order('position', { ascending: true }),
@@ -605,6 +701,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       .map((row): MarketingCalendarItem => ({
         id: row.id,
         date: row.date,
+        time: row.time,
         day_label: row.day_label,
         channel: row.channel,
         content: row.content,
@@ -1063,7 +1160,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     e.preventDefault()
     if (!newContent.trim() || !kaylaId || newChannels.length === 0 || newCompanyIds.length === 0) return
     if (newScheduleInvalid) {
-      toast.error('Choose a repeat-until date on or after the first date')
+      toast.error(newScheduleInvalidReason ?? 'Choose a repeat-until date on or after the first date')
       return
     }
     if (newScheduleTooLarge) {
@@ -1078,10 +1175,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     // series, so editing any single instance can update them all later.
     const recurrenceGroupId = newRecurrence !== 'none' ? crypto.randomUUID() : null
 
-    const rows = newRecurrenceDates.flatMap((date, i) =>
+    const rows = finalScheduleDates.flatMap((date, i) =>
       newChannels.map(channel => ({
         assigned_to:    kaylaId,
         date,
+        time:           newTime || null,
         day_label:      dayLabelForDateKey(date),
         channel,
         content:        newContent.trim(),
@@ -1111,7 +1209,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       toast.success(
         newRecurrence === 'none'
           ? `Created ${inserted.length} scheduled post${inserted.length === 1 ? '' : 's'}`
-          : `Created a ${newRecurrenceDates.length}-date series`,
+          : `Created a ${finalScheduleDates.length}-date series`,
         newRecurrence === 'none' ? undefined : {
           description: `${inserted.length} channel post${inserted.length === 1 ? '' : 's'} scheduled in total.`,
         },
@@ -1151,6 +1249,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     setNewContent('')
     setNewHighlighted(false)
     setNewRecurrence('none')
+    setNewTime('')
+    setNewCustomWeekdays([])
+    setNewSkippedDates(new Set())
+    setNewAddedDates([])
+    setNewExtraDate('')
     setNewAttachmentFile(null)
     setNewAttachmentError(null)
     loadCalendar()
@@ -1165,6 +1268,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     setNewContent('')
     setNewHighlighted(false)
     setNewRecurrence('none')
+    setNewTime('')
+    setNewCustomWeekdays([])
+    setNewSkippedDates(new Set())
+    setNewAddedDates([])
+    setNewExtraDate('')
     setNewCompanyIds([])
     setNewChannels(opts?.channel ? [opts.channel] : [])
     setNewAttachmentFile(null)
@@ -1194,6 +1302,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     }
     setEditItem(item)
     setEditDate(item.date)
+    // Postgres returns TIME as "HH:MM:SS"; <input type="time"> needs "HH:MM".
+    setEditTime(item.time?.slice(0, 5) ?? '')
     setEditCompanyIds(item.companies.map(c => c.id))
     setEditChannel(item.channel)
     setEditContent(item.content)
@@ -1266,6 +1376,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
           p_content: editContent.trim(),
           p_is_highlighted: editHighlighted,
           p_company_ids: editCompanyIds,
+          p_time: editTime || null,
         })
 
       if (updateError) {
@@ -1293,6 +1404,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     const dayLabel = dayLabelForDateKey(editDate)
     const { error: updateError } = await supabase.from('marketing_calendar_items').update({
       date:           editDate,
+      time:           editTime || null,
       day_label:      dayLabel,
       channel:        editChannel,
       content:        editContent.trim(),
@@ -1322,10 +1434,76 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     loadCalendar()
   }
 
+  const handleDeleteSeries = async (recurrenceGroupId: string) => {
+    if (!confirm(
+      `Delete all ${editSeriesDateCount} date${editSeriesDateCount === 1 ? '' : 's'} in this series? This cannot be undone.`,
+    )) return
+    const { error: e } = await supabase
+      .from('marketing_calendar_items')
+      .delete()
+      .eq('recurrence_group_id', recurrenceGroupId)
+    if (e) { toast.error('Could not delete series', { description: e.message }); return }
+    setItems(prev => prev.filter(x => x.recurrence_group_id !== recurrenceGroupId))
+    toast.success(`Deleted ${editSeriesDateCount} date${editSeriesDateCount === 1 ? '' : 's'}`)
+  }
+
   const handleDeleteFromEdit = async () => {
     if (!editItem) return
-    await handleDeleteItem(editItem)
+    if (editItem.recurrence_group_id && editScope === 'series') {
+      await handleDeleteSeries(editItem.recurrence_group_id)
+    } else {
+      await handleDeleteItem(editItem)
+    }
     setEditItem(null)
+  }
+
+  // Adds one more occurrence to an existing series. Deliberately reads from
+  // editItem (the persisted content/highlight/companies), not the live
+  // editContent/editHighlighted/editCompanyIds form state — those two can
+  // differ whenever the user has typed unsaved changes but hasn't clicked
+  // Save yet, and this action fires independently of that button.
+  const handleAddDateToSeries = async () => {
+    if (!editItem?.recurrence_group_id || !addDateValue || !kaylaId) return
+    setAddingDate(true)
+
+    const { data: inserted, error: insertErr } = await supabase
+      .from('marketing_calendar_items')
+      .insert({
+        assigned_to:    kaylaId,
+        date:           addDateValue,
+        time:           addTimeValue || null,
+        day_label:      dayLabelForDateKey(addDateValue),
+        channel:        editItem.channel,
+        content:        editItem.content,
+        is_highlighted: editItem.is_highlighted,
+        position:       0,
+        source_sheet:   null,
+        source_row:     null,
+        source_column:  null,
+        recurrence_group_id: editItem.recurrence_group_id,
+      })
+      .select('id')
+      .single()
+
+    if (insertErr || !inserted) {
+      setAddingDate(false)
+      toast.error('Could not add date to series', { description: insertErr?.message })
+      return
+    }
+
+    const { error: compErr } = await supabase
+      .from('marketing_calendar_item_companies')
+      .insert(editItem.companies.map(c => ({ item_id: inserted.id, company_id: c.id })))
+
+    setAddingDate(false)
+    if (compErr) {
+      toast.error('Date added, but companies could not be attached', { description: compErr.message })
+    } else {
+      toast.success('Added a date to the series')
+    }
+    setAddDateValue('')
+    setAddTimeValue('')
+    loadCalendar()
   }
 
   /* ── drag-and-drop reschedule ────────────────────────────────────── */
@@ -2013,6 +2191,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
             <EventFormFields
               date={newDate} onDateChange={handleNewDateChange}
+              time={newTime} onTimeChange={setNewTime}
               content={newContent} onContentChange={setNewContent}
               highlighted={newHighlighted} onToggleHighlighted={() => setNewHighlighted(h => !h)}
               companies={companies} selectedCompanyIds={newCompanyIds} onToggleCompany={toggleNewCompany}
@@ -2081,6 +2260,25 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               )}
             </div>
 
+            {newRecurrence === 'custom' && (
+              <div className="space-y-2 rounded-lg border p-3">
+                <Label className="text-xs text-muted-foreground">Repeat on</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {WEEKDAYS.map(day => {
+                    const active = newCustomWeekdays.includes(day.value)
+                    return (
+                      <button key={day.value} type="button" onClick={() => toggleNewCustomWeekday(day.value)}
+                        aria-pressed={active}
+                        className={cn('h-9 min-w-[3rem] rounded-md border px-2 text-sm font-medium transition-colors',
+                          active ? 'border-foreground bg-foreground text-background' : 'border-input bg-background hover:bg-accent')}>
+                        {day.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {newRecurrence !== 'none' && (
               <div className="space-y-2">
                 <Label>Repeat until</Label>
@@ -2088,7 +2286,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                   onChange={e => setNewEndDate(e.target.value)} required />
                 {newScheduleInvalid ? (
                   <p role="alert" className="text-xs font-medium text-red-600">
-                    Repeat until must be on or after the first date.
+                    {newScheduleInvalidReason}
                   </p>
                 ) : (
                   <div className={cn(
@@ -2102,7 +2300,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                         <>More than {MAX_SCHEDULED_MARKETING_POSTS.toLocaleString()} recurring dates</>
                       ) : (
                         <>
-                          {newRecurrenceDates.length} recurring date{newRecurrenceDates.length === 1 ? '' : 's'}
+                          {finalScheduleDates.length} recurring date{finalScheduleDates.length === 1 ? '' : 's'}
                           {' × '}
                           {newChannels.length || 0} channel{newChannels.length === 1 ? '' : 's'}
                           {' = '}
@@ -2110,18 +2308,18 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                         </>
                       )}
                     </p>
-                    {newSchedulePreview.length > 0 && (
+                    {!newScheduleDateLimitReached && newSchedulePreview.length > 0 && (
                       <p className="mt-1 leading-relaxed text-current/75">
                         {newSchedulePreview.map((date, index) => (
                           <span key={date}>
-                            {index === newSchedulePreview.length - 1 && newRecurrenceDates.length > 4 ? '… ' : ''}
+                            {index === newSchedulePreview.length - 1 && finalScheduleDates.length > 4 ? '… ' : ''}
                             {fullDateFormatter.format(parseDate(date))}
                             {index < newSchedulePreview.length - 1 ? ' · ' : ''}
                           </span>
                         ))}
                       </p>
                     )}
-                    {!newScheduleDateLimitReached && newRecurrenceDates.at(-1) !== newEndDate && (
+                    {!newScheduleDateLimitReached && newRecurrenceDates.length > 0 && newRecurrenceDates.at(-1) !== newEndDate && (
                       <p className="mt-1 text-current/75">
                         The end date is a cutoff. The last matching {RECURRENCE_LABELS[newRecurrence].toLowerCase()} date is{' '}
                         {fullDateFormatter.format(parseDate(newRecurrenceDates.at(-1)!))}.
@@ -2134,6 +2332,56 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                     )}
                   </div>
                 )}
+
+                {!newScheduleDateLimitReached && newRecurrenceDates.length > 0 && (
+                  newInteractiveScheduleTooLarge ? (
+                    <p className="text-xs text-muted-foreground">
+                      Too many dates to list individually — add specific extra dates below if needed.
+                    </p>
+                  ) : (
+                    <div className="max-h-40 space-y-px overflow-y-auto rounded-md border p-1">
+                      {newRecurrenceDates.map(date => {
+                        const skipped = newSkippedDates.has(date)
+                        return (
+                          <div key={date}
+                            className={cn('flex items-center justify-between rounded px-2 py-1 text-xs',
+                              skipped ? 'text-muted-foreground' : 'hover:bg-accent')}>
+                            <span className={cn(skipped && 'line-through')}>
+                              {fullDateFormatter.format(parseDate(date))}
+                            </span>
+                            <button type="button" onClick={() => toggleNewSkippedDate(date)}
+                              aria-label={skipped ? `Include ${date}` : `Skip ${date}`}
+                              className="text-muted-foreground transition-colors hover:text-foreground">
+                              {skipped ? 'Undo' : <X className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                )}
+
+                {newAddedDates.length > 0 && (
+                  <div className="space-y-1">
+                    {newAddedDates.map(date => (
+                      <div key={date}
+                        className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
+                        <span>{fullDateFormatter.format(parseDate(date))} · added</span>
+                        <button type="button" onClick={() => removeNewAddedDate(date)}
+                          aria-label={`Remove added date ${date}`}
+                          className="text-emerald-700 transition-colors hover:text-emerald-900">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <Input type="date" value={newExtraDate} onChange={e => setNewExtraDate(e.target.value)} className="h-8" />
+                  <Button type="button" size="sm" variant="outline" className="h-8 shrink-0" disabled={!newExtraDate} onClick={addNewExtraDate}>
+                    <Plus className="h-3.5 w-3.5" /> Add date
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -2220,6 +2468,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               )}
               <EventFormFields
                 date={editDate} onDateChange={setEditDate}
+                time={editTime} onTimeChange={setEditTime}
                 content={editContent} onContentChange={setEditContent}
                 highlighted={editHighlighted} onToggleHighlighted={() => setEditHighlighted(h => !h)}
                 companies={companies} selectedCompanyIds={editCompanyIds} onToggleCompany={toggleEditCompany}
@@ -2228,9 +2477,29 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
                 onAddChannel={handleAddChannel}
               />
 
+              {editItem.recurrence_group_id && editScope === 'series' && (
+                <div className="space-y-1.5 rounded-lg border p-3">
+                  <Label className="text-xs text-muted-foreground">Add another date to this series</Label>
+                  <div className="flex items-center gap-1.5">
+                    <Input type="date" value={addDateValue} onChange={e => setAddDateValue(e.target.value)} className="h-8" />
+                    <Input type="time" value={addTimeValue} onChange={e => setAddTimeValue(e.target.value)} className="h-8" />
+                    <Button type="button" size="sm" variant="outline" className="h-8 shrink-0"
+                      aria-label="Add this date to the series"
+                      disabled={!addDateValue || addingDate} onClick={handleAddDateToSeries}>
+                      {addingDate ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Copies this series&apos; current content, companies, and channel.
+                  </p>
+                </div>
+              )}
+
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="outline" size="icon" className="shrink-0 text-destructive hover:text-destructive"
-                  onClick={handleDeleteFromEdit} aria-label="Delete this event only">
+                  onClick={handleDeleteFromEdit}
+                  aria-label={editItem.recurrence_group_id && editScope === 'series' ? 'Delete series' : 'Delete this event only'}
+                  title={editItem.recurrence_group_id && editScope === 'series' ? 'Delete series' : 'Delete this event only'}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setEditItem(null)}>

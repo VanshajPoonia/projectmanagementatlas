@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildCustomWeekdayDateKeys,
   buildRecurringDateKeys,
   buildRecurringSeriesScheduleUpdates,
   centeredScrollLeft,
@@ -175,6 +176,48 @@ describe('recurring marketing event creation', () => {
       '2020-01-01',
       'daily',
       '2030-01-01',
+    )
+    expect(dates).toHaveLength(MAX_SCHEDULED_MARKETING_POSTS + 1)
+  })
+})
+
+describe('custom weekday marketing schedule', () => {
+  it('keeps only the selected weekdays, in order, across a multi-week range', () => {
+    expect(buildCustomWeekdayDateKeys(
+      '2026-07-28', // Tue
+      '2026-08-11', // Tue
+      [2, 4], // Tue, Thu
+    )).toEqual([
+      '2026-07-28',
+      '2026-07-30',
+      '2026-08-04',
+      '2026-08-06',
+      '2026-08-11',
+    ])
+  })
+
+  it('returns no dates when no weekday is selected, unlike an empty restriction range', () => {
+    expect(buildCustomWeekdayDateKeys('2026-07-28', '2026-08-11', [])).toEqual([])
+  })
+
+  it('returns no dates for a reversed range', () => {
+    expect(buildCustomWeekdayDateKeys('2026-08-11', '2026-07-28', [2])).toEqual([])
+  })
+
+  it('returns no dates for a malformed date key', () => {
+    expect(buildCustomWeekdayDateKeys('2026-02-30', '2026-03-10', [1])).toEqual([])
+  })
+
+  it('includes a single-day range only when its weekday is selected', () => {
+    expect(buildCustomWeekdayDateKeys('2026-07-28', '2026-07-28', [2])).toEqual(['2026-07-28'])
+    expect(buildCustomWeekdayDateKeys('2026-07-28', '2026-07-28', [3])).toEqual([])
+  })
+
+  it('returns one extra date so oversized custom schedules can be rejected explicitly', () => {
+    const dates = buildCustomWeekdayDateKeys(
+      '2020-01-01',
+      '2030-01-01',
+      [0, 1, 2, 3, 4, 5, 6],
     )
     expect(dates).toHaveLength(MAX_SCHEDULED_MARKETING_POSTS + 1)
   })

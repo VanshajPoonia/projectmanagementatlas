@@ -38,10 +38,10 @@ function check(label, condition) {
 }
 
 const originalRows = [
-  { date: '2026-08-05', day_label: 'WED', channel: 'RLS social', position: 0 },
-  { date: '2026-08-05', day_label: 'WED', channel: 'RLS email', position: 0 },
-  { date: '2026-08-12', day_label: 'WED', channel: 'RLS social', position: 1 },
-  { date: '2026-08-12', day_label: 'WED', channel: 'RLS email', position: 1 },
+  { date: '2026-08-05', day_label: 'WED', channel: 'RLS social', position: 0, time: '09:00' },
+  { date: '2026-08-05', day_label: 'WED', channel: 'RLS email', position: 0, time: '09:00' },
+  { date: '2026-08-12', day_label: 'WED', channel: 'RLS social', position: 1, time: '09:00' },
+  { date: '2026-08-12', day_label: 'WED', channel: 'RLS email', position: 1, time: '09:00' },
 ]
 
 try {
@@ -122,7 +122,7 @@ try {
 
   const { data: afterRollback } = await user
     .from('marketing_calendar_items')
-    .select('date,day_label,content,is_highlighted')
+    .select('date,day_label,content,is_highlighted,time')
     .eq('recurrence_group_id', recurrenceGroupId)
     .order('date')
   check(
@@ -133,7 +133,15 @@ try {
         && row.content === 'Original recurrence'
         && row.is_highlighted === false),
   )
+  check(
+    'time round-trips through a direct insert, and a rollback leaves it untouched',
+    afterRollback?.every(row => row.time === '09:00:00'),
+  )
 
+  // p_time is a new, DEFAULT NULL parameter (084) — omitted above on purpose,
+  // to prove the pre-existing call shape (no p_time key) still works. This
+  // second call exercises it explicitly, applied series-wide like
+  // p_content/p_is_highlighted already are.
   const { data: updatedCount, error: updateError } = await user.rpc(
     'update_marketing_calendar_series_atomic',
     {
@@ -142,13 +150,14 @@ try {
       p_content: 'Shifted recurrence',
       p_is_highlighted: true,
       p_company_ids: companies.map(company => company.id),
+      p_time: '14:30',
     },
   )
   check('valid series update changes all four rows together', !updateError && updatedCount === 4)
 
   const { data: afterSuccess } = await user
     .from('marketing_calendar_items')
-    .select('date,day_label,content,is_highlighted')
+    .select('date,day_label,content,is_highlighted,time')
     .eq('recurrence_group_id', recurrenceGroupId)
     .order('date')
   check(
@@ -158,6 +167,10 @@ try {
         row.day_label === 'THU'
         && row.content === 'Shifted recurrence'
         && row.is_highlighted === true),
+  )
+  check(
+    'p_time applies series-wide through the RPC, like content/is_highlighted',
+    afterSuccess?.every(row => row.time === '14:30:00'),
   )
 
   const { count: companyLinkCount, error: linkCountError } = await user

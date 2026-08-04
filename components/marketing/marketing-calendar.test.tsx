@@ -35,7 +35,7 @@ function toDateKey(date: Date) {
 
 function makeQuery(result: { data: unknown; error: unknown }) {
   const query: Record<string, any> = {}
-  for (const method of ['select', 'eq', 'order']) {
+  for (const method of ['select', 'eq', 'order', 'delete']) {
     query[method] = vi.fn(() => query)
   }
   query.then = (
@@ -320,8 +320,10 @@ describe('MarketingCalendar controls', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Social' }))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Weekly' }))
 
+    // A 3rd date input now exists — the "add a specific date" field in the
+    // skip/add schedule editor, which renders whenever a repeat is active.
     const dateInputs = dialog.querySelectorAll<HTMLInputElement>('input[type="date"]')
-    expect(dateInputs).toHaveLength(2)
+    expect(dateInputs).toHaveLength(3)
     fireEvent.change(dateInputs[1], { target: { value: '2026-12-31' } })
 
     expect(within(dialog).getByText(
@@ -331,6 +333,84 @@ describe('MarketingCalendar controls', () => {
       /The end date is a cutoff\. The last matching weekly date is Fri, Dec 25\./,
     )).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Create series' })).toBeInTheDocument()
+  })
+
+  it('lets a Custom pattern generate dates from selected weekdays', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+
+    await screen.findByText("Kayla's Posting Board")
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }))
+
+    const dialog = await screen.findByRole('dialog')
+    const firstDateInput = dialog.querySelector<HTMLInputElement>('input[type="date"]')
+    fireEvent.change(firstDateInput!, { target: { value: '2026-07-28' } }) // Tue
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Social' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Custom' }))
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tue' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Thu' }))
+
+    const dateInputs = dialog.querySelectorAll<HTMLInputElement>('input[type="date"]')
+    fireEvent.change(dateInputs[1], { target: { value: '2026-08-11' } }) // repeat-until (Tue)
+
+    expect(within(dialog).getByText(
+      /5 recurring dates × 1 channel = 5 scheduled posts/,
+    )).toBeInTheDocument()
+  })
+
+  it('lets a generated date be skipped before creating', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+
+    await screen.findByText("Kayla's Posting Board")
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }))
+
+    const dialog = await screen.findByRole('dialog')
+    const firstDateInput = dialog.querySelector<HTMLInputElement>('input[type="date"]')
+    fireEvent.change(firstDateInput!, { target: { value: '2026-07-31' } }) // Fri
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Social' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weekly' }))
+
+    const dateInputs = dialog.querySelectorAll<HTMLInputElement>('input[type="date"]')
+    fireEvent.change(dateInputs[1], { target: { value: '2026-08-14' } })
+
+    expect(within(dialog).getByText(
+      /3 recurring dates × 1 channel = 3 scheduled posts/,
+    )).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Skip 2026-07-31' }))
+
+    expect(within(dialog).getByText(
+      /2 recurring dates × 1 channel = 2 scheduled posts/,
+    )).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Include 2026-07-31' }))
+
+    expect(within(dialog).getByText(
+      /3 recurring dates × 1 channel = 3 scheduled posts/,
+    )).toBeInTheDocument()
+  })
+
+  it('lets a specific extra date be added to a schedule', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+
+    await screen.findByText("Kayla's Posting Board")
+    fireEvent.click(screen.getByRole('button', { name: 'New event' }))
+
+    const dialog = await screen.findByRole('dialog')
+    const firstDateInput = dialog.querySelector<HTMLInputElement>('input[type="date"]')
+    fireEvent.change(firstDateInput!, { target: { value: '2026-07-31' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Social' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weekly' }))
+
+    const dateInputs = dialog.querySelectorAll<HTMLInputElement>('input[type="date"]')
+    fireEvent.change(dateInputs[1], { target: { value: '2026-08-14' } }) // repeat-until
+    fireEvent.change(dateInputs[2], { target: { value: '2026-09-01' } }) // add-a-date field
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add date' }))
+
+    expect(within(dialog).getByText(
+      /4 recurring dates × 1 channel = 4 scheduled posts/,
+    )).toBeInTheDocument()
+    expect(within(dialog).getByText(/added/)).toBeInTheDocument()
   })
 
   it('opens a separate file attachment space for an event', async () => {
@@ -366,5 +446,53 @@ describe('MarketingCalendar controls', () => {
     fireEvent.click(thisEvent)
     expect(thisEvent).toHaveAttribute('aria-pressed', 'true')
     expect(within(dialog).getByRole('button', { name: 'Save event' })).toBeInTheDocument()
+  })
+
+  it('deletes every occurrence when "Entire series" is selected and confirmed', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+
+    await screen.findByText("Kayla's Posting Board")
+    const recurringEvent = screen.getAllByText('SRG post')[0].closest('[role="button"]')
+    fireEvent.click(recurringEvent!)
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: /Entire series/i })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete series' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    const seriesDeleteQuery = fromMock.mock.results
+      .filter((_result, i) => fromMock.mock.calls[i][0] === 'marketing_calendar_items')
+      .map(result => result.value)
+      .find(query => query.delete.mock.calls.length > 0)
+
+    expect(seriesDeleteQuery).toBeDefined()
+    expect(seriesDeleteQuery.eq).toHaveBeenCalledWith('recurrence_group_id', 'series-1')
+    expect(screen.queryByText('SRG post')).not.toBeInTheDocument()
+  })
+
+  it('deletes only the one occurrence when "This event" is selected on a recurring event', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+
+    await screen.findByText("Kayla's Posting Board")
+    const recurringEvent = screen.getAllByText('SRG post')[0].closest('[role="button"]')
+    fireEvent.click(recurringEvent!)
+
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /^This event/i }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete this event only' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    const singleDeleteQuery = fromMock.mock.results
+      .filter((_result, i) => fromMock.mock.calls[i][0] === 'marketing_calendar_items')
+      .map(result => result.value)
+      .find(query => query.delete.mock.calls.length > 0)
+
+    expect(singleDeleteQuery).toBeDefined()
+    expect(singleDeleteQuery.eq).toHaveBeenCalledWith('id', 'srg-post')
+    expect(screen.queryByText('SRG post')).not.toBeInTheDocument()
   })
 })

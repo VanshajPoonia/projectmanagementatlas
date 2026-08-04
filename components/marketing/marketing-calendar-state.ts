@@ -28,6 +28,7 @@ export type MarketingRecurrencePattern =
   | 'biweekly'
   | 'monthly'
   | 'quarterly'
+  | 'custom'
 
 export const MAX_SCHEDULED_MARKETING_POSTS = 1000
 
@@ -91,7 +92,7 @@ function addUtcMonthsClamped(anchor: Date, months: number) {
  */
 export function buildRecurringDateKeys(
   startDateKey: string,
-  pattern: MarketingRecurrencePattern,
+  pattern: Exclude<MarketingRecurrencePattern, 'custom'>,
   endDateKey: string,
   maxDates = MAX_SCHEDULED_MARKETING_POSTS + 1,
 ) {
@@ -112,6 +113,38 @@ export function buildRecurringDateKeys(
     if (date > end) break
     dates.push(utcDateKey(date))
   }
+  return dates
+}
+
+/**
+ * Builds date keys for the "Custom" pattern: every date in range whose UTC
+ * weekday is in `weekdays`. Unlike the appointment restriction engine (where
+ * an empty weekday set means "every day, once"), an empty set here returns no
+ * dates rather than defaulting to daily — "Custom" with nothing checked would
+ * otherwise be indistinguishable from the adjacent Daily button, and silently
+ * over-posting on a forgotten checkbox is worse than the button staying
+ * disabled. Requiring at least one weekday also bounds the day-by-day walk to
+ * a small, deterministic iteration count regardless of how wide the range is.
+ */
+export function buildCustomWeekdayDateKeys(
+  startDateKey: string,
+  endDateKey: string,
+  weekdays: number[],
+  maxDates = MAX_SCHEDULED_MARKETING_POSTS + 1,
+) {
+  const start = dateKeyAsUtc(startDateKey)
+  const end = dateKeyAsUtc(endDateKey)
+  if (!start || !end || start > end || weekdays.length === 0 || maxDates <= 0) return []
+
+  const weekdaySet = new Set(weekdays)
+  const dates: string[] = []
+  let cursor = start
+
+  while (cursor <= end && dates.length < maxDates) {
+    if (weekdaySet.has(cursor.getUTCDay())) dates.push(utcDateKey(cursor))
+    cursor = addUtcDays(cursor, 1)
+  }
+
   return dates
 }
 
