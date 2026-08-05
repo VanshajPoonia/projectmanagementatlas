@@ -886,6 +886,18 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground">Every (interval)</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="30"
+                    value={recurrenceInterval}
+                    onChange={(e) => setRecurrenceInterval(parseInt(e.target.value) || 1)}
+                    className="h-9"
+                    disabled={!canEdit}
+                  />
+                </div>
               </div>
             )}
           </div>
