@@ -336,6 +336,10 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
         const recurrenceLabel = `every ${recurrenceInterval} ${recurrencePattern === 'daily' ? 'day(s)' : recurrencePattern === 'weekly' ? 'week(s)' : 'month(s)'}`
         changes.push(isRecurring ? `Set to recur ${recurrenceLabel}` : 'Recurrence turned off')
         activityMessages.push(isRecurring ? `made this task recurring (${recurrenceLabel})` : 'turned off recurrence')
+      } else if (isRecurring && (task?.recurrence_pattern !== recurrencePattern || task?.recurrence_interval !== recurrenceInterval)) {
+        const recurrenceLabel = `every ${recurrenceInterval} ${recurrencePattern === 'daily' ? 'day(s)' : recurrencePattern === 'weekly' ? 'week(s)' : 'month(s)'}`
+        changes.push(`Recurrence changed to ${recurrenceLabel}`)
+        activityMessages.push(`changed the recurrence to ${recurrenceLabel}`)
       }
 
       if (actorId) {
