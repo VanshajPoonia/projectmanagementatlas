@@ -27,6 +27,28 @@ import { findExactColumnForStatus } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
 import SubtaskList from './subtask-list'
 
+// Mirrors the marketing calendar's custom-recurrence weekday row (and the booking
+// restriction dialog it was itself borrowed from) — 0=Sunday..6=Saturday.
+const RECURRENCE_WEEKDAYS = [
+  { value: 0, label: 'Sun' },
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+  { value: 6, label: 'Sat' },
+]
+
+function describeRecurrence(pattern: 'daily' | 'weekly' | 'monthly' | 'custom', interval: number, weekdays: number[]) {
+  if (pattern === 'custom') {
+    if (weekdays.length === 0) return 'no days selected yet'
+    const sorted = [...weekdays].sort((a, b) => a - b)
+    return `on ${sorted.map(d => RECURRENCE_WEEKDAYS[d].label).join(', ')}`
+  }
+  const unit = pattern === 'daily' ? 'day(s)' : pattern === 'weekly' ? 'week(s)' : 'month(s)'
+  return `every ${interval} ${unit}`
+}
+
 interface TaskDetailModalProps {
   board?: any
   taskId: string
@@ -63,8 +85,9 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const [visibility, setVisibility] = useState<'assigned' | 'board'>('assigned')
   const [dueDate, setDueDate] = useState<Date>()
   const [isRecurring, setIsRecurring] = useState(false)
-  const [recurrencePattern, setRecurrencePattern] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+  const [recurrencePattern, setRecurrencePattern] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily')
   const [recurrenceInterval, setRecurrenceInterval] = useState(1)
+  const [recurrenceWeekdays, setRecurrenceWeekdays] = useState<number[]>([])
   const [assignees, setAssignees] = useState<string[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#3b82f6')
@@ -207,6 +230,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       setIsRecurring(Boolean(taskData.is_recurring))
       setRecurrencePattern(taskData.recurrence_pattern || 'daily')
       setRecurrenceInterval(taskData.recurrence_interval || 1)
+      setRecurrenceWeekdays(taskData.recurrence_weekdays || [])
       setTags(taskData.task_tags?.map((tt: any) => tt.tag) || [])
     }
   }
@@ -229,6 +253,10 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
   const handleUpdate = async () => {
     if (!title.trim()) return
+    if (isRecurring && recurrencePattern === 'custom' && recurrenceWeekdays.length === 0) {
+      toast.error('Select at least one day for a custom recurrence')
+      return
+    }
 
     setLoading(true)
 
@@ -270,7 +298,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       visibility,
       is_recurring: isRecurring,
       recurrence_pattern: isRecurring ? recurrencePattern : null,
-      recurrence_interval: isRecurring ? recurrenceInterval : null,
+      recurrence_interval: isRecurring && recurrencePattern !== 'custom' ? recurrenceInterval : null,
+      recurrence_weekdays: isRecurring && recurrencePattern === 'custom' ? recurrenceWeekdays : null,
       // task_assignees is the source of truth; keep assigned_to as a mirror of the first assignee
       assigned_to: assignees[0] || null,
     }
@@ -332,12 +361,13 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
         changes.push('Due date updated')
         activityMessages.push(dueDate ? `set the due date to ${format(dueDate, 'PP')}` : 'removed the due date')
       }
+      const weekdaysChanged = [...(task?.recurrence_weekdays || [])].sort().join(',') !== [...recurrenceWeekdays].sort().join(',')
       if (Boolean(task?.is_recurring) !== isRecurring) {
-        const recurrenceLabel = `every ${recurrenceInterval} ${recurrencePattern === 'daily' ? 'day(s)' : recurrencePattern === 'weekly' ? 'week(s)' : 'month(s)'}`
+        const recurrenceLabel = describeRecurrence(recurrencePattern, recurrenceInterval, recurrenceWeekdays)
         changes.push(isRecurring ? `Set to recur ${recurrenceLabel}` : 'Recurrence turned off')
         activityMessages.push(isRecurring ? `made this task recurring (${recurrenceLabel})` : 'turned off recurrence')
-      } else if (isRecurring && (task?.recurrence_pattern !== recurrencePattern || task?.recurrence_interval !== recurrenceInterval)) {
-        const recurrenceLabel = `every ${recurrenceInterval} ${recurrencePattern === 'daily' ? 'day(s)' : recurrencePattern === 'weekly' ? 'week(s)' : 'month(s)'}`
+      } else if (isRecurring && (task?.recurrence_pattern !== recurrencePattern || task?.recurrence_interval !== recurrenceInterval || weekdaysChanged)) {
+        const recurrenceLabel = describeRecurrence(recurrencePattern, recurrenceInterval, recurrenceWeekdays)
         changes.push(`Recurrence changed to ${recurrenceLabel}`)
         activityMessages.push(`changed the recurrence to ${recurrenceLabel}`)
       }
@@ -883,26 +913,49 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                       <SelectItem value="daily">Daily</SelectItem>
                       <SelectItem value="weekly">Weekly</SelectItem>
                       <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="custom">Custom (specific days)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Every (interval)</label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="30"
-                    value={recurrenceInterval}
-                    onChange={(e) => setRecurrenceInterval(parseInt(e.target.value) || 1)}
-                    className="h-9"
-                    disabled={!canEdit}
-                  />
+                {recurrencePattern !== 'custom' && (
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">Every (interval)</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="30"
+                      value={recurrenceInterval}
+                      onChange={(e) => setRecurrenceInterval(parseInt(e.target.value) || 1)}
+                      className="h-9"
+                      disabled={!canEdit}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {isRecurring && recurrencePattern === 'custom' && (
+              <div className="space-y-2 pt-1">
+                <label className="text-xs text-muted-foreground">Repeat on</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {RECURRENCE_WEEKDAYS.map(day => {
+                    const active = recurrenceWeekdays.includes(day.value)
+                    return (
+                      <button key={day.value} type="button" aria-pressed={active} disabled={!canEdit}
+                        onClick={() => setRecurrenceWeekdays(prev =>
+                          prev.includes(day.value) ? prev.filter(d => d !== day.value) : [...prev, day.value])}
+                        className={`h-9 min-w-[3rem] rounded-md border px-2 text-sm font-medium transition-colors ${
+                          active ? 'border-foreground bg-foreground text-background' : 'border-input bg-background hover:bg-accent'
+                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        {day.label}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             )}
             {isRecurring && (
               <p className="text-xs text-muted-foreground">
-                This task will repeat every {recurrenceInterval} {recurrencePattern === 'daily' ? 'day(s)' : recurrencePattern === 'weekly' ? 'week(s)' : 'month(s)'}
+                This task will repeat {describeRecurrence(recurrencePattern, recurrenceInterval, recurrenceWeekdays)}
               </p>
             )}
           </div>
