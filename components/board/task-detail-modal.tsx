@@ -870,6 +870,24 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                 />
               </button>
             </div>
+
+            {isRecurring && (
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground">Pattern</label>
+                  <Select value={recurrencePattern} onValueChange={(val: any) => setRecurrencePattern(val)} disabled={!canEdit}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Assigned Users - Multiple Selection */}
