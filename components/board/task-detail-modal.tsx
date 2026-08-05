@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download, LinkIcon, ExternalLink, Plus, History } from 'lucide-react'
+import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download, LinkIcon, ExternalLink, Plus, History, Repeat } from 'lucide-react'
 import { format } from 'date-fns'
 import { sendTaskAssignmentEmail, sendCommentEmail, sendTaskUpdateEmail } from '@/lib/email'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -847,6 +847,16 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               </div>
             </div>
           )}
+
+          {/* Recurring */}
+          <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <Repeat className="w-4 h-4" />
+                Recurring Task
+              </label>
+            </div>
+          </div>
 
           {/* Assigned Users - Multiple Selection */}
           {canEdit && (
