@@ -268,6 +268,9 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       status: effectiveStatus,
       due_date: dueDate?.toISOString() || null,
       visibility,
+      is_recurring: isRecurring,
+      recurrence_pattern: isRecurring ? recurrencePattern : null,
+      recurrence_interval: isRecurring ? recurrenceInterval : null,
       // task_assignees is the source of truth; keep assigned_to as a mirror of the first assignee
       assigned_to: assignees[0] || null,
     }
