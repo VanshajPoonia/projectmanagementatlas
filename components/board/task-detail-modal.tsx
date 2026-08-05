@@ -332,6 +332,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
         changes.push('Due date updated')
         activityMessages.push(dueDate ? `set the due date to ${format(dueDate, 'PP')}` : 'removed the due date')
       }
+      if (Boolean(task?.is_recurring) !== isRecurring) {
+        const recurrenceLabel = `every ${recurrenceInterval} ${recurrencePattern === 'daily' ? 'day(s)' : recurrencePattern === 'weekly' ? 'week(s)' : 'month(s)'}`
+        changes.push(isRecurring ? `Set to recur ${recurrenceLabel}` : 'Recurrence turned off')
+        activityMessages.push(isRecurring ? `made this task recurring (${recurrenceLabel})` : 'turned off recurrence')
+      }
 
       if (actorId) {
         activityMessages.forEach((message) => logTaskActivity(supabase, taskId, actorId, message))
