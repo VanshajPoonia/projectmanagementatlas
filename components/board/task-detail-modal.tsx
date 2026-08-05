@@ -900,6 +900,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                 </div>
               </div>
             )}
+            {isRecurring && (
+              <p className="text-xs text-muted-foreground">
+                This task will repeat every {recurrenceInterval} {recurrencePattern === 'daily' ? 'day(s)' : recurrencePattern === 'weekly' ? 'week(s)' : 'month(s)'}
+              </p>
+            )}
           </div>
 
           {/* Assigned Users - Multiple Selection */}
