@@ -785,7 +785,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1800px] px-8 py-10 pb-24 md:px-12 md:pb-10">
+      <main className="w-full px-8 py-10 pb-24 md:px-12 md:pb-10">
         {viewMode === 'tile' ? (
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="-mx-8 overflow-x-auto px-8 pb-6 snap-x snap-mandatory md:-mx-12 md:snap-none md:px-12 scroll-pl-8">
