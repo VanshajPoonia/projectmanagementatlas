@@ -785,11 +785,11 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1800px] px-4 py-6 pb-24 md:pb-6">
+      <main className="mx-auto w-full max-w-[1800px] px-6 py-8 pb-24 md:px-8 md:pb-8">
         {viewMode === 'tile' ? (
           <DragDropContext onDragEnd={onDragEnd}>
-            <div className="-mx-4 overflow-x-auto px-4 pb-6 snap-x snap-mandatory md:snap-none scroll-pl-4">
-              <div className="flex items-start gap-4">
+            <div className="-mx-6 overflow-x-auto px-6 pb-6 snap-x snap-mandatory md:-mx-8 md:px-8 scroll-pl-6">
+              <div className="flex items-start gap-6">
                 {columns.map((column) => {
                   const visibleTasks = filterTasks(boardTasks(column))
                     .sort((a: any, b: any) => a.position - b.position)

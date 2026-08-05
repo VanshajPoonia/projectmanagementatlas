@@ -1808,7 +1808,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       <>
           {/* ── Week board ───────────────────────────────────────────── */}
           {viewMode === 'week' && (
-            <div ref={weekBoardScrollRef} data-marketing-week-scroll className="overflow-x-auto">
+            <div ref={weekBoardScrollRef} data-marketing-week-scroll className="max-h-[75vh] overflow-auto">
               <div className="grid min-w-[1080px] grid-cols-7 divide-x">
                 {weekDays.map(date => {
                   const dateKey    = toDateKey(date)
@@ -1825,7 +1825,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                       onDragLeave={() => setDragOverKey(cur => cur === dayKey ? null : cur)}
                       onDrop={handleDayDrop(dateKey)}>
 
-                      <div className={cn('flex items-baseline justify-between border-b px-3 py-2',
+                      <div className={cn('sticky top-0 z-10 flex items-baseline justify-between border-b px-3 py-2',
                         isToday ? 'bg-[#111] text-white' : 'bg-[#fbfbfb]')}>
                         <div className="flex items-baseline gap-1.5">
                           <span className="text-[11px] font-bold uppercase">
@@ -1997,16 +1997,16 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
           {/* ── Channel grid ─────────────────────────────────────────── */}
           {viewMode === 'grid' && (
-          <div className="overflow-x-auto">
+          <div className="max-h-[75vh] overflow-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-30 w-[142px] border-b border-r bg-[#111] px-3 py-2 text-left text-xs font-bold uppercase text-white">
+                  <th className="sticky left-0 top-0 z-40 w-[142px] border-b border-r bg-[#111] px-3 py-2 text-left text-xs font-bold uppercase text-white">
                     Date
                   </th>
                   {channels.map(ch => (
                     <th key={ch.channel}
-                      className="w-[150px] border-b border-r bg-[#151515] px-2 py-2 text-center text-xs font-semibold text-white">
+                      className="sticky top-0 z-30 w-[150px] border-b border-r bg-[#151515] px-2 py-2 text-center text-xs font-semibold text-white">
                       {ch.label}
                     </th>
                   ))}
