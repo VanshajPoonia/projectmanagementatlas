@@ -204,6 +204,9 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       setStatus(taskData.status)
       setVisibility(taskData.visibility || 'assigned')
       setDueDate(taskData.due_date ? new Date(taskData.due_date) : undefined)
+      setIsRecurring(Boolean(taskData.is_recurring))
+      setRecurrencePattern(taskData.recurrence_pattern || 'daily')
+      setRecurrenceInterval(taskData.recurrence_interval || 1)
       setTags(taskData.task_tags?.map((tt: any) => tt.tag) || [])
     }
   }
