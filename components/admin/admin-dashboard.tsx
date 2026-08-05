@@ -30,6 +30,7 @@ import { gsap } from 'gsap'
 import { cn } from '@/lib/utils'
 import { isTaskOwnedBy } from '@/lib/assignees'
 import { useAppModules, isModuleEnabled } from '@/lib/modules'
+import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
 
 interface AdminDashboardProps {
   user: any
@@ -73,6 +74,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   const modules = useAppModules()
   const showCalendar = isModuleEnabled(modules, 'calendar')
   const showMarketing = isModuleEnabled(modules, 'marketing_calendar')
+  const { calendars: marketingCalendars, refetch: refetchMarketingCalendars } = useMarketingCalendars()
   const showReports = isModuleEnabled(modules, 'reports')
   const showBoards = isModuleEnabled(modules, 'boards')
   const showChat = isModuleEnabled(modules, 'chat')
@@ -248,9 +250,17 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
               <CalendarView tasks={topLevelTasks} users={users} isAdmin />
             </TabsContent>
 
-            <TabsContent value="marketing">
-              <MarketingCalendar userId={user.id} userName={user.full_name || user.email} isAdmin />
-            </TabsContent>
+            {showMarketing && (
+              <TabsContent value="marketing">
+                <MarketingCalendar
+                  userId={user.id}
+                  userName={user.full_name || user.email}
+                  isAdmin
+                  calendars={marketingCalendars}
+                  refetchCalendars={refetchMarketingCalendars}
+                />
+              </TabsContent>
+            )}
 
             <TabsContent value="reports">
               <Tabs defaultValue="table" className="space-y-4">

@@ -29,6 +29,7 @@ const credentials = {
 const recurrenceGroupId = randomUUID()
 
 let userId
+let calendarId
 let itemIds = []
 let failures = 0
 
@@ -69,6 +70,21 @@ try {
     throw new Error(`load companies: ${companyError?.message ?? 'none available'}`)
   }
 
+  // Items now belong to a named calendar (migration 085) with its own explicit member list —
+  // the throwaway user must be seeded as a member before their own anon-key insert can pass RLS.
+  const { data: calendar, error: calendarError } = await admin
+    .from('marketing_calendars')
+    .insert({ name: `RLS check ${stamp}`, created_by: userId })
+    .select('id')
+    .single()
+  if (calendarError) throw new Error(`create calendar: ${calendarError.message}`)
+  calendarId = calendar.id
+
+  const { error: memberError } = await admin
+    .from('marketing_calendar_members')
+    .insert({ calendar_id: calendarId, user_id: userId })
+  if (memberError) throw new Error(`seed calendar membership: ${memberError.message}`)
+
   const user = createClient(url, anon, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
@@ -78,6 +94,7 @@ try {
   const { data: inserted, error: insertError } = await user
     .from('marketing_calendar_items')
     .insert(originalRows.map(row => ({
+      calendar_id: calendarId,
       ...row,
       assigned_to: userId,
       content: 'Original recurrence',
@@ -195,6 +212,11 @@ try {
 } finally {
   if (itemIds.length) {
     try { await admin.from('marketing_calendar_items').delete().in('id', itemIds) } catch {}
+  }
+  // calendar_id is ON DELETE RESTRICT — the calendar can only be removed once no item
+  // references it anymore, i.e. after the item delete above.
+  if (calendarId) {
+    try { await admin.from('marketing_calendars').delete().eq('id', calendarId) } catch {}
   }
   if (userId) await admin.auth.admin.deleteUser(userId).catch(() => {})
   console.log('cleaned up test fixtures.')

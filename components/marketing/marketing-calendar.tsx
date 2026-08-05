@@ -20,6 +20,7 @@ import {
   Plus,
   RefreshCw,
   Repeat,
+  Settings,
   Sparkles,
   Table2,
   Trash2,
@@ -58,6 +59,8 @@ import {
   reconcileCompanySelection,
   toggleCompanySelection,
 } from './marketing-calendar-state'
+import MarketingCalendarManagement from '../admin/marketing-calendar-management'
+import type { MarketingCalendarSummary } from '@/lib/use-marketing-calendars'
 
 // A day's item can be posted, explicitly/automatically missed, or still pending.
 // "missed" is either stored (with an optional reason) or inferred for any past item
@@ -114,15 +117,13 @@ interface MarketingCalendarProps {
   userId: string
   userName?: string
   isAdmin?: boolean
+  // Every calendar the caller can see (RLS: admins see all, everyone else sees only their
+  // memberships) — fetched once by the parent dashboard via useMarketingCalendars() so both the
+  // tab-gating check and this component's switcher share one query instead of two.
+  calendars: MarketingCalendarSummary[]
+  refetchCalendars: () => Promise<void>
 }
 
-interface MarketingProfile {
-  id: string
-  full_name: string | null
-  email: string | null
-}
-
-const KAYLA_EMAIL = 'kayla@goatlasgo.us'
 const LS_VIEW_KEY = 'marketing_calendar_view'
 // Attaching a file at creation time fans it out to every instance the submission
 // creates (recurrence x channels); cap it well below MAX_SCHEDULED_MARKETING_POSTS
@@ -462,21 +463,37 @@ function EventEntry({
 
 /* ─── component ──────────────────────────────────────────────────────── */
 
-export default function MarketingCalendar({ userId, userName, isAdmin = false }: MarketingCalendarProps) {
+export default function MarketingCalendar({ userId, userName, isAdmin = false, calendars, refetchCalendars }: MarketingCalendarProps) {
   const supabase = createClient()
   const [items,         setItems]         = useState<MarketingCalendarItem[]>([])
   // Every stored completion row (posted or missed), keyed by item id. Absence of a
   // row means pending — or, for a past item, auto-"missed" (computed in stateOf).
   const [statusByItem,  setStatusByItem]  = useState<Map<string, MarketingCalendarCheck>>(new Map())
-  const [checkUserId,   setCheckUserId]   = useState(userId)
-  const [checkUserName, setCheckUserName] = useState(userName)
-  const [kaylaId,       setKaylaId]       = useState<string | null>(null)
   const [calendarDate,  setCalendarDate]  = useState(() => new Date())
   const [loading,       setLoading]       = useState(true)
   const [busyItemId,    setBusyItemId]    = useState<string | null>(null)
   const [error,         setError]         = useState<string | null>(null)
   const weekBoardScrollRef = useRef<HTMLDivElement>(null)
   const [todayNavigationRequest, setTodayNavigationRequest] = useState(0)
+
+  // Which calendar instance is currently loaded (migration 085 — calendars are now admin-created,
+  // named, multi-instance, each with its own member list, instead of one calendar hardcoded to a
+  // single owner). Archived calendars are excluded from selection but not from the raw `calendars`
+  // prop, so the management dialog can still list/restore them.
+  const activeCalendars = useMemo(() => calendars.filter(c => !c.is_archived), [calendars])
+  const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null)
+  const [manageOpen, setManageOpen] = useState(false)
+
+  // Keep the selection valid as the calendar list changes (initial load, or after an admin
+  // creates/archives one) — falls back to the first available calendar, or null if none exist.
+  useEffect(() => {
+    setSelectedCalendarId(current => {
+      if (current && activeCalendars.some(c => c.id === current)) return current
+      return activeCalendars[0]?.id ?? null
+    })
+  }, [activeCalendars])
+
+  const selectedCalendar = activeCalendars.find(c => c.id === selectedCalendarId) ?? null
 
   // Companies (business units) — dynamic, managed from the Super Admin page.
   const [companies,        setCompanies]        = useState<Company[]>([])
@@ -628,28 +645,15 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     setNewAddedDates(prev => prev.filter(d => d !== date))
 
   const loadCalendar = useCallback(async () => {
+    if (!selectedCalendarId) {
+      setItems([])
+      setStatusByItem(new Map())
+      setLoading(false)
+      setError(null)
+      return
+    }
     setLoading(true)
     setError(null)
-    let targetUserId = userId
-    let targetUserName = userName
-
-    if (isAdmin) {
-      const { data: kaylaProfile, error: profileError } = await supabase
-        .from('profiles').select('id,full_name,email').ilike('email', KAYLA_EMAIL).maybeSingle()
-      if (profileError || !kaylaProfile) {
-        setItems([]); setStatusByItem(new Map()); setLoading(false)
-        setError('Kayla profile is not ready yet.'); return
-      }
-      const p = kaylaProfile as MarketingProfile
-      targetUserId   = p.id
-      targetUserName = p.full_name || p.email || userName
-      setKaylaId(p.id)
-    } else {
-      setKaylaId(userId)
-    }
-
-    setCheckUserId(targetUserId)
-    setCheckUserName(targetUserName)
 
     const [
       { data: itemRows, error: itemsError },
@@ -658,11 +662,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     ] = await Promise.all([
       supabase.from('marketing_calendar_items')
         .select('id,date,time,day_label,channel,content,is_highlighted,position,source_sheet,recurrence_group_id,marketing_calendar_item_companies(company:companies(id,code,name,color))')
-        .eq('assigned_to', targetUserId)
+        .eq('calendar_id', selectedCalendarId)
         .order('date', { ascending: true })
         .order('position', { ascending: true }),
       supabase.from('marketing_calendar_checks')
-        .select('id,item_id,checked_at,status,note').eq('user_id', targetUserId),
+        .select('id,item_id,checked_at,status,note').eq('user_id', userId),
       // Attachment metadata is optional. Loading it separately prevents a
       // missing migration or stale PostgREST relationship cache from failing
       // the core item query and making a populated calendar appear empty.
@@ -718,7 +722,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       c.item_id,
       { ...c, status: (c.status ?? 'posted') as CheckStatus, note: c.note ?? null } as MarketingCalendarCheck,
     ])))
-  }, [isAdmin, supabase, userId, userName])
+  }, [selectedCalendarId, supabase, userId])
 
   useEffect(() => { loadCalendar() }, [loadCalendar])
 
@@ -894,12 +898,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     if (next === 'clear') {
       setStatusByItem(cur => { const n = new Map(cur); n.delete(item.id); return n })
       const { error: e } = await supabase.from('marketing_calendar_checks')
-        .delete().eq('item_id', item.id).eq('user_id', checkUserId)
+        .delete().eq('item_id', item.id).eq('user_id', userId)
       if (e) { setStatusByItem(previous); setError('Could not update this item.') }
     } else {
       setStatusByItem(cur => new Map(cur).set(item.id, { id: `opt-${item.id}`, item_id: item.id, checked_at: new Date().toISOString(), status: next, note }))
       const { data, error: e } = await supabase.from('marketing_calendar_checks')
-        .upsert({ item_id: item.id, user_id: checkUserId, status: next, note }, { onConflict: 'item_id,user_id' })
+        .upsert({ item_id: item.id, user_id: userId, status: next, note }, { onConflict: 'item_id,user_id' })
         .select('id,item_id,checked_at,status,note').single()
       if (e || !data) { setStatusByItem(previous); setError('Could not update this item.') }
       else setStatusByItem(cur => new Map(cur).set(item.id, data as MarketingCalendarCheck))
@@ -1158,7 +1162,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newContent.trim() || !kaylaId || newChannels.length === 0 || newCompanyIds.length === 0) return
+    if (!newContent.trim() || !selectedCalendarId || newChannels.length === 0 || newCompanyIds.length === 0) return
     if (newScheduleInvalid) {
       toast.error(newScheduleInvalidReason ?? 'Choose a repeat-until date on or after the first date')
       return
@@ -1177,7 +1181,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
 
     const rows = finalScheduleDates.flatMap((date, i) =>
       newChannels.map(channel => ({
-        assigned_to:    kaylaId,
+        calendar_id:    selectedCalendarId,
+        assigned_to:    userId,
         date,
         time:           newTime || null,
         day_label:      dayLabelForDateKey(date),
@@ -1463,13 +1468,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
   // differ whenever the user has typed unsaved changes but hasn't clicked
   // Save yet, and this action fires independently of that button.
   const handleAddDateToSeries = async () => {
-    if (!editItem?.recurrence_group_id || !addDateValue || !kaylaId) return
+    if (!editItem?.recurrence_group_id || !addDateValue || !selectedCalendarId) return
     setAddingDate(true)
 
     const { data: inserted, error: insertErr } = await supabase
       .from('marketing_calendar_items')
       .insert({
-        assigned_to:    kaylaId,
+        calendar_id:    selectedCalendarId,
+        assigned_to:    userId,
         date:           addDateValue,
         time:           addTimeValue || null,
         day_label:      dayLabelForDateKey(addDateValue),
@@ -1623,6 +1629,47 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
     )
   }
 
+  /* ── no calendars available ────────────────────────────────────── */
+  if (activeCalendars.length === 0) {
+    return (
+      <section className="force-light-theme overflow-hidden rounded-lg border bg-background shadow-sm">
+        <div className="bg-[#070707] px-4 py-4 text-white sm:px-6">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-normal text-[#fff842]">
+            <CalendarDays className="h-4 w-4" />
+            2026 Calendar
+          </div>
+          <h2 className="mt-1 text-2xl font-bold tracking-normal sm:text-3xl">Marketing Calendar</h2>
+        </div>
+        <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+          <CalendarDays className="h-10 w-10 text-muted-foreground" />
+          <div>
+            <h3 className="text-lg font-semibold">
+              {isAdmin ? 'No marketing calendars yet' : 'No marketing calendar access yet'}
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {isAdmin
+                ? 'Create a calendar to start scheduling content.'
+                : 'Ask an admin to add you to a marketing calendar.'}
+            </p>
+          </div>
+          {isAdmin && (
+            <Button type="button" className="gap-1.5" onClick={() => setManageOpen(true)}>
+              <Plus className="h-4 w-4" /> Create calendar
+            </Button>
+          )}
+        </div>
+        {isAdmin && (
+          <MarketingCalendarManagement
+            open={manageOpen}
+            onOpenChange={setManageOpen}
+            calendars={calendars}
+            onChange={refetchCalendars}
+          />
+        )}
+      </section>
+    )
+  }
+
   return (
     <section className="force-light-theme overflow-hidden rounded-lg border bg-background shadow-sm">
 
@@ -1635,7 +1682,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
               2026 Calendar
             </div>
             <h2 className="mt-1 break-words text-2xl font-bold tracking-normal sm:text-3xl">
-              {checkUserName ? `${checkUserName.split(' ')[0]}'s Posting Board` : 'Posting Board'}
+              {selectedCalendar ? selectedCalendar.name : 'Posting Board'}
             </h2>
           </div>
 
@@ -1660,6 +1707,18 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
       <div className="border-b bg-[#fbfbfb] px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
+            {activeCalendars.length > 1 && (
+              <select
+                value={selectedCalendarId ?? ''}
+                onChange={e => setSelectedCalendarId(e.target.value)}
+                aria-label="Select calendar"
+                className="h-9 rounded-md border bg-background px-2.5 text-sm font-semibold"
+              >
+                {activeCalendars.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
             <Button type="button" variant="outline" size="icon" onClick={() => moveCalendar(-1)}
               aria-label={viewMode === 'month' ? 'Previous month' : 'Previous week'}>
               <ChevronLeft className="h-4 w-4" />
@@ -1715,6 +1774,13 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
             <Button variant="outline" size="icon" onClick={() => { loadCalendar(); loadChannels(); loadCompanies() }} aria-label="Refresh calendar">
               <RefreshCw className="h-4 w-4" />
             </Button>
+
+            {isAdmin && (
+              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setManageOpen(true)}>
+                <Settings className="h-4 w-4" />
+                Manage Calendars
+              </Button>
+            )}
 
             {/* New event */}
             <Button size="sm" onClick={() => openCreateDialog()} className="gap-1.5">
@@ -2710,6 +2776,15 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false }:
           )}
         </DialogContent>
       </Dialog>
+
+      {isAdmin && (
+        <MarketingCalendarManagement
+          open={manageOpen}
+          onOpenChange={setManageOpen}
+          calendars={calendars}
+          onChange={refetchCalendars}
+        />
+      )}
     </section>
   )
 }

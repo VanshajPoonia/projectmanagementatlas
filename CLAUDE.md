@@ -72,13 +72,35 @@ the FK first and keeps string matching only as a legacy fallback for un-backfill
 
 ### 3. Feature access is hardcoded to one person's email
 
-- `components/user/user-dashboard.tsx` — `isKaylaMarketingUser`, gates a whole module, also sets the accent colour
-- `components/marketing/marketing-calendar.tsx` — `KAYLA_EMAIL`, hard-fails with "Kayla profile is not ready yet."
-- `lib/display-text.ts` — strips strings specific to `Marketing Project Management.xlsx`
+**✅ DONE (schema + UI) for the marketing calendar — migration `085`, 2026-08-05.** The
+`isKaylaMarketingUser`/`KAYLA_EMAIL` access-control hardcoding is gone:
 
-This is a real problem independent of the tenancy question above: today only one specific person
-(`kayla@goatlasgo.us`) can ever use the marketing module, by construction. Fixing it means a real
-module-activation + role system (Phase 1 below), not a per-org one — there is only one org.
+- `components/user/user-dashboard.tsx` — `canUseMarketingCalendar` is now `isAdmin || <member of at
+  least one calendar>` (from `lib/use-marketing-calendars.ts`), not an email compare. The
+  accent-colour personalization (renamed `isKaylaAccentUser`) was deliberately left as its own
+  narrow, literal-email check — cosmetic, not access control, out of scope for this fix.
+- `components/marketing/marketing-calendar.tsx` — `KAYLA_EMAIL` and the owner-lookup/impersonation
+  state (`kaylaId`, `checkUserId`, `checkUserName`) are gone. Marketing calendars are now
+  admin-creatable, named, **multiple** instances, each with its own explicit member list
+  (`marketing_calendars` + `marketing_calendar_members`, mirroring `boards`/`board_members` — not
+  `teams`, which was 100% unconsumed anywhere in the repo and had the wrong RLS shape for
+  per-entity access). The component takes `calendars`/`refetchCalendars` as props (fetched once by
+  the parent dashboard, shared with the tab-gating check, not double-fetched) and renders a
+  calendar switcher plus an admin-only "Manage Calendars" entry point
+  (`components/admin/marketing-calendar-management.tsx`) for create/rename/archive and per-calendar
+  member management — a checkbox list of every profile, mirroring `board-management.tsx`'s embedded
+  picker (this app has no "invite a stranger" concept; every possible member already has a
+  `profiles` row). Every existing row was backfilled onto one calendar named "Marketing Calendar",
+  owned by and membered by Kayla — no behavior or data change for anyone on deploy. No role tiers
+  on membership (every member gets full CRUD, matching what Kayla alone had before) — mirrors
+  `teams`' own "don't build it speculatively" lesson. Verified: `pnpm check:marketing-calendars`
+  (new dedicated cross-calendar isolation harness, 14/14 against real RLS — including that removing
+  a membership row revokes access on the very next query) plus a 9/9 real-browser Playwright pass
+  (a zero-access member has no Marketing nav item at all; an admin can create a calendar and grant a
+  specific user access via the picker; that user then sees exactly that calendar and nothing else).
+- `lib/display-text.ts` — strips strings specific to `Marketing Project Management.xlsx`. **Still
+  not fixed** — this is cosmetic text cleanup on board/task descriptions, unrelated to access
+  control, and was out of scope for the `085` fix above.
 
 ## Plan
 

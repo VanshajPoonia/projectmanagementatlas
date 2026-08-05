@@ -65,7 +65,7 @@ export const AI_CHAT_TOOLS = [
   {
     name: 'get_marketing_calendar',
     description:
-      'Lists marketing content-calendar entries (posting date, channel, content, company). Returns nothing for users with no marketing calendar access.',
+      'Lists marketing content-calendar entries (posting date, channel, content, company, calendar name). There can be more than one named calendar — each item says which one it belongs to. Returns nothing for users with no marketing calendar access.',
     parameters: {
       type: 'object',
       properties: {
@@ -324,13 +324,16 @@ async function getMarketingCalendar(ctx: ToolContext, args: any) {
 
   const { data, error } = await supabase
     .from('marketing_calendar_items')
-    .select('date, day_label, channel, content, is_highlighted, marketing_calendar_item_companies(company:companies(code, name))')
+    .select('date, day_label, channel, content, is_highlighted, calendar:marketing_calendars(name), marketing_calendar_item_companies(company:companies(code, name))')
     .gte('date', dateAfter)
     .lte('date', dateBefore)
     .order('date', { ascending: true })
     .limit(limit * 3)
   if (error) return { error: error.message }
 
+  // Calendars are now admin-creatable, named, multiple instances (migration 085) rather than
+  // one implicit calendar — an admin's results can span more than one, so each item is labeled
+  // with its calendar's name rather than silently pooling them together.
   const companyFilter = typeof args?.company_code === 'string' ? args.company_code.toUpperCase() : null
   const items = (data ?? [])
     .map((row: any) => ({
@@ -339,6 +342,7 @@ async function getMarketingCalendar(ctx: ToolContext, args: any) {
       channel: row.channel,
       content: row.content,
       highlighted: row.is_highlighted,
+      calendar: row.calendar?.name ?? null,
       companies: (row.marketing_calendar_item_companies ?? []).map((r: any) => r.company?.code).filter(Boolean),
     }))
     .filter((item: any) => !companyFilter || item.companies.includes(companyFilter))

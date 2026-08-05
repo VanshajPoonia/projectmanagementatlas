@@ -29,6 +29,16 @@ const companies = [
   { id: 'agc', code: 'AGC', name: 'AGC', color: '#dc2626', position: 1, is_archived: false },
 ]
 
+// Calendars are now admin-creatable, named, multiple instances (migration 085) passed down as a
+// prop from the parent dashboard's useMarketingCalendars() hook, rather than a single implicit
+// calendar the component resolved itself. Named to match this suite's existing header assertions
+// ("Kayla's Posting Board") so the 13 pre-existing render() sites below only need this one new
+// prop, not a rewrite of every assertion.
+const defaultCalendars = [
+  { id: 'cal-1', name: "Kayla's Posting Board", color: '#3b82f6', is_archived: false },
+]
+const noopRefetchCalendars = async () => {}
+
 function toDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
@@ -157,7 +167,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('filters to the company named on the clicked button', async () => {
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
@@ -198,7 +208,7 @@ describe('MarketingCalendar controls', () => {
     }
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     expect(screen.queryAllByText('SRG post').length).toBeGreaterThan(0)
@@ -211,7 +221,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('returns to the current week and reveals todays column', async () => {
-    const { container } = render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    const { container } = render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     const weekScroll = container.querySelector<HTMLElement>('[data-marketing-week-scroll]')
@@ -258,7 +268,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('shows a navigable 42-day month view without imported wk placeholders', async () => {
-    const { container } = render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    const { container } = render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     expect(screen.queryByText(/^wk$/i)).not.toBeInTheDocument()
@@ -297,7 +307,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('keeps the create form inside a viewport-capped scrollable dialog', async () => {
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     fireEvent.click(screen.getByRole('button', { name: 'New event' }))
@@ -308,7 +318,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('previews exact recurrence dates separately from channel post count', async () => {
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     fireEvent.click(screen.getByRole('button', { name: 'New event' }))
@@ -336,7 +346,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('lets a Custom pattern generate dates from selected weekdays', async () => {
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     fireEvent.click(screen.getByRole('button', { name: 'New event' }))
@@ -359,7 +369,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('lets a generated date be skipped before creating', async () => {
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     fireEvent.click(screen.getByRole('button', { name: 'New event' }))
@@ -391,7 +401,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('lets a specific extra date be added to a schedule', async () => {
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     fireEvent.click(screen.getByRole('button', { name: 'New event' }))
@@ -414,7 +424,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('opens a separate file attachment space for an event', async () => {
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     fireEvent.click(screen.getAllByRole('button', { name: 'Attach a file' })[0])
@@ -430,7 +440,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('lets a recurring event target one occurrence or the entire series', async () => {
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     const recurringEvent = screen.getAllByText('SRG post')[0].closest('[role="button"]')
@@ -450,7 +460,7 @@ describe('MarketingCalendar controls', () => {
 
   it('deletes every occurrence when "Entire series" is selected and confirmed', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     const recurringEvent = screen.getAllByText('SRG post')[0].closest('[role="button"]')
@@ -474,7 +484,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   it('deletes only the one occurrence when "This event" is selected on a recurring event', async () => {
-    render(<MarketingCalendar userId="user-1" userName="Kayla" />)
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     await screen.findByText("Kayla's Posting Board")
     const recurringEvent = screen.getAllByText('SRG post')[0].closest('[role="button"]')
@@ -494,5 +504,39 @@ describe('MarketingCalendar controls', () => {
     expect(singleDeleteQuery).toBeDefined()
     expect(singleDeleteQuery.eq).toHaveBeenCalledWith('id', 'srg-post')
     expect(screen.queryByText('SRG post')).not.toBeInTheDocument()
+  })
+
+  it('hides the calendar switcher when only one calendar is available', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText("Kayla's Posting Board")
+    expect(screen.queryByLabelText('Select calendar')).not.toBeInTheDocument()
+  })
+
+  it('shows a calendar switcher listing every available calendar', async () => {
+    const twoCalendars = [
+      { id: 'cal-1', name: "Kayla's Posting Board", color: '#3b82f6', is_archived: false },
+      { id: 'cal-2', name: 'Q1 Campaigns', color: '#dc2626', is_archived: false },
+    ]
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={twoCalendars} refetchCalendars={noopRefetchCalendars} />)
+
+    const select = await screen.findByLabelText('Select calendar')
+    expect(within(select).getByText("Kayla's Posting Board")).toBeInTheDocument()
+    expect(within(select).getByText('Q1 Campaigns')).toBeInTheDocument()
+  })
+
+  it('tells a non-admin with no calendar access to ask an admin, with no create option', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" isAdmin={false} calendars={[]} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText('No marketing calendar access yet')
+    expect(screen.getByText(/Ask an admin to add you/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Create calendar' })).not.toBeInTheDocument()
+  })
+
+  it('offers a create-calendar option to an admin with no calendars yet', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" isAdmin calendars={[]} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText('No marketing calendars yet')
+    expect(screen.getByRole('button', { name: 'Create calendar' })).toBeInTheDocument()
   })
 })

@@ -18,6 +18,7 @@
     "check:task-lifecycle": "node --env-file=.env.local scripts/check-task-lifecycle.mjs",
     "check:marketing-attachments": "node --env-file=.env.local scripts/check-marketing-attachments.mjs",
     "check:marketing-recurrence": "node --env-file=.env.local scripts/check-marketing-recurrence.mjs",
+    "check:marketing-calendars": "node --env-file=.env.local scripts/check-marketing-calendar-access.mjs",
     "check:appointments": "node --env-file=.env.local scripts/check-appointments.mjs",
     "check:appointment-booking": "node --env-file=.env.local scripts/check-appointment-booking.mjs"
   },

@@ -33,6 +33,7 @@ import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 import { isTaskOwnedBy } from '@/lib/assignees'
 import { useAppModules, isModuleEnabled } from '@/lib/modules'
+import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
 
 interface UserDashboardProps {
   user: any
@@ -59,8 +60,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const searchParams = useSearchParams()
   const supabase = createClient()
   const isAdmin = user.role === 'admin' || user.role === 'super_admin'
-  const isKaylaMarketingUser = String(user.email ?? '').trim().toLowerCase() === 'kayla@goatlasgo.us'
-  const canUseMarketingCalendar = isKaylaMarketingUser || isAdmin
+  // Marketing calendars are now admin-creatable, named instances with their own member lists
+  // (migration 085) rather than one calendar hardcoded to a single owner — access is "admin, or
+  // a member of at least one calendar," not an email compare. See use-marketing-calendars.ts.
+  const { calendars: marketingCalendars, refetch: refetchMarketingCalendars } = useMarketingCalendars()
+  const canUseMarketingCalendar = isAdmin || marketingCalendars.length > 0
 
   // Module activation (PROMPT 3 "1-C"): app_modules is a singleton config table (one org, no
   // org_id) — everything defaults enabled=true, so this is a no-op until a super_admin flips a
@@ -108,7 +112,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
       router.push(`${pathname}?${params.toString()}`)
     }
   }
-  const defaultAccentColor = isKaylaMarketingUser ? '#e91e8c' : '#111111'
+  // Deliberately kept as a standalone literal-email check, separate from marketing-calendar
+  // access above — this is a personal cosmetic default, not feature-gating, and out of scope for
+  // the access-control fix (migration 085).
+  const isKaylaAccentUser = String(user.email ?? '').trim().toLowerCase() === 'kayla@goatlasgo.us'
+  const defaultAccentColor = isKaylaAccentUser ? '#e91e8c' : '#111111'
   const { color: accentColor, setColor: setAccentColor, reset: resetAccentColor, style: accentStyle } = useAccentTheme(user.id, defaultAccentColor)
   // The calendar plots deliverables by due date and lets them be rescheduled; subtasks
   // carry no due date of their own, so they'd only add noise. Mirrors the admin shell.
@@ -425,9 +433,15 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
             <CalendarView tasks={topLevelTasks} users={users} isAdmin={isAdmin} />
           </TabsContent>
 
-          {canUseMarketingCalendar && (
+          {showMarketing && (
             <TabsContent value="marketing">
-              <MarketingCalendar userId={user.id} userName={user.full_name || user.email} isAdmin={isAdmin} />
+              <MarketingCalendar
+                userId={user.id}
+                userName={user.full_name || user.email}
+                isAdmin={isAdmin}
+                calendars={marketingCalendars}
+                refetchCalendars={refetchMarketingCalendars}
+              />
             </TabsContent>
           )}
 

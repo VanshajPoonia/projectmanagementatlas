@@ -33,6 +33,7 @@ const outsiderCredentials = {
 
 let ownerId
 let outsiderId
+let calendarId
 let itemId
 let storagePath
 let failures = 0
@@ -75,9 +76,25 @@ try {
   if (ownerSignInError) throw new Error(`owner sign-in: ${ownerSignInError.message}`)
   if (outsiderSignInError) throw new Error(`outsider sign-in: ${outsiderSignInError.message}`)
 
+  // Items now belong to a named calendar (migration 085) with its own explicit member list —
+  // the owner must be seeded as a member before their own anon-key insert can pass RLS.
+  const { data: calendar, error: calendarError } = await admin
+    .from('marketing_calendars')
+    .insert({ name: `RLS check ${stamp}`, created_by: ownerId })
+    .select('id')
+    .single()
+  if (calendarError) throw new Error(`create calendar: ${calendarError.message}`)
+  calendarId = calendar.id
+
+  const { error: memberError } = await admin
+    .from('marketing_calendar_members')
+    .insert({ calendar_id: calendarId, user_id: ownerId })
+  if (memberError) throw new Error(`seed calendar membership: ${memberError.message}`)
+
   const { data: item, error: itemError } = await owner
     .from('marketing_calendar_items')
     .insert({
+      calendar_id: calendarId,
       assigned_to: ownerId,
       date: '2099-01-01',
       day_label: 'THU',
@@ -165,6 +182,11 @@ try {
   }
   if (itemId) {
     try { await admin.from('marketing_calendar_items').delete().eq('id', itemId) } catch {}
+  }
+  // calendar_id is ON DELETE RESTRICT — the calendar can only be removed once no item
+  // references it anymore, i.e. after the item delete above.
+  if (calendarId) {
+    try { await admin.from('marketing_calendars').delete().eq('id', calendarId) } catch {}
   }
   if (ownerId) await admin.auth.admin.deleteUser(ownerId).catch(() => {})
   if (outsiderId) await admin.auth.admin.deleteUser(outsiderId).catch(() => {})
