@@ -31,3 +31,6 @@ next-env.d.ts
 *.xlsx
 *.xls
 *.csv
+
+# Local Claude Code permission grants — machine-specific, not shared config.
+.claude/
