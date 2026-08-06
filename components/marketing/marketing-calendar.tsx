@@ -108,9 +108,21 @@ interface MarketingCalendarAttachment {
 interface MarketingCalendarCheck {
   id: string
   item_id: string
+  user_id: string
   checked_at: string
   status: CheckStatus
   note: string | null
+}
+
+// A calendar is shared, so "was this posted?" is a fact about the item, not about
+// the viewer. Rows are still stored per (item_id, user_id), so one item can carry a
+// mark from each member — collapse them into the one state the whole calendar sees:
+// any 'posted' beats a 'missed' (someone did it), and within the same status the most
+// recent mark wins. Without this, a member who never ticked anything off saw an empty
+// check set and every past item fell through to auto-missed.
+function resolveCheck(a: MarketingCalendarCheck, b: MarketingCalendarCheck): MarketingCalendarCheck {
+  if (a.status !== b.status) return a.status === 'posted' ? a : b
+  return a.checked_at >= b.checked_at ? a : b
 }
 
 interface MarketingCalendarProps {
@@ -535,24 +547,37 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const [newAttachmentError, setNewAttachmentError] = useState<string | null>(null)
   const newAttachmentInputRef = useRef<HTMLInputElement>(null)
 
-  // Edit-event dialog (single channel). Editing a recurring instance updates
-  // every instance in its series (content/highlight/companies), per how this
-  // team wants recurring edits to behave.
+  // Edit-event dialog. Editing a recurring instance updates every instance in its
+  // series (content/highlight/companies), per how this team wants recurring edits
+  // to behave. Channels are multi-select here for the same reason they are on
+  // create: ticking one that isn't on the event yet means "also post it here",
+  // unticking one means those posts go away. See handleSaveEdit for the diff.
   const [editItem,         setEditItem]         = useState<MarketingCalendarItem | null>(null)
   const [editDate,         setEditDate]         = useState('')
   const [editTime,         setEditTime]         = useState('')
   const [editCompanyIds,   setEditCompanyIds]   = useState<string[]>([])
-  const [editChannel,      setEditChannel]      = useState('')
+  const [editChannels,     setEditChannels]     = useState<string[]>([])
   const [editContent,      setEditContent]      = useState('')
   const [editHighlighted,  setEditHighlighted]  = useState(false)
   const [editScope,        setEditScope]        = useState<EditScope>('single')
   const [savingEdit,       setSavingEdit]       = useState(false)
 
-  // "Add another date to this series" — a lightweight extra insert, separate
-  // from the Save button, available only when editing an existing series.
-  const [addDateValue, setAddDateValue] = useState('')
-  const [addTimeValue, setAddTimeValue] = useState('')
-  const [addingDate,   setAddingDate]   = useState(false)
+  // "Add repeats" — the edit dialog's own copy of the create dialog's scheduling
+  // controls, so an existing event can gain dates (or become a series at all)
+  // without deleting it and starting over. Separate from the Save button: it
+  // inserts new rows, it does not edit the ones already there.
+  const [editRecurrence,     setEditRecurrence]     = useState<MarketingRecurrencePattern>('none')
+  const [editCustomWeekdays, setEditCustomWeekdays] = useState<number[]>([])
+  const [editEndDate,        setEditEndDate]        = useState('')
+  const [editSkippedDates,   setEditSkippedDates]   = useState<Set<string>>(new Set())
+  const [editAddedDates,     setEditAddedDates]     = useState<string[]>([])
+  const [editExtraDate,      setEditExtraDate]      = useState('')
+  const [addTimeValue,       setAddTimeValue]       = useState('')
+  const [addingDate,         setAddingDate]         = useState(false)
+  const [removingDateId,     setRemovingDateId]     = useState<string | null>(null)
+
+  // Inline attachment field in the edit dialog.
+  const editAttachmentInputRef = useRef<HTMLInputElement>(null)
 
   // Drag-and-drop reschedule
   const [draggingId,  setDraggingId]  = useState<string | null>(null)
@@ -665,8 +690,10 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
         .eq('calendar_id', selectedCalendarId)
         .order('date', { ascending: true })
         .order('position', { ascending: true }),
+      // Not filtered to userId: a mark belongs to the shared item, not to whoever is
+      // looking. RLS still decides which rows come back (see resolveCheck above).
       supabase.from('marketing_calendar_checks')
-        .select('id,item_id,checked_at,status,note').eq('user_id', userId),
+        .select('id,item_id,user_id,checked_at,status,note'),
       // Attachment metadata is optional. Loading it separately prevents a
       // missing migration or stale PostgREST relationship cache from failing
       // the core item query and making a populated calendar appear empty.
@@ -718,11 +745,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       }))
     setItems(mapped)
     // Older rows created before the status column default to 'posted'.
-    setStatusByItem(new Map(((checkRows ?? []) as any[]).map(c => [
-      c.item_id,
-      { ...c, status: (c.status ?? 'posted') as CheckStatus, note: c.note ?? null } as MarketingCalendarCheck,
-    ])))
-  }, [selectedCalendarId, supabase, userId])
+    const merged = new Map<string, MarketingCalendarCheck>()
+    for (const row of (checkRows ?? []) as any[]) {
+      const check = { ...row, status: (row.status ?? 'posted') as CheckStatus, note: row.note ?? null } as MarketingCalendarCheck
+      const existing = merged.get(check.item_id)
+      merged.set(check.item_id, existing ? resolveCheck(existing, check) : check)
+    }
+    setStatusByItem(merged)
+  }, [selectedCalendarId, supabase])
 
   useEffect(() => { loadCalendar() }, [loadCalendar])
 
@@ -868,6 +898,58 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const editSeriesDateCount = new Set(editSeriesItems.map(item => item.date)).size
   const editSeriesChannelCount = new Set(editSeriesItems.map(item => item.channel)).size
 
+  // Occurrences on this event's own channel, one row per date, oldest first —
+  // what the edit dialog lists so individual dates can be dropped. Restricted to
+  // the edited channel because removing "a date" from a multi-channel series
+  // would otherwise mean different things depending on which row you clicked.
+  const editSeriesOccurrences = editItem
+    ? editSeriesItems
+      .filter(item => item.channel === editItem.channel)
+      .slice()
+      .sort((a, b) => a.date.localeCompare(b.date))
+    : []
+  const editSeriesDateKeys = editSeriesOccurrences.map(item => item.date).join(',')
+
+  // Same generate → skip → add pipeline as the create dialog, anchored on the
+  // event being edited. Dates the series already covers are dropped rather than
+  // duplicated, so re-running a pattern over an existing range is a no-op.
+  const editRecurrenceDates = useMemo(
+    () => editRecurrence === 'custom'
+      ? buildCustomWeekdayDateKeys(editDate, editEndDate, editCustomWeekdays)
+      : buildRecurringDateKeys(editDate, editRecurrence, editEndDate),
+    [editDate, editEndDate, editRecurrence, editCustomWeekdays],
+  )
+  const editInteractiveScheduleTooLarge =
+    editRecurrenceDates.length > MAX_INTERACTIVE_SCHEDULE_PREVIEW
+  const editNewDates = useMemo(() => {
+    const taken = new Set(editSeriesDateKeys ? editSeriesDateKeys.split(',') : [])
+    const kept = editRecurrenceDates.filter(d => !editSkippedDates.has(d))
+    return Array.from(new Set([...kept, ...editAddedDates]))
+      .filter(d => !taken.has(d))
+      .sort()
+  }, [editRecurrenceDates, editSkippedDates, editAddedDates, editSeriesDateKeys])
+  const editAddTooLarge = editNewDates.length > MAX_SCHEDULED_MARKETING_POSTS
+
+  const toggleEditSkippedDate = (date: string) => {
+    setEditSkippedDates(prev => {
+      const next = new Set(prev)
+      if (next.has(date)) next.delete(date)
+      else next.add(date)
+      return next
+    })
+  }
+  const toggleEditCustomWeekday = (weekday: number) =>
+    setEditCustomWeekdays(prev => prev.includes(weekday)
+      ? prev.filter(d => d !== weekday)
+      : [...prev, weekday].sort((a, b) => a - b))
+  const addEditExtraDate = () => {
+    if (!editExtraDate) return
+    setEditAddedDates(prev => prev.includes(editExtraDate) ? prev : [...prev, editExtraDate])
+    setEditExtraDate('')
+  }
+  const removeEditAddedDate = (date: string) =>
+    setEditAddedDates(prev => prev.filter(d => d !== date))
+
   /* ── agenda items (bottom panel) ────────────────────────────────── */
   const agendaItems = useMemo(() => {
     const today = toDateKey(new Date())
@@ -897,14 +979,20 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
     if (next === 'clear') {
       setStatusByItem(cur => { const n = new Map(cur); n.delete(item.id); return n })
+      // Clear every mark on the item, not just the caller's — otherwise un-ticking an
+      // item a teammate had marked deletes nothing and the UI silently snaps back.
+      // RLS still bounds this: a non-admin can only delete their own rows.
       const { error: e } = await supabase.from('marketing_calendar_checks')
-        .delete().eq('item_id', item.id).eq('user_id', userId)
+        .delete().eq('item_id', item.id)
       if (e) { setStatusByItem(previous); setError('Could not update this item.') }
     } else {
-      setStatusByItem(cur => new Map(cur).set(item.id, { id: `opt-${item.id}`, item_id: item.id, checked_at: new Date().toISOString(), status: next, note }))
+      setStatusByItem(cur => new Map(cur).set(item.id, { id: `opt-${item.id}`, item_id: item.id, user_id: userId, checked_at: new Date().toISOString(), status: next, note }))
       const { data, error: e } = await supabase.from('marketing_calendar_checks')
-        .upsert({ item_id: item.id, user_id: userId, status: next, note }, { onConflict: 'item_id,user_id' })
-        .select('id,item_id,checked_at,status,note').single()
+        // checked_at is only DEFAULT NOW() on insert, so an upsert that flips an existing
+        // row's status would otherwise keep the original timestamp and make it useless as
+        // resolveCheck's tiebreaker. Always stamp it with the latest statement.
+        .upsert({ item_id: item.id, user_id: userId, status: next, note, checked_at: new Date().toISOString() }, { onConflict: 'item_id,user_id' })
+        .select('id,item_id,user_id,checked_at,status,note').single()
       if (e || !data) { setStatusByItem(previous); setError('Could not update this item.') }
       else setStatusByItem(cur => new Map(cur).set(item.id, data as MarketingCalendarCheck))
     }
@@ -992,6 +1080,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     setAttachmentItem(current =>
       current?.id === itemId ? { ...current, attachment } : current,
     )
+    // The edit dialog now shows the file inline too, and holds its own snapshot of
+    // the item — without this it would keep rendering the pre-upload state.
+    setEditItem(current =>
+      current?.id === itemId ? { ...current, attachment } : current,
+    )
   }
 
   // Shared by the per-event attachment dialog and by create-time attaching:
@@ -1034,18 +1127,15 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     return { attachment: savedAttachment as MarketingCalendarAttachment, error: null }
   }, [supabase, userId])
 
-  const handleAttachmentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file || !attachmentItem) return
-
+  // Takes the item explicitly rather than reading attachmentItem, so the edit
+  // dialog's inline file field and the dedicated file dialog share one code path.
+  const attachFileToItem = async (item: MarketingCalendarItem, file: File) => {
     const validationError = validateMarketingAsset(file)
     if (validationError) {
       setAttachmentError(validationError)
       return
     }
 
-    const item = attachmentItem
     const previousAttachment = item.attachment
 
     setAttachmentBusy('upload')
@@ -1072,6 +1162,20 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     setItemAttachment(item.id, attachment)
     setAttachmentBusy(null)
     toast.success(previousAttachment ? 'File replaced' : 'File attached')
+  }
+
+  const handleAttachmentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || !attachmentItem) return
+    await attachFileToItem(attachmentItem, file)
+  }
+
+  const handleEditAttachmentChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || !editItem) return
+    await attachFileToItem(editItem, file)
   }
 
   const handleAttachmentDownload = async () => {
@@ -1102,10 +1206,9 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     toast.success('File downloaded')
   }
 
-  const handleAttachmentDelete = async () => {
-    const item = attachmentItem
-    const attachment = item?.attachment
-    if (!item || !attachment) return
+  const removeAttachmentFromItem = async (item: MarketingCalendarItem) => {
+    const attachment = item.attachment
+    if (!attachment) return
 
     setAttachmentBusy('delete')
     setAttachmentError(null)
@@ -1133,6 +1236,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     } else {
       toast.success('Image removed')
     }
+  }
+
+  const handleAttachmentDelete = async () => {
+    if (!attachmentItem) return
+    await removeAttachmentFromItem(attachmentItem)
   }
 
   /* ── create event ───────────────────────────────────────────────── */
@@ -1300,6 +1408,44 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   /* ── edit user-created item ───────────────────────────────────── */
   const isEditable = (item: MarketingCalendarItem) => item.source_sheet === null || item.source_sheet === undefined
 
+  /**
+   * The rows an edit at this scope covers, read from `items` rather than from
+   * editItem state so it is safe to call while opening the dialog. "Entire series"
+   * is every row sharing the recurrence group — which for a series created across
+   * several channels is several channel streams. "This event" is only the row that
+   * was clicked, matching what that scope has always meant.
+   */
+  const itemsInScope = (item: MarketingCalendarItem, scope: EditScope) =>
+    scope === 'series' && item.recurrence_group_id
+      ? items.filter(i => i.recurrence_group_id === item.recurrence_group_id)
+      : [item]
+
+  const channelsInScope = (item: MarketingCalendarItem, scope: EditScope) =>
+    Array.from(new Set(itemsInScope(item, scope).map(i => i.channel))).sort()
+
+  // Switching scope changes which rows are on the table, so the ticked channels
+  // have to be re-read for the new scope — otherwise a selection made against
+  // "this event" would be diffed against the whole series on save.
+  const selectEditScope = (scope: EditScope) => {
+    setEditScope(scope)
+    if (editItem) setEditChannels(channelsInScope(editItem, scope))
+  }
+
+  const toggleEditChannel = (channel: string) =>
+    setEditChannels(prev =>
+      prev.includes(channel) ? prev.filter(c => c !== channel) : [...prev, channel])
+
+  // Previewed in the dialog and recomputed for real in handleSaveEdit — the save
+  // path can't trust render-time values, and this can't call the save path.
+  const editScopeItems = editItem ? itemsInScope(editItem, editScope) : []
+  const editBaselineChannels = Array.from(new Set(editScopeItems.map(i => i.channel)))
+  const editScopeDateCount = new Set(editScopeItems.map(i => i.date)).size
+  const editChannelsAdded = editChannels.filter(c => !editBaselineChannels.includes(c))
+  const editChannelsRemoved = editBaselineChannels.filter(c => !editChannels.includes(c))
+  const editChannelIsRename = editChannelsAdded.length === 1 && editChannelsRemoved.length === 1
+  const channelLabelOf = (channel: string) =>
+    channels.find(c => c.channel === channel)?.label ?? channel
+
   const openEditDialog = (item: MarketingCalendarItem) => {
     if (!isEditable(item)) {
       toast.error('Imported events cannot be edited here')
@@ -1310,18 +1456,120 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     // Postgres returns TIME as "HH:MM:SS"; <input type="time"> needs "HH:MM".
     setEditTime(item.time?.slice(0, 5) ?? '')
     setEditCompanyIds(item.companies.map(c => c.id))
-    setEditChannel(item.channel)
+    const scope: EditScope = item.recurrence_group_id ? 'series' : 'single'
+    setEditChannels(channelsInScope(item, scope))
     setEditContent(item.content)
     setEditHighlighted(item.is_highlighted)
-    setEditScope(item.recurrence_group_id ? 'series' : 'single')
+    setEditScope(scope)
+    setEditRecurrence('none')
+    setEditCustomWeekdays([])
+    setEditEndDate(toInputDate(addDays(parseDate(item.date), 28)))
+    setEditSkippedDates(new Set())
+    setEditAddedDates([])
+    setEditExtraDate('')
+    setAddTimeValue(item.time?.slice(0, 5) ?? '')
+    setAttachmentError(null)
   }
 
   const toggleEditCompany = (id: string) =>
     setEditCompanyIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
+  /**
+   * Applies the channel diff computed in handleSaveEdit. Adding a channel means
+   * "post this here too", so each new row is a clone of the event being edited on
+   * every date the edit covers; removing one deletes that channel's rows outright.
+   * Leaving them behind would make unticking a channel silently do nothing.
+   *
+   * (date, channel) pairs that already exist are skipped, so a diff can never
+   * double-book a slot that another stream of the same series already fills.
+   */
+  const applyChannelDiff = async (options: {
+    added: string[]
+    removedIds: string[]
+    dates: string[]
+    template: MarketingCalendarItem
+  }) => {
+    const { added, removedIds, dates, template } = options
+    if (removedIds.length) {
+      const { error } = await supabase.from('marketing_calendar_items').delete().in('id', removedIds)
+      if (error) return error
+    }
+    if (!added.length || !dates.length) return null
+
+    const dropped = new Set(removedIds)
+    const occupied = new Set(
+      items.filter(i => !dropped.has(i.id)).map(i => itemKey(i.date, i.channel)),
+    )
+    const rows = dates.flatMap((date, i) =>
+      added
+        .filter(channel => !occupied.has(itemKey(date, channel)))
+        .map(channel => ({
+          calendar_id:    selectedCalendarId,
+          assigned_to:    userId,
+          date,
+          time:           editTime || null,
+          day_label:      dayLabelForDateKey(date),
+          channel,
+          content:        editContent.trim(),
+          is_highlighted: editHighlighted,
+          position:       template.position + i,
+          source_sheet:   null,
+          source_row:     null,
+          source_column:  null,
+          recurrence_group_id: template.recurrence_group_id ?? null,
+        })),
+    )
+    if (!rows.length) return null
+
+    const { data: inserted, error } = await supabase
+      .from('marketing_calendar_items').insert(rows).select('id')
+    if (error) return error
+    if (!inserted?.length || !editCompanyIds.length) return null
+
+    const { error: companyError } = await supabase
+      .from('marketing_calendar_item_companies')
+      .insert(inserted.flatMap((row: { id: string }) =>
+        editCompanyIds.map(companyId => ({ item_id: row.id, company_id: companyId })),
+      ))
+    return companyError
+  }
+
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!editItem || !editContent.trim() || !editChannel || editCompanyIds.length === 0) return
+    if (!editItem || !editContent.trim() || editChannels.length === 0 || editCompanyIds.length === 0) return
+
+    const scopeItems = itemsInScope(editItem, editScope)
+    const baselineChannels = Array.from(new Set(scopeItems.map(i => i.channel)))
+    const removedChannels = baselineChannels.filter(c => !editChannels.includes(c))
+    const addedChannels = editChannels.filter(c => !baselineChannels.includes(c))
+
+    // One channel out and one in is a rename, not a delete-and-recreate: keeping
+    // the existing rows preserves their ids, and with them every check-off and
+    // attachment already hanging off them. That is what the old single-select
+    // picker did, and it stays the default reading of "move this to a different
+    // channel". Any other shape is a genuine add and/or drop.
+    const renameFrom = removedChannels.length === 1 && addedChannels.length === 1 ? removedChannels[0] : null
+    const renameTo   = renameFrom ? addedChannels[0] : null
+    const droppedItems = renameFrom ? [] : scopeItems.filter(i => removedChannels.includes(i.channel))
+    const channelsToAdd = renameFrom ? [] : addedChannels
+    const scopeDates = Array.from(new Set(scopeItems.map(i => i.date)))
+
+    if (channelsToAdd.length * scopeDates.length > MAX_SCHEDULED_MARKETING_POSTS) {
+      toast.error('That would schedule too many posts', {
+        description: `Adding ${channelsToAdd.length} channel${channelsToAdd.length === 1 ? '' : 's'} across ${scopeDates.length} dates exceeds the ${MAX_SCHEDULED_MARKETING_POSTS.toLocaleString()}-post limit.`,
+      })
+      return
+    }
+
+    if (droppedItems.length && !confirm(
+      `Remove ${removedChannels.join(', ')} from this ${editScope === 'series' ? 'series' : 'event'}? `
+      + `${droppedItems.length} scheduled post${droppedItems.length === 1 ? '' : 's'} will be deleted. This cannot be undone.`,
+    )) return
+
+    // Unticking the channel of the row the dialog is showing deletes that row, so
+    // there is nothing left to keep the dialog open on.
+    const editedRowRemoved = droppedItems.some(i => i.id === editItem.id)
+
     setSavingEdit(true)
 
     const replaceCompanies = async (itemIds: string[]) => {
@@ -1357,8 +1605,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
         {
           anchorDate: editItem.date,
           nextDate: editDate,
-          anchorChannel: editItem.channel,
-          nextChannel: editChannel,
+          // A rename can target a stream other than the edited row's own channel
+          // (a two-channel series edited from its social row, renaming email).
+          // When nothing was renamed these are equal and the helper is a no-op
+          // on channel, leaving every stream's name intact.
+          anchorChannel: renameFrom ?? editItem.channel,
+          nextChannel: renameTo ?? editItem.channel,
         },
       )
 
@@ -1394,9 +1646,27 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
         return
       }
 
+      // Channels are diffed after the schedule RPC so new rows land on the dates
+      // the series just moved to, not the ones it is leaving.
+      const channelError = await applyChannelDiff({
+        added: channelsToAdd,
+        removedIds: droppedItems.map(i => i.id),
+        dates: Array.from(new Set(scheduleUpdates.map(u => u.date))),
+        template: editItem,
+      })
+
       setSavingEdit(false)
+      if (channelError) {
+        setEditItem(null)
+        await loadCalendar()
+        toast.error('The series was updated, but its channels were not', {
+          description: channelError.message,
+        })
+        return
+      }
+
       toast.success(
-        `Updated ${editSeriesDateCount} date${editSeriesDateCount === 1 ? '' : 's'} across ${editSeriesChannelCount} channel${editSeriesChannelCount === 1 ? '' : 's'}`,
+        `Updated ${editSeriesDateCount} date${editSeriesDateCount === 1 ? '' : 's'} across ${editChannels.length} channel${editChannels.length === 1 ? '' : 's'}`,
         updatedCount === scheduleUpdates.length ? undefined : {
           description: 'The calendar is refreshing to confirm the saved series.',
         },
@@ -1406,35 +1676,59 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       return
     }
 
-    const dayLabel = dayLabelForDateKey(editDate)
-    const { error: updateError } = await supabase.from('marketing_calendar_items').update({
-      date:           editDate,
-      time:           editTime || null,
-      day_label:      dayLabel,
-      channel:        editChannel,
-      content:        editContent.trim(),
-      is_highlighted: editHighlighted,
-    }).eq('id', editItem.id)
+    // The edited row survives unless its own channel was dropped, in which case
+    // there is no row left to write the rest of the form onto.
+    if (!editedRowRemoved) {
+      const dayLabel = dayLabelForDateKey(editDate)
+      const { error: updateError } = await supabase.from('marketing_calendar_items').update({
+        date:           editDate,
+        time:           editTime || null,
+        day_label:      dayLabel,
+        // renameFrom only ever names a channel that is in scope, and at this scope
+        // the only row in scope is this one.
+        channel:        renameFrom ? renameTo! : editItem.channel,
+        content:        editContent.trim(),
+        is_highlighted: editHighlighted,
+      }).eq('id', editItem.id)
 
-    if (updateError) {
-      setSavingEdit(false)
-      toast.error('Could not update event', { description: updateError.message })
-      return
+      if (updateError) {
+        setSavingEdit(false)
+        toast.error('Could not update event', { description: updateError.message })
+        return
+      }
+
+      const companyError = await replaceCompanies([editItem.id])
+      if (companyError) {
+        setSavingEdit(false)
+        setEditItem(null)
+        await loadCalendar()
+        toast.error('Event updated, but companies could not be updated', {
+          description: companyError.message,
+        })
+        return
+      }
     }
 
-    const companyError = await replaceCompanies([editItem.id])
-    if (companyError) {
-      setSavingEdit(false)
-      setEditItem(null)
-      await loadCalendar()
-      toast.error('Event updated, but companies could not be updated', {
-        description: companyError.message,
-      })
-      return
-    }
+    const channelError = await applyChannelDiff({
+      added: channelsToAdd,
+      removedIds: droppedItems.map(i => i.id),
+      dates: [editDate],
+      template: editItem,
+    })
 
     setSavingEdit(false)
-    toast.success('Event updated')
+    if (channelError) {
+      setEditItem(null)
+      await loadCalendar()
+      toast.error('Event updated, but its channels were not', { description: channelError.message })
+      return
+    }
+
+    toast.success(
+      channelsToAdd.length || droppedItems.length
+        ? `Event updated across ${editChannels.length} channel${editChannels.length === 1 ? '' : 's'}`
+        : 'Event updated',
+    )
     setEditItem(null)
     loadCalendar()
   }
@@ -1462,54 +1756,105 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     setEditItem(null)
   }
 
-  // Adds one more occurrence to an existing series. Deliberately reads from
-  // editItem (the persisted content/highlight/companies), not the live
+  // Adds occurrences to the event being edited. Deliberately reads from editItem
+  // (the persisted content/highlight/companies), not the live
   // editContent/editHighlighted/editCompanyIds form state — those two can
   // differ whenever the user has typed unsaved changes but hasn't clicked
   // Save yet, and this action fires independently of that button.
-  const handleAddDateToSeries = async () => {
-    if (!editItem?.recurrence_group_id || !addDateValue || !selectedCalendarId) return
+  //
+  // A one-off event has no recurrence_group_id, so adding dates to it mints one
+  // and stamps the original row with it: the event becomes the anchor of a real
+  // series rather than a loose pile of copies, which is what makes "Apply changes
+  // to → Entire series" work on it afterwards.
+  const handleAddOccurrences = async () => {
+    if (!editItem || !selectedCalendarId || editNewDates.length === 0) return
+    if (editAddTooLarge) {
+      toast.error('That would add too many dates at once', {
+        description: `Narrow the range. The limit is ${MAX_SCHEDULED_MARKETING_POSTS.toLocaleString()} posts.`,
+      })
+      return
+    }
     setAddingDate(true)
+
+    let recurrenceGroupId = editItem.recurrence_group_id
+    if (!recurrenceGroupId) {
+      recurrenceGroupId = crypto.randomUUID()
+      const { error: groupErr } = await supabase
+        .from('marketing_calendar_items')
+        .update({ recurrence_group_id: recurrenceGroupId })
+        .eq('id', editItem.id)
+      if (groupErr) {
+        setAddingDate(false)
+        toast.error('Could not turn this event into a series', { description: groupErr.message })
+        return
+      }
+    }
 
     const { data: inserted, error: insertErr } = await supabase
       .from('marketing_calendar_items')
-      .insert({
+      .insert(editNewDates.map((date, i) => ({
         calendar_id:    selectedCalendarId,
         assigned_to:    userId,
-        date:           addDateValue,
+        date,
         time:           addTimeValue || null,
-        day_label:      dayLabelForDateKey(addDateValue),
+        day_label:      dayLabelForDateKey(date),
         channel:        editItem.channel,
         content:        editItem.content,
         is_highlighted: editItem.is_highlighted,
-        position:       0,
+        position:       i,
         source_sheet:   null,
         source_row:     null,
         source_column:  null,
-        recurrence_group_id: editItem.recurrence_group_id,
-      })
+        recurrence_group_id: recurrenceGroupId,
+      })))
       .select('id')
-      .single()
 
     if (insertErr || !inserted) {
       setAddingDate(false)
-      toast.error('Could not add date to series', { description: insertErr?.message })
+      toast.error('Could not add dates', { description: insertErr?.message })
       return
     }
 
     const { error: compErr } = await supabase
       .from('marketing_calendar_item_companies')
-      .insert(editItem.companies.map(c => ({ item_id: inserted.id, company_id: c.id })))
+      .insert(inserted.flatMap((row: { id: string }) =>
+        editItem.companies.map(c => ({ item_id: row.id, company_id: c.id }))))
 
     setAddingDate(false)
     if (compErr) {
-      toast.error('Date added, but companies could not be attached', { description: compErr.message })
+      toast.error('Dates added, but companies could not be attached', { description: compErr.message })
     } else {
-      toast.success('Added a date to the series')
+      toast.success(`Added ${inserted.length} date${inserted.length === 1 ? '' : 's'}`)
     }
-    setAddDateValue('')
-    setAddTimeValue('')
+    // Keep the dialog open on the same event — the occurrence list below refreshes
+    // with the new dates, which is the confirmation that this worked.
+    setEditItem(current => current ? { ...current, recurrence_group_id: recurrenceGroupId } : current)
+    setEditScope('series')
+    setEditRecurrence('none')
+    setEditCustomWeekdays([])
+    setEditSkippedDates(new Set())
+    setEditAddedDates([])
+    setEditExtraDate('')
     loadCalendar()
+  }
+
+  // Drops a single date from the series. The event currently open in the dialog is
+  // excluded in the UI — deleting that one is what the dialog's Delete button does,
+  // and it has to close the dialog, which this deliberately does not.
+  const handleRemoveOccurrence = async (occurrence: MarketingCalendarItem) => {
+    if (occurrence.id === editItem?.id) return
+    setRemovingDateId(occurrence.id)
+    const { error: e } = await supabase
+      .from('marketing_calendar_items')
+      .delete()
+      .eq('id', occurrence.id)
+    setRemovingDateId(null)
+    if (e) {
+      toast.error('Could not remove that date', { description: e.message })
+      return
+    }
+    setItems(prev => prev.filter(x => x.id !== occurrence.id))
+    toast.success('Date removed from the series')
   }
 
   /* ── drag-and-drop reschedule ────────────────────────────────────── */
@@ -2492,7 +2837,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                 <div className="space-y-2">
                   <Label>Apply changes to</Label>
                   <div className="grid grid-cols-2 gap-2">
-                    <button type="button" onClick={() => setEditScope('single')}
+                    <button type="button" onClick={() => selectEditScope('single')}
                       aria-pressed={editScope === 'single'}
                       className={cn(
                         'rounded-md border px-3 py-2.5 text-left transition-colors',
@@ -2507,7 +2852,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                         Only {dateFormatter.format(parseDate(editItem.date))}
                       </span>
                     </button>
-                    <button type="button" onClick={() => setEditScope('series')}
+                    <button type="button" onClick={() => selectEditScope('series')}
                       aria-pressed={editScope === 'series'}
                       className={cn(
                         'rounded-md border px-3 py-2.5 text-left transition-colors',
@@ -2538,26 +2883,257 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                 content={editContent} onContentChange={setEditContent}
                 highlighted={editHighlighted} onToggleHighlighted={() => setEditHighlighted(h => !h)}
                 companies={companies} selectedCompanyIds={editCompanyIds} onToggleCompany={toggleEditCompany}
-                channels={channels} selectedChannels={editChannel ? [editChannel] : []}
-                onToggleChannel={channel => setEditChannel(channel)}
+                channels={channels} selectedChannels={editChannels} onToggleChannel={toggleEditChannel} multiChannel
                 onAddChannel={handleAddChannel}
               />
 
-              {editItem.recurrence_group_id && editScope === 'series' && (
-                <div className="space-y-1.5 rounded-lg border p-3">
-                  <Label className="text-xs text-muted-foreground">Add another date to this series</Label>
-                  <div className="flex items-center gap-1.5">
-                    <Input type="date" value={addDateValue} onChange={e => setAddDateValue(e.target.value)} className="h-8" />
-                    <Input type="time" value={addTimeValue} onChange={e => setAddTimeValue(e.target.value)} className="h-8" />
-                    <Button type="button" size="sm" variant="outline" className="h-8 shrink-0"
-                      aria-label="Add this date to the series"
-                      disabled={!addDateValue || addingDate} onClick={handleAddDateToSeries}>
-                      {addingDate ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                    </Button>
+              {/* Channel edits create and delete rows, unlike every other field in
+                  this form, so say what Save will do before it does it. */}
+              {(editChannelsAdded.length > 0 || editChannelsRemoved.length > 0) && (
+                <p className={cn(
+                  'rounded-md border px-3 py-2 text-xs leading-relaxed',
+                  editChannelIsRename
+                    ? 'border-sky-200 bg-sky-50 text-sky-900'
+                    : 'border-amber-200 bg-amber-50 text-amber-800',
+                )}>
+                  {editChannelIsRename ? (
+                    <>Moves {editScope === 'series' ? 'this series' : 'this event'} from{' '}
+                      <strong>{channelLabelOf(editChannelsRemoved[0])}</strong> to{' '}
+                      <strong>{channelLabelOf(editChannelsAdded[0])}</strong>. Check-offs and
+                      attachments come with it.</>
+                  ) : (
+                    <>On save:{' '}
+                      {editChannelsAdded.length > 0 && (
+                        <>adds <strong>{editChannelsAdded.map(channelLabelOf).join(', ')}</strong>{' '}
+                          across {editScopeDateCount} date{editScopeDateCount === 1 ? '' : 's'}
+                          {editChannelsRemoved.length > 0 && '; '}</>
+                      )}
+                      {editChannelsRemoved.length > 0 && (
+                        <>deletes every <strong>{editChannelsRemoved.map(channelLabelOf).join(', ')}</strong>{' '}
+                          post{editScope === 'series' ? ' in this series' : ' on this date'}</>
+                      )}.
+                    </>
+                  )}
+                </p>
+              )}
+
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5" /> Attachment (optional)
+                </Label>
+                <input
+                  ref={editAttachmentInputRef}
+                  type="file"
+                  accept={MARKETING_ASSET_ACCEPT}
+                  onChange={handleEditAttachmentChange}
+                  className="sr-only"
+                  aria-label="Choose a file to attach"
+                />
+                {editItem.attachment ? (
+                  <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                    <span className="flex min-w-0 items-center gap-1.5 text-sm">
+                      <FileText className="h-3.5 w-3.5 flex-shrink-0 text-sky-700" />
+                      <span className="truncate font-medium">{editItem.attachment.file_name}</span>
+                      <span className="flex-shrink-0 text-xs text-muted-foreground">
+                        {formatMarketingAssetSize(editItem.attachment.file_size)}
+                      </span>
+                    </span>
+                    <span className="flex flex-shrink-0 items-center gap-1">
+                      <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs"
+                        disabled={attachmentBusy !== null}
+                        onClick={() => editAttachmentInputRef.current?.click()}>
+                        {attachmentBusy === 'upload' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Replace'}
+                      </Button>
+                      <button type="button" onClick={() => removeAttachmentFromItem(editItem)}
+                        disabled={attachmentBusy !== null}
+                        aria-label="Remove attachment"
+                        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive disabled:opacity-50">
+                        {attachmentBusy === 'delete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                      </button>
+                    </span>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => editAttachmentInputRef.current?.click()}
+                    disabled={attachmentBusy !== null}
+                    className="flex w-full items-center gap-1.5 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-sky-400 hover:bg-sky-50/60 hover:text-sky-700 disabled:opacity-50">
+                    {attachmentBusy === 'upload'
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Upload className="h-3.5 w-3.5" />}
+                    Choose a file
+                  </button>
+                )}
+                {attachmentError && (
+                  <p role="alert" className="text-xs font-medium text-red-600">{attachmentError}</p>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  Files save straight away and belong to this one date, not the whole series.
+                </p>
+              </div>
+
+              {/* Adding dates is its own action — it inserts new rows rather than
+                  editing this one, so it does not wait for Save. */}
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1.5">
+                    <Repeat className="h-3.5 w-3.5" />
+                    {editItem.recurrence_group_id ? 'Add more dates' : 'Repeat this event'}
+                  </Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(Object.keys(RECURRENCE_LABELS) as MarketingRecurrencePattern[]).map(p => (
+                      <button key={p} type="button" onClick={() => setEditRecurrence(p)}
+                        aria-pressed={editRecurrence === p}
+                        className={cn('rounded border px-2.5 py-1 text-xs font-medium transition-colors',
+                          editRecurrence === p ? 'bg-foreground text-background border-foreground' : 'bg-background hover:bg-accent')}>
+                        {RECURRENCE_LABELS[p]}
+                      </button>
+                    ))}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Copies this series&apos; current content, companies, and channel.
+                    {editItem.recurrence_group_id
+                      ? 'New dates copy this series’ saved content, companies, and channel.'
+                      : 'Turns this one-off into a series. New dates copy its saved content, companies, and channel.'}
                   </p>
+                </div>
+
+                {editRecurrence === 'custom' && (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Repeat on</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {WEEKDAYS.map(day => {
+                        const active = editCustomWeekdays.includes(day.value)
+                        return (
+                          <button key={day.value} type="button" onClick={() => toggleEditCustomWeekday(day.value)}
+                            aria-pressed={active}
+                            className={cn('h-9 min-w-[3rem] rounded-md border px-2 text-sm font-medium transition-colors',
+                              active ? 'border-foreground bg-foreground text-background' : 'border-input bg-background hover:bg-accent')}>
+                            {day.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {editCustomWeekdays.length === 0 && (
+                      <p role="alert" className="text-xs font-medium text-red-600">
+                        Select at least one weekday, or add specific dates below.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {editRecurrence !== 'none' && (
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Repeat until</Label>
+                    <Input type="date" value={editEndDate} min={editDate}
+                      onChange={e => setEditEndDate(e.target.value)} className="h-9" />
+                    {!editInteractiveScheduleTooLarge && editRecurrenceDates.length > 0 && (
+                      <div className="max-h-40 space-y-px overflow-y-auto rounded-md border p-1">
+                        {editRecurrenceDates.map(date => {
+                          const alreadyScheduled = editSeriesDateKeys.split(',').includes(date)
+                          const skipped = editSkippedDates.has(date)
+                          return (
+                            <div key={date}
+                              className={cn('flex items-center justify-between rounded px-2 py-1 text-xs',
+                                skipped || alreadyScheduled ? 'text-muted-foreground' : 'hover:bg-accent')}>
+                              <span className={cn(skipped && 'line-through')}>
+                                {fullDateFormatter.format(parseDate(date))}
+                                {alreadyScheduled && ' · already scheduled'}
+                              </span>
+                              {!alreadyScheduled && (
+                                <button type="button" onClick={() => toggleEditSkippedDate(date)}
+                                  aria-label={skipped ? `Include ${date}` : `Skip ${date}`}
+                                  className="text-muted-foreground transition-colors hover:text-foreground">
+                                  {skipped ? 'Undo' : <X className="h-3.5 w-3.5" />}
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {editInteractiveScheduleTooLarge && (
+                      <p className="text-xs text-muted-foreground">
+                        Too many dates to list individually — narrow the range to review them.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {editAddedDates.length > 0 && (
+                  <div className="space-y-1">
+                    {editAddedDates.map(date => (
+                      <div key={date}
+                        className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
+                        <span>{fullDateFormatter.format(parseDate(date))} · added</span>
+                        <button type="button" onClick={() => removeEditAddedDate(date)}
+                          aria-label={`Remove added date ${date}`}
+                          className="text-emerald-700 transition-colors hover:text-emerald-900">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Add a specific date</Label>
+                  <div className="flex items-center gap-1.5">
+                    <Input type="date" value={editExtraDate} onChange={e => setEditExtraDate(e.target.value)} className="h-8" />
+                    <Button type="button" size="sm" variant="outline" className="h-8 shrink-0"
+                      disabled={!editExtraDate} onClick={addEditExtraDate}>
+                      <Plus className="h-3.5 w-3.5" /> Add date
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs text-muted-foreground">Time for new dates</Label>
+                  <Input type="time" value={addTimeValue} onChange={e => setAddTimeValue(e.target.value)}
+                    className="h-8 w-32" aria-label="Time for new dates" />
+                </div>
+
+                <Button type="button" variant="outline" className="w-full"
+                  disabled={addingDate || editNewDates.length === 0 || editAddTooLarge}
+                  onClick={handleAddOccurrences}>
+                  {addingDate
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : editAddTooLarge
+                      ? `Too many dates (limit ${MAX_SCHEDULED_MARKETING_POSTS.toLocaleString()})`
+                      : editNewDates.length === 0
+                        ? 'No new dates selected'
+                        : `Add ${editNewDates.length} date${editNewDates.length === 1 ? '' : 's'}`}
+                </Button>
+              </div>
+
+              {editSeriesOccurrences.length > 1 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">
+                    Dates in this series ({editSeriesOccurrences.length})
+                  </Label>
+                  <div className="max-h-40 space-y-px overflow-y-auto rounded-md border p-1">
+                    {editSeriesOccurrences.map(occurrence => {
+                      const isCurrent = occurrence.id === editItem.id
+                      return (
+                        <div key={occurrence.id}
+                          className={cn('flex items-center justify-between rounded px-2 py-1 text-xs',
+                            isCurrent ? 'bg-muted font-medium' : 'hover:bg-accent')}>
+                          <span>
+                            {fullDateFormatter.format(parseDate(occurrence.date))}
+                            {occurrence.time ? ` · ${occurrence.time.slice(0, 5)}` : ''}
+                            {isCurrent && ' · editing'}
+                          </span>
+                          {!isCurrent && (
+                            <button type="button" onClick={() => handleRemoveOccurrence(occurrence)}
+                              disabled={removingDateId === occurrence.id}
+                              aria-label={`Remove ${occurrence.date} from the series`}
+                              className="text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50">
+                              {removingDateId === occurrence.id
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <X className="h-3.5 w-3.5" />}
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -2571,7 +3147,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setEditItem(null)}>
                   Cancel
                 </Button>
-                <Button type="submit" className="flex-1" disabled={savingEdit || !editContent.trim() || !editChannel || editCompanyIds.length === 0}>
+                <Button type="submit" className="flex-1" disabled={savingEdit || !editContent.trim() || editChannels.length === 0 || editCompanyIds.length === 0}>
                   {savingEdit
                     ? <Loader2 className="h-4 w-4 animate-spin" />
                     : editItem.recurrence_group_id && editScope === 'series' ? 'Save series' : 'Save event'}

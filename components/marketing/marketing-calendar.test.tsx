@@ -43,6 +43,26 @@ function toDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+// Like makeQuery, but .eq() actually filters. Used only for marketing_calendar_checks:
+// the whole point of the shared-checks tests below is that the component must NOT scope
+// that query to the viewer, and a no-op .eq() would let a viewer-scoped query pass too.
+function makeFilterableQuery(rows: Array<Record<string, unknown>>) {
+  const filters: Array<[string, unknown]> = []
+  const query: Record<string, any> = {}
+  for (const method of ['select', 'order', 'delete']) {
+    query[method] = vi.fn(() => query)
+  }
+  query.eq = vi.fn((column: string, value: unknown) => { filters.push([column, value]); return query })
+  query.then = (
+    resolve: (value: { data: unknown; error: unknown }) => unknown,
+    reject?: (reason: unknown) => unknown,
+  ) => Promise.resolve({
+    data: rows.filter(row => filters.every(([column, value]) => row[column] === value)),
+    error: null,
+  }).then(resolve, reject)
+  return query
+}
+
 function makeQuery(result: { data: unknown; error: unknown }) {
   const query: Record<string, any> = {}
   for (const method of ['select', 'eq', 'order', 'delete']) {
@@ -61,9 +81,20 @@ describe('MarketingCalendar controls', () => {
   const originalCancelAnimationFrame = window.cancelAnimationFrame
   const scrollTo = vi.fn()
   let attachmentLoadError: { code: string; message: string } | null
+  let checkRows: Array<Record<string, unknown>>
+  // Appended to the shared item fixture. Empty by default so the tests written
+  // against the original four rows keep seeing exactly those.
+  let extraItems: Array<Record<string, unknown>>
+  // One channel by default, for the same reason: the channel-grid view renders a
+  // column per channel, so adding a second unconditionally would shift every
+  // existing grid assertion.
+  let channelRows: Array<Record<string, unknown>>
 
   beforeEach(() => {
     attachmentLoadError = null
+    checkRows = []
+    extraItems = []
+    channelRows = [{ channel: 'social', label: 'Social', is_archived: false, position: 0 }]
     const now = new Date()
     const today = toDateKey(now)
     const nextSaturday = new Date(now)
@@ -121,12 +152,13 @@ describe('MarketingCalendar controls', () => {
               recurrence_group_id: null,
               marketing_calendar_item_companies: [{ company: companies[0] }],
             },
+            ...extraItems,
           ],
           error: null,
         })
       }
       if (table === 'marketing_calendar_checks') {
-        return makeQuery({ data: [], error: null })
+        return makeFilterableQuery(checkRows)
       }
       if (table === 'marketing_calendar_attachments') {
         return makeQuery({ data: [], error: attachmentLoadError })
@@ -135,10 +167,7 @@ describe('MarketingCalendar controls', () => {
         return makeQuery({ data: companies, error: null })
       }
       if (table === 'marketing_channels') {
-        return makeQuery({
-          data: [{ channel: 'social', label: 'Social', is_archived: false, position: 0 }],
-          error: null,
-        })
+        return makeQuery({ data: channelRows, error: null })
       }
       throw new Error(`Unexpected table: ${table}`)
     })
@@ -199,6 +228,41 @@ describe('MarketingCalendar controls', () => {
     })
     expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'AGC' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  // Checks are stored per (item_id, user_id), but a calendar is shared: what one member
+  // marks posted has to read as posted for everyone else looking at the same item.
+  // Before this, the load query filtered to the viewer's own rows, so a member who had
+  // ticked nothing saw an empty check set — and every past item fell through to
+  // auto-missed, which is how Bobby saw "all missed" while Kayla saw "all done".
+  it('shows an item another member marked posted as posted', async () => {
+    checkRows = [
+      { id: 'check-1', item_id: 'srg-post', user_id: 'user-2', checked_at: '2026-08-06T10:00:00Z', status: 'posted', note: null },
+    ]
+
+    render(<MarketingCalendar userId="user-1" userName="Bobby" isAdmin calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText("Kayla's Posting Board")
+    await waitFor(() => {
+      expect(screen.getAllByLabelText('Mark as not posted').length).toBeGreaterThan(0)
+    })
+  })
+
+  // Two members can hold conflicting marks on the same shared item; a 'posted' mark is
+  // someone stating the content actually went out, so it wins over another member's miss.
+  it('resolves a conflicting posted and missed mark in favour of posted', async () => {
+    checkRows = [
+      { id: 'check-1', item_id: 'srg-post', user_id: 'user-2', checked_at: '2026-08-06T10:00:00Z', status: 'missed', note: 'never went out' },
+      { id: 'check-2', item_id: 'srg-post', user_id: 'user-3', checked_at: '2026-08-05T10:00:00Z', status: 'posted', note: null },
+    ]
+
+    render(<MarketingCalendar userId="user-1" userName="Bobby" isAdmin calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText("Kayla's Posting Board")
+    await waitFor(() => {
+      expect(screen.getAllByLabelText('Mark as not posted').length).toBeGreaterThan(0)
+    })
+    expect(screen.queryByText('never went out')).not.toBeInTheDocument()
   })
 
   it('keeps events visible when optional attachment metadata is unavailable', async () => {
@@ -456,6 +520,143 @@ describe('MarketingCalendar controls', () => {
     fireEvent.click(thisEvent)
     expect(thisEvent).toHaveAttribute('aria-pressed', 'true')
     expect(within(dialog).getByRole('button', { name: 'Save event' })).toBeInTheDocument()
+  })
+
+  // The edit dialog used to expose only date/time/companies/channel/content — a file
+  // could be attached at create time or through the separate file dialog, but never
+  // from the pane you land in when you click the event.
+  it('lets an existing event gain, replace and drop a file from the edit dialog', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText("Kayla's Posting Board")
+    fireEvent.click(screen.getAllByText('AGC post')[0].closest('[role="button"]')!)
+
+    const dialog = await screen.findByRole('dialog', { name: /Edit Marketing Event/i })
+    const input = within(dialog).getByLabelText('Choose a file to attach')
+    expect(input.getAttribute('accept')).toEqual(expect.stringContaining('application/pdf'))
+    expect(within(dialog).getByRole('button', { name: /Choose a file/i })).toBeInTheDocument()
+  })
+
+  // Repeat was create-only: a one-off could never become a series, and a series
+  // could never be extended, without deleting everything and starting again.
+  it('turns a one-off event into a series from the edit dialog', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText("Kayla's Posting Board")
+    fireEvent.click(screen.getAllByText('AGC post')[0].closest('[role="button"]')!)
+
+    const dialog = await screen.findByRole('dialog', { name: /Edit Marketing Event/i })
+    expect(within(dialog).getByText('Repeat this event')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'No new dates selected' })).toBeDisabled()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Weekly' }))
+    const dateInputs = dialog.querySelectorAll<HTMLInputElement>('input[type="date"]')
+    fireEvent.change(dateInputs[0], { target: { value: '2026-08-07' } })  // the event's own date
+    fireEvent.change(dateInputs[1], { target: { value: '2026-08-28' } })  // repeat until
+
+    // 08-07 is the anchor and already exists, so only the three later dates are new.
+    const addButton = await within(dialog).findByRole('button', { name: 'Add 3 dates' })
+    expect(addButton).toBeEnabled()
+  })
+
+  it('lists a series\' dates and removes one without touching the rest', async () => {
+    const today = toDateKey(new Date())
+    const nextWeek = toDateKey(new Date(Date.now() + 7 * 86400000))
+    const weekAfter = toDateKey(new Date(Date.now() + 14 * 86400000))
+    extraItems = [nextWeek, weekAfter].map((date, i) => ({
+      id: `srg-post-week-${i + 2}`,
+      date,
+      day_label: 'NEXT',
+      channel: 'social',
+      content: 'SRG post',
+      is_highlighted: false,
+      position: 0,
+      source_sheet: null,
+      recurrence_group_id: 'series-1',
+      marketing_calendar_item_companies: [{ company: companies[0] }],
+    }))
+
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText("Kayla's Posting Board")
+    fireEvent.click(screen.getAllByText('SRG post')[0].closest('[role="button"]')!)
+
+    const dialog = await screen.findByRole('dialog', { name: /Edit Marketing Event/i })
+    expect(within(dialog).getByText('Dates in this series (3)')).toBeInTheDocument()
+
+    // The occurrence being edited has no remove control — the dialog's Delete
+    // button is what removes that one, and it has to close the dialog.
+    expect(within(dialog).queryByLabelText(`Remove ${today} from the series`)).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByLabelText(`Remove ${nextWeek} from the series`))
+
+    await waitFor(() => {
+      expect(within(dialog).getByText('Dates in this series (2)')).toBeInTheDocument()
+    })
+    expect(within(dialog).queryByLabelText(`Remove ${nextWeek} from the series`)).not.toBeInTheDocument()
+    expect(within(dialog).getByLabelText(`Remove ${weekAfter} from the series`)).toBeInTheDocument()
+    // The dialog stays open on the event you were editing.
+    expect(screen.getByRole('dialog', { name: /Edit Marketing Event/i })).toBeInTheDocument()
+  })
+
+  // Channel was single-select on edit, so the only thing you could do was move an
+  // event to a different channel. "Also post this to email" meant deleting the
+  // event and recreating it from scratch.
+  it('adds a channel to an existing event and says what saving will do', async () => {
+    channelRows = [
+      { channel: 'social', label: 'Social', is_archived: false, position: 0 },
+      { channel: 'email', label: 'Email', is_archived: false, position: 1 },
+    ]
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText("Kayla's Posting Board")
+    fireEvent.click(screen.getAllByText('AGC post')[0].closest('[role="button"]')!)
+
+    const dialog = await screen.findByRole('dialog', { name: /Edit Marketing Event/i })
+    expect(within(dialog).getByText('Channels')).toBeInTheDocument()
+
+    // The event's own channel starts ticked; adding a second is additive, not a swap.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Email' }))
+    const notice = await within(dialog).findByText(/On save:/)
+    expect(notice).toHaveTextContent('adds Email across 1 date')
+    expect(notice).not.toHaveTextContent('deletes')
+    expect(within(dialog).getByRole('button', { name: 'Save event' })).toBeEnabled()
+  })
+
+  // Swapping one channel for another has to stay a rename of the existing rows.
+  // Recreating them would silently discard every check-off and attachment.
+  it('treats one channel out and one in as a move, not a delete and recreate', async () => {
+    channelRows = [
+      { channel: 'social', label: 'Social', is_archived: false, position: 0 },
+      { channel: 'email', label: 'Email', is_archived: false, position: 1 },
+    ]
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText("Kayla's Posting Board")
+    fireEvent.click(screen.getAllByText('AGC post')[0].closest('[role="button"]')!)
+
+    const dialog = await screen.findByRole('dialog', { name: /Edit Marketing Event/i })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Email' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Social' }))
+
+    const notice = await within(dialog).findByText(/Moves this event/)
+    expect(notice).toHaveTextContent('from Social to Email')
+    expect(notice).toHaveTextContent('Check-offs and attachments come with it')
+  })
+
+  // Dropping the last channel would delete the event out from under a form whose
+  // Save button reads as an edit, so it has to be unreachable.
+  it('cannot save an event with no channel selected', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText("Kayla's Posting Board")
+    fireEvent.click(screen.getAllByText('AGC post')[0].closest('[role="button"]')!)
+
+    const dialog = await screen.findByRole('dialog', { name: /Edit Marketing Event/i })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Social' }))
+
+    await waitFor(() => {
+      expect(within(dialog).getByRole('button', { name: 'Save event' })).toBeDisabled()
+    })
   })
 
   it('deletes every occurrence when "Entire series" is selected and confirmed', async () => {
