@@ -203,12 +203,53 @@ try {
   const { data: bSeesAAfterAdd } = await userB.from('marketing_calendar_items').select('id').eq('id', itemAId)
   check('adding a membership grants access on the very next query', (bSeesAAfterAdd?.length ?? 0) === 1)
 
+  /* ── shared check-offs (migration 087) ──────────────────────────
+     A calendar is a shared plan, so "was this posted?" is a fact about the item.
+     Before 087 a fellow member saw zero check rows and the client — which infers
+     "missed" from the absence of a row — painted every past item red even though a
+     teammate had already marked it posted. These four assertions are that bug. */
+  const { data: bSeesACheck } = await userB
+    .from('marketing_calendar_checks').select('id,user_id,status').eq('item_id', itemAId)
+  check("a fellow member sees a teammate's posted mark on a shared item",
+    (bSeesACheck?.length ?? 0) === 1 && bSeesACheck[0].user_id === userAId && bSeesACheck[0].status === 'posted')
+
+  // A member may clear a shared mark (un-ticking must actually delete), but may not
+  // forge one under someone else's name — INSERT/UPDATE stay user_id = auth.uid().
+  const { error: bForgeError } = await userB
+    .from('marketing_calendar_checks')
+    .insert({ item_id: itemAId, user_id: userAId, status: 'missed' })
+  check("a member cannot write a mark attributed to another user", Boolean(bForgeError))
+
+  const { error: bClearError } = await userB
+    .from('marketing_calendar_checks').delete().eq('item_id', itemAId)
+  const { data: checksAfterClear } = await adminClient
+    .from('marketing_calendar_checks').select('id').eq('item_id', itemAId)
+  check("a member can clear a teammate's mark on a shared item",
+    !bClearError && (checksAfterClear?.length ?? 0) === 0)
+
+  // Re-mark as user B so the revocation assertion below has a row to be denied.
+  const { error: bMarkError } = await userB
+    .from('marketing_calendar_checks').insert({ item_id: itemAId, user_id: userBId, status: 'posted' })
+  check('a member can mark a shared item in their own name', !bMarkError)
+
   const { error: removeMemberError } = await admin
     .from('marketing_calendar_members').delete().eq('calendar_id', calendarAId).eq('user_id', userBId)
   if (removeMemberError) throw new Error(`remove user B from calendar A: ${removeMemberError.message}`)
 
   const { data: bSeesAAfterRemove } = await userB.from('marketing_calendar_items').select('id').eq('id', itemAId)
   check('removing a membership immediately revokes access on the next query', (bSeesAAfterRemove?.length ?? 0) === 0)
+
+  // The widened check visibility is membership-derived, so it has to revoke too.
+  // User B's own row stays visible to them (user_id = auth.uid() is still in the
+  // policy); what must disappear is the teammate's.
+  const { error: reseedError } = await admin
+    .from('marketing_calendar_checks').insert({ item_id: itemAId, user_id: userAId, status: 'posted' })
+  if (reseedError) throw new Error(`reseed user A check: ${reseedError.message}`)
+
+  const { data: bSeesCheckAfterRemove } = await userB
+    .from('marketing_calendar_checks').select('id,user_id').eq('item_id', itemAId)
+  check("revoked membership also hides the teammate's shared mark",
+    !(bSeesCheckAfterRemove ?? []).some(row => row.user_id === userAId))
 
   console.log('')
   if (failures) {
