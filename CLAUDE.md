@@ -98,9 +98,19 @@ the FK first and keeps string matching only as a legacy fallback for un-backfill
   a membership row revokes access on the very next query) plus a 9/9 real-browser Playwright pass
   (a zero-access member has no Marketing nav item at all; an admin can create a calendar and grant a
   specific user access via the picker; that user then sees exactly that calendar and nothing else).
-- `lib/display-text.ts` — strips strings specific to `Marketing Project Management.xlsx`. **Still
-  not fixed** — this is cosmetic text cleanup on board/task descriptions, unrelated to access
-  control, and was out of scope for the `085` fix above.
+- `lib/display-text.ts` — **✅ DONE 2026-08-09.** It matched the literal filename
+  `Marketing Project Management.xlsx`, so a second import under any other name would have shown its
+  provenance header to every user with no way to hide it. Now matches the *shape* the importer
+  writes (a leading `Source:` / `Imported from` line naming a spreadsheet), anchored to the first
+  line so a description that merely mentions a file in its body is untouched. Strictly wider than
+  the old constants, so no existing description can render differently. Covered by
+  `lib/display-text.test.ts`, including regression guards quoting both original literals. Worth
+  knowing: a scan of the dev sandbox found **zero** rows carrying either prefix across 71 task and 6
+  board descriptions — this is dead code in practice, generalized rather than deleted only because
+  prod data may have drifted from the clone.
+
+**§3 is now fully closed** — the only remaining literal-email check is the cosmetic
+`isKaylaAccentUser` accent colour, which is not access control.
 
 ## Plan
 
@@ -185,19 +195,65 @@ collaborative editing, Gantt/timeline, offline support, a generic automation rul
 than two integrations (Google Calendar one-way export, Slack notifications). Each is a product
 rather than a feature, and none serves the goal of reducing time spent *managing* work.
 
-## People (current dev sandbox, for reference — query `profiles` for current truth)
+## People (verified against **production** 2026-08-09 — re-query `profiles` for current truth)
 
 `bobby@goatlasgo.us` (Bobby Shanks) and `kayla@goatlasgo.us` (Kayla Viehland) both hold platform role
 `super_admin`, deliberately — this is not "one vendor account," don't consolidate to one. Kayla's
 separate hardcoded marketing-module gating (§3 above) is unrelated to her platform role and unaffected
 by any role work in Phase 1.
 
+Three more hold `admin`: `kogan@goatlasgo.us`, `mendy.atlasgc@gmail.com`, `timkennon2@gmail.com`.
+**`private.is_admin_user()` is true for `admin` AND `super_admin`** (migration `047`), so all five
+satisfy every `is_admin_user()` clause in every policy.
+
+### ⚠️ Check roles against the existing policy before gating work on a migration
+
+Learned the expensive way, 2026-08-09. A bug was reported as "Kayla marks work done, it stays red on
+Bobby's dashboard." It was diagnosed as an RLS problem and sequenced behind a policy migration
+(`087`) that then got blocked — costing days of the owner waiting.
+
+The migration was never needed for that bug. `marketing_calendar_checks`' SELECT policy already read
+`user_id = auth.uid() OR private.is_admin_user()`, and Bobby is `super_admin` — **the database had
+been returning Kayla's rows the whole time.** The deployed *client* was discarding them with an
+explicit `.eq('user_id', userId)` on its own query. A one-line client fix resolved it.
+
+The general trap: an RLS policy is only the ceiling. When a user "can't see" something, check what
+the client actually asks for before concluding the policy is wrong — and check whether the reporting
+user's role already satisfies the policy as written. A migration blocked behind a safety gate is a
+very expensive place to discover the migration was unnecessary.
+
+Corollary, specific to this repo: because all five people above are admins, *any* fix that only needs
+`is_admin_user()` to be true ships as a code change alone. Policy widening is only required the day a
+**non-admin** is given access to something — which for the marketing calendar has not happened yet
+(as of 2026-08-09 the sole calendar has exactly one member, Kayla).
+
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `068` (`067` is the last applied file).
-  Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `088`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
-  `047`, `049`, `056`.
+  `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
+  `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
+  As of 2026-08-09: dev is at `087`, **prod is at `086`**, and that gap is deliberate (see below).
+- A migration that rewrites RLS policies should carry its own post-conditions inside the
+  transaction — assert the expected policy set, that RLS is still enabled, and that row counts
+  did not move, so it rolls back instead of half-applying. `087` is the worked example, and
+  `scripts/rollback/087_revert.sql` shows the paired one-command rollback every such migration
+  should ship with.
 - Do not add `Co-Authored-By: Claude` to commits in this repo.
-- `.vercel/` was deliberately not copied from `main` — this branch must not deploy over the
-  live Vercel project. It needs its own.
+- **`main` auto-deploys to production** (Vercel project `v0-project-management-dashboard`, live at
+  `project.goatlasgo.us`). Pushing to `main` ships to the live app within about a minute. Apply any
+  schema change prod depends on *before* merging. To confirm what is actually live, read the commit
+  sha from `gh api repos/VanshajPoonia/projectmanagementatlas/deployments` — `vercel inspect` does
+  not print it, and matching timestamps by eye is a guess.
+
+### Migration `087` is written but deliberately NOT applied to prod
+
+`scripts/087_marketing_checks_shared.sql` widens SELECT/DELETE on `marketing_calendar_checks` from
+per-viewer to calendar-membership, so members see one shared posted/missed state. It is applied to
+the dev sandbox, verified by `pnpm check:marketing-calendars` (19/19), and self-verifying per the
+convention above.
+
+It is not on prod because **nobody is currently affected by its absence** — every marketing calendar
+member is an admin, and admins already read every check row (see the People section). Apply it the
+day a non-admin is given calendar access. Until then the gap is intentional, not an oversight; do not
+"fix" it in passing.
