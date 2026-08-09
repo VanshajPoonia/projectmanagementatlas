@@ -550,11 +550,16 @@ describe('MarketingCalendar controls', () => {
     expect(within(dialog).getByRole('button', { name: 'No new dates selected' })).toBeDisabled()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Weekly' }))
+    // Derived from the same clock as the item fixture rather than written as
+    // literals. Hardcoding the anchor made this pass only on the day the two
+    // happened to coincide, then fail once the date rolled over.
+    const anchor = toDateKey(new Date())
+    const threeWeeksOut = toDateKey(new Date(Date.now() + 21 * 86400000))
     const dateInputs = dialog.querySelectorAll<HTMLInputElement>('input[type="date"]')
-    fireEvent.change(dateInputs[0], { target: { value: '2026-08-07' } })  // the event's own date
-    fireEvent.change(dateInputs[1], { target: { value: '2026-08-28' } })  // repeat until
+    fireEvent.change(dateInputs[0], { target: { value: anchor } })          // the event's own date
+    fireEvent.change(dateInputs[1], { target: { value: threeWeeksOut } })   // repeat until
 
-    // 08-07 is the anchor and already exists, so only the three later dates are new.
+    // The anchor already exists, so only the three later weekly dates are new.
     const addButton = await within(dialog).findByRole('button', { name: 'Add 3 dates' })
     expect(addButton).toBeEnabled()
   })
