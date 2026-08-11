@@ -55,6 +55,7 @@ import {
   dayLabelForDateKey,
   isImportedWeekendPlaceholder,
   MAX_SCHEDULED_MARKETING_POSTS,
+  moveListItem,
   type MarketingRecurrencePattern,
   reconcileCompanySelection,
   toggleCompanySelection,
@@ -76,8 +77,11 @@ interface Company {
 }
 
 interface Channel {
+  id: string
   channel: string
   label: string
+  /** Column order in the channel grid. Shared — see reorderChannels below. */
+  position: number
 }
 
 interface MarketingCalendarItem {
@@ -514,8 +518,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
   // Shared, editable channel list (loaded from marketing_channels). Flat —
   // channels don't belong to a company; which companies an event is for is
-  // decided per-event.
+  // decided per-event. Array order IS the column order of the channel grid.
   const [channels, setChannels] = useState<Channel[]>([])
+  // Channel column being dragged, and the column index it would land on.
+  const [draggingChannelId, setDraggingChannelId] = useState<string | null>(null)
+  const [channelDropIndex,  setChannelDropIndex]  = useState<number | null>(null)
 
   // Week board vs channel grid (localStorage)
   const [viewMode, setViewModeState] = useState<ViewMode>(loadViewMode)
@@ -771,17 +778,18 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
   useEffect(() => { loadCompanies() }, [loadCompanies])
 
-  // Load the shared, flat channel list.
+  // Load the shared, flat channel list. Position order here is the grid's column
+  // order, so this query is what makes a reorder stick for everyone.
   const loadChannels = useCallback(async () => {
     const { data } = await supabase
       .from('marketing_channels')
-      .select('channel,label,is_archived,position')
+      .select('id,channel,label,is_archived,position')
       .order('position', { ascending: true })
     if (!data) return
     setChannels(
       (data as Array<Channel & { is_archived?: boolean }>)
         .filter(c => !c.is_archived)
-        .map(({ channel, label }) => ({ channel, label })),
+        .map(({ id, channel, label, position }) => ({ id, channel, label, position })),
     )
   }, [supabase])
 
@@ -792,7 +800,9 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const handleAddChannel = useCallback(async (name: string): Promise<boolean> => {
     const channel = name.trim()
     if (!channel) return false
-    const position = channels.length
+    // Past the highest existing position, not channels.length — seeded positions
+    // have gaps, so counting would drop a new channel into the middle of the grid.
+    const position = channels.reduce((max, c) => Math.max(max, c.position), -1) + 1
     const { error: insErr } = await supabase
       .from('marketing_channels')
       .insert({ channel, label: channel, position })
@@ -805,7 +815,38 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     await loadChannels()
     toast.success(`Added "${channel}"`)
     return true
-  }, [channels.length, loadChannels, supabase])
+  }, [channels, loadChannels, supabase])
+
+  /**
+   * Persist a new channel column order. The channel list is shared, so this is a
+   * change everyone sees — the same reasoning that made check-offs shared in 087.
+   *
+   * Goes through the reorder RPC (migration 088) rather than an UPDATE: direct
+   * writes to marketing_channels are admin-only and, read literally, exclude
+   * super_admin — Bobby and Kayla would both have failed silently. The RPC can
+   * only renumber positions, so renaming/archiving stays admin-only.
+   */
+  const reorderChannels = useCallback(async (next: Channel[]) => {
+    const previous = channels
+    setChannels(next)
+
+    const { error: reorderError } = await supabase.rpc('reorder_marketing_channels', {
+      p_channel_ids: next.map(c => c.id),
+    })
+    if (reorderError) {
+      // The likeliest failure is a stale list (someone else added a channel), so
+      // put the columns back and re-read rather than leaving a lie on screen.
+      setChannels(previous)
+      toast.error('Could not save the column order', { description: reorderError.message })
+      loadChannels()
+    }
+  }, [channels, loadChannels, supabase])
+
+  const moveChannel = useCallback((fromIndex: number, toIndex: number) => {
+    const next = moveListItem(channels, fromIndex, toIndex)
+    if (next === channels) return
+    void reorderChannels(next)
+  }, [channels, reorderChannels])
 
   /* ── computed views ─────────────────────────────────────────────── */
 
@@ -818,6 +859,22 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const visibleItems = useMemo(() =>
     items.filter(i => companyVisible(i.companies)),
   [items, companyVisible])
+
+  // Where a channel sits in the (rearrangeable) column order. The week and month
+  // views stack several channels in one day cell, so they sort by this instead of
+  // alphabetically — otherwise dragging a column would reorder the grid's columns
+  // and leave those two views in a contradictory order. A channel that no longer
+  // exists sorts last rather than jumping to the front.
+  const channelRank = useMemo(() => {
+    const m = new Map<string, number>()
+    channels.forEach((c, index) => m.set(c.channel, index))
+    return m
+  }, [channels])
+
+  const rankOfChannel = useCallback(
+    (channel: string) => channelRank.get(channel) ?? Number.MAX_SAFE_INTEGER,
+    [channelRank],
+  )
 
   const weekStart   = useMemo(() => startOfWeek(calendarDate), [calendarDate])
   const weekDays    = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
@@ -850,10 +907,10 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       m.set(item.date, arr)
     }
     for (const arr of m.values()) {
-      arr.sort((a, b) => a.channel.localeCompare(b.channel) || a.position - b.position)
+      arr.sort((a, b) => rankOfChannel(a.channel) - rankOfChannel(b.channel) || a.position - b.position)
     }
     return m
-  }, [visibleItems, weekKeys])
+  }, [visibleItems, weekKeys, rankOfChannel])
 
   const monthItemsByDate = useMemo(() => {
     const m = new Map<string, MarketingCalendarItem[]>()
@@ -864,10 +921,10 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       m.set(item.date, arr)
     }
     for (const arr of m.values()) {
-      arr.sort((a, b) => a.position - b.position || a.channel.localeCompare(b.channel))
+      arr.sort((a, b) => a.position - b.position || rankOfChannel(a.channel) - rankOfChannel(b.channel))
     }
     return m
-  }, [visibleItems, monthKeys])
+  }, [visibleItems, monthKeys, rankOfChannel])
 
   const todayKey  = toDateKey(new Date())
 
@@ -1904,6 +1961,39 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     await moveItem(item, date, channel)
   }
 
+  /* ── drag-and-drop column reorder ────────────────────────────────── */
+  // Column drags and event drags share the browser's one drag session, so every
+  // handler on both sides checks which kind is in flight: the cell handlers bail
+  // when draggingId is null (a column is moving), and these bail when
+  // draggingChannelId is null (an event is moving). Neither can trigger the other.
+  const handleChannelDragStart = (channelId: string) => (e: React.DragEvent) => {
+    // Firefox refuses to start a drag without a payload, even an unread one.
+    e.dataTransfer.setData('text/plain', channelId)
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggingChannelId(channelId)
+  }
+
+  const handleChannelDragOver = (index: number) => (e: React.DragEvent) => {
+    if (!draggingChannelId) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setChannelDropIndex(index)
+  }
+
+  const handleChannelDragEnd = () => {
+    setDraggingChannelId(null)
+    setChannelDropIndex(null)
+  }
+
+  const handleChannelDrop = (index: number) => (e: React.DragEvent) => {
+    if (!draggingChannelId) return
+    e.preventDefault()
+    const from = channels.findIndex(c => c.id === draggingChannelId)
+    handleChannelDragEnd()
+    if (from === -1) return
+    moveChannel(from, index)
+  }
+
   // Week-board drop: reschedule to another day, keeping channel.
   const handleDayDrop = (date: string) => async (e: React.DragEvent) => {
     e.preventDefault()
@@ -2349,10 +2439,39 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                   <th className="sticky left-0 top-0 z-40 w-[142px] border-b border-r bg-[#111] px-3 py-2 text-left text-xs font-bold uppercase text-white">
                     Date
                   </th>
-                  {channels.map(ch => (
+                  {/* Columns are rearrangeable: drag a header, or use the arrows
+                      (drag-and-drop is neither keyboard- nor touch-reachable). The
+                      order is shared, so it moves for every member of the calendar. */}
+                  {channels.map((ch, index) => (
                     <th key={ch.channel}
-                      className="sticky top-0 z-30 w-[150px] border-b border-r bg-[#151515] px-2 py-2 text-center text-xs font-semibold text-white">
-                      {ch.label}
+                      draggable
+                      onDragStart={handleChannelDragStart(ch.id)}
+                      onDragOver={handleChannelDragOver(index)}
+                      onDrop={handleChannelDrop(index)}
+                      onDragEnd={handleChannelDragEnd}
+                      aria-label={`${ch.label} column, position ${index + 1} of ${channels.length}`}
+                      className={cn(
+                        'group/col sticky top-0 z-30 w-[150px] cursor-grab select-none border-b border-r bg-[#151515] px-1 py-2 text-center text-xs font-semibold text-white',
+                        draggingChannelId === ch.id && 'cursor-grabbing opacity-40',
+                        channelDropIndex === index && draggingChannelId !== ch.id && 'ring-2 ring-inset ring-primary',
+                      )}>
+                      <div className="flex items-center justify-center gap-0.5">
+                        <button type="button"
+                          disabled={index === 0}
+                          onClick={() => moveChannel(index, index - 1)}
+                          aria-label={`Move ${ch.label} left`}
+                          className="rounded p-0.5 text-white/50 opacity-0 transition hover:bg-white/10 hover:text-white focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-0 group-hover/col:opacity-100">
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="truncate">{ch.label}</span>
+                        <button type="button"
+                          disabled={index === channels.length - 1}
+                          onClick={() => moveChannel(index, index + 1)}
+                          aria-label={`Move ${ch.label} right`}
+                          className="rounded p-0.5 text-white/50 opacity-0 transition hover:bg-white/10 hover:text-white focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-0 group-hover/col:opacity-100">
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </th>
                   ))}
                 </tr>

@@ -96,16 +96,21 @@ future session, that's a regression — don't assume it's still pending.
   assertMigrationTarget({allowProd}) = the migration runner: dev always
   allowed, prod ONLY via an explicit --allow-prod flag + loud banner. Only
   additive/non-destructive migrations may ever use --allow-prod.
-- Migrations: numbered SQL in scripts/, next number is 073. Dev AND production
-  are BOTH fully synced at 072 (001–072 all applied to prod — 072_share_links.sql
-  applied 2026-07-25, owner-approved, migration-first then pushed the UI).
+- Migrations: numbered SQL in scripts/, next number is 090. Dev and production
+  are both at 089, with ONE deliberate gap: 087 has never been applied to prod
+  (nobody is affected by its absence — see CLAUDE.md). 088/089 went to prod via
+  `--only=88,89 --allow-prod`, which is how you skip a held-back predecessor.
+  Verify with `pnpm migrate:status`, never with a number written down anywhere.
   Apply via the runner only: `pnpm migrate` (status:
   `pnpm migrate:status`). Never hand-run SQL in the Supabase editor. Each
   file wraps itself in BEGIN;…COMMIT; and is idempotent (match 047/063/065
   style).
-- A permanent, non-destructive verification harness also exists:
-  `pnpm check:board-roles` (mirrors check-isolation.mjs's throwaway-user
-  pattern) — re-run it after touching board_members/tasks RLS.
+- Permanent, non-destructive verification harnesses exist and all follow the
+  same throwaway-user pattern — re-run the relevant one after touching RLS:
+  `pnpm check:board-roles` (board_members/tasks), `check:marketing-calendars`
+  (per-calendar access), `check:marketing-channels` (channel ordering + who may
+  rename), `check:task-lifecycle`, `check:appointments`, `check:appointment-booking`,
+  `check:marketing-attachments`, `check:marketing-recurrence`.
 - Before any destructive migration: take a fresh dev pg_dump snapshot
   (backups live in ~/Code/db-backups/; use
   /opt/homebrew/opt/libpq/bin/pg_dump if the Homebrew default errors on a
@@ -122,16 +127,19 @@ future session, that's a regression — don't assume it's still pending.
   delete, move, or unlock it.
 
 ## Git / shipping
-- Local `main` == origin/main (pushed + deployed as of 2026-07-25). Latest 4 commits shipped:
-  inline description editing on task cards, voice-to-text dictation on task descriptions, a
-  Metrics tab on Reports (entry-to-close time, time-in-status, personnel), and view-only share
-  links for boards/tasks (revocable, token-scoped, no sign-in — table `share_links`, migration 072).
+- Local `main` == origin/main (pushed + deployed as of 2026-08-11). Most recently shipped:
+  shared marketing check-offs + multi-channel event editing, and rearrangeable marketing
+  calendar columns (drag a channel header or use its arrows — order is shared, persisted
+  through the `reorder_marketing_channels` RPC in migration 088) plus a "Personal" business
+  unit alongside SRG/AGC (migration 089).
 - A push to `main` AUTO-DEPLOYS to prod within seconds. So: apply any schema
   migration to prod (`--allow-prod`) BEFORE merging code that depends on it —
   a missing 068 once shipped ahead of its migration and broke the live boards
   list for ~6h. Migrations first, then deploy. Prefer small sliced commits.
 - Do NOT add "Co-Authored-By: Claude" trailers to commits (repo rule).
-- Tests: `pnpm test` (currently 59 passing — keep them green).
+- Tests: `pnpm test` (currently 191 passing across 17 files — keep them green).
+  `pnpm lint` is broken repo-wide (ESLint 10 with no eslint.config.js); use
+  `npx tsc --noEmit` for a real check until someone adds a flat config.
 
 ## Working posture (my standing rule)
 For every prompt/feature: analyze → scope-check against build-navigation.md +

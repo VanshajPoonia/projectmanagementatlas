@@ -7,6 +7,7 @@ import {
   dayLabelForDateKey,
   isImportedWeekendPlaceholder,
   MAX_SCHEDULED_MARKETING_POSTS,
+  moveListItem,
   reconcileCompanySelection,
   toggleCompanySelection,
 } from './marketing-calendar-state'
@@ -35,6 +36,39 @@ describe('marketing calendar company filter', () => {
 
   it('keeps the most recently selected company from legacy multi-select state', () => {
     expect(reconcileCompanySelection(['srg', 'agc'], allCompanies)).toEqual(['agc'])
+  })
+})
+
+describe('marketing calendar column reordering', () => {
+  const columns = ['fb', 'ig', 'blog', 'email']
+
+  it('moves a column to a later slot, shifting the ones it passes left', () => {
+    expect(moveListItem(columns, 0, 2)).toEqual(['ig', 'blog', 'fb', 'email'])
+  })
+
+  it('moves a column to an earlier slot', () => {
+    expect(moveListItem(columns, 3, 1)).toEqual(['fb', 'email', 'ig', 'blog'])
+  })
+
+  it('never drops or duplicates a column', () => {
+    for (let from = 0; from < columns.length; from++) {
+      for (let to = 0; to < columns.length; to++) {
+        expect([...moveListItem(columns, from, to)].sort()).toEqual([...columns].sort())
+      }
+    }
+  })
+
+  it('returns the original array by reference for a no-op move, so no write is sent', () => {
+    expect(moveListItem(columns, 2, 2)).toBe(columns)
+    expect(moveListItem(columns, -1, 1)).toBe(columns)
+    expect(moveListItem(columns, 1, columns.length)).toBe(columns)
+    expect(moveListItem(columns, columns.length, 0)).toBe(columns)
+  })
+
+  it('leaves the source array untouched', () => {
+    const original = [...columns]
+    moveListItem(columns, 0, 3)
+    expect(columns).toEqual(original)
   })
 })
 

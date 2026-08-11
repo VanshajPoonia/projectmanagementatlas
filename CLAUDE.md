@@ -206,6 +206,13 @@ Three more hold `admin`: `kogan@goatlasgo.us`, `mendy.atlasgc@gmail.com`, `timke
 **`private.is_admin_user()` is true for `admin` AND `super_admin`** (migration `047`), so all five
 satisfy every `is_admin_user()` clause in every policy.
 
+⚠️ **But only policies that call `is_admin_user()`.** Several older policies inline
+`profiles.role = 'admin'` instead, and read literally that **excludes super_admin — i.e. Bobby and
+Kayla**. `marketing_channels`' UPDATE/DELETE (`054`, narrowed by `055`) is the known case; it made
+column reordering silently fail for exactly the two people who use the marketing calendar until
+`088` routed that write through an RPC. When gating a feature on "admins can do this", grep the
+policy itself — `role = 'admin'` and `is_admin_user()` are different sets of people.
+
 ### ⚠️ Check roles against the existing policy before gating work on a migration
 
 Learned the expensive way, 2026-08-09. A bug was reported as "Kayla marks work done, it stays red on
@@ -229,11 +236,13 @@ Corollary, specific to this repo: because all five people above are admins, *any
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `088`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `090`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-09: dev is at `087`, **prod is at `086`**, and that gap is deliberate (see below).
+  As of 2026-08-11: dev and prod are both at `089`, except that **prod has never had `087`**
+  and that gap is deliberate (see below) — `088`/`089` were applied to prod with
+  `--only=88,89 --allow-prod`, which is what the runner's `--only` flag exists for.
 - A migration that rewrites RLS policies should carry its own post-conditions inside the
   transaction — assert the expected policy set, that RLS is still enabled, and that row counts
   did not move, so it rolls back instead of half-applying. `087` is the worked example, and

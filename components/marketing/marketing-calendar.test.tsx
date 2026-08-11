@@ -3,11 +3,13 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { fromMock, supabaseMock } = vi.hoisted(() => {
+const { fromMock, rpcMock, supabaseMock } = vi.hoisted(() => {
   const from = vi.fn()
+  const rpc = vi.fn()
   return {
     fromMock: from,
-    supabaseMock: { from },
+    rpcMock: rpc,
+    supabaseMock: { from, rpc },
   }
 })
 
@@ -94,7 +96,8 @@ describe('MarketingCalendar controls', () => {
     attachmentLoadError = null
     checkRows = []
     extraItems = []
-    channelRows = [{ channel: 'social', label: 'Social', is_archived: false, position: 0 }]
+    channelRows = [{ id: 'ch-social', channel: 'social', label: 'Social', is_archived: false, position: 0 }]
+    rpcMock.mockResolvedValue({ data: 0, error: null })
     const now = new Date()
     const today = toDateKey(now)
     const nextSaturday = new Date(now)
@@ -185,7 +188,12 @@ describe('MarketingCalendar controls', () => {
 
   afterEach(() => {
     fromMock.mockReset()
+    rpcMock.mockReset()
     scrollTo.mockReset()
+    // The view toggle persists to localStorage, which jsdom keeps for the whole
+    // file — without this, one test switching to the channel grid would silently
+    // start every later test there.
+    try { localStorage.clear() } catch { /* ignore */ }
     vi.restoreAllMocks()
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
       configurable: true,
@@ -608,8 +616,8 @@ describe('MarketingCalendar controls', () => {
   // event and recreating it from scratch.
   it('adds a channel to an existing event and says what saving will do', async () => {
     channelRows = [
-      { channel: 'social', label: 'Social', is_archived: false, position: 0 },
-      { channel: 'email', label: 'Email', is_archived: false, position: 1 },
+      { id: 'ch-social', channel: 'social', label: 'Social', is_archived: false, position: 0 },
+      { id: 'ch-email', channel: 'email', label: 'Email', is_archived: false, position: 1 },
     ]
     render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
@@ -631,8 +639,8 @@ describe('MarketingCalendar controls', () => {
   // Recreating them would silently discard every check-off and attachment.
   it('treats one channel out and one in as a move, not a delete and recreate', async () => {
     channelRows = [
-      { channel: 'social', label: 'Social', is_archived: false, position: 0 },
-      { channel: 'email', label: 'Email', is_archived: false, position: 1 },
+      { id: 'ch-social', channel: 'social', label: 'Social', is_archived: false, position: 0 },
+      { id: 'ch-email', channel: 'email', label: 'Email', is_archived: false, position: 1 },
     ]
     render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
 
@@ -646,6 +654,79 @@ describe('MarketingCalendar controls', () => {
     const notice = await within(dialog).findByText(/Moves this event/)
     expect(notice).toHaveTextContent('from Social to Email')
     expect(notice).toHaveTextContent('Check-offs and attachments come with it')
+  })
+
+  // Column order lives in marketing_channels.position, which the whole calendar
+  // reads — rearranging is a write for everyone, not a local view preference. It
+  // goes through the reorder RPC because a direct UPDATE is admin-only and, read
+  // literally, excludes the super_admins who actually use this calendar.
+  describe('channel grid column order', () => {
+    const twoChannels = () => [
+      { id: 'ch-social', channel: 'social', label: 'Social', is_archived: false, position: 0 },
+      { id: 'ch-email', channel: 'email', label: 'Email', is_archived: false, position: 1 },
+    ]
+    const headerOrder = () =>
+      screen.getAllByRole('columnheader').map(header => header.textContent?.trim())
+
+    async function renderChannelGrid() {
+      channelRows = twoChannels()
+      render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
+      await screen.findByText("Kayla's Posting Board")
+      fireEvent.click(screen.getByRole('button', { name: 'Channels' }))
+      expect(headerOrder()).toEqual(['Date', 'Social', 'Email'])
+    }
+
+    it('moves a column with the arrows and persists the new order', async () => {
+      await renderChannelGrid()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Move Email left' }))
+
+      await waitFor(() => {
+        expect(rpcMock).toHaveBeenCalledWith('reorder_marketing_channels', {
+          p_channel_ids: ['ch-email', 'ch-social'],
+        })
+      })
+      expect(headerOrder()).toEqual(['Date', 'Email', 'Social'])
+    })
+
+    it('moves a column when its header is dragged onto another', async () => {
+      await renderChannelGrid()
+
+      const dataTransfer = { setData: vi.fn(), getData: vi.fn(), effectAllowed: '', dropEffect: '' }
+      const [, social, email] = screen.getAllByRole('columnheader')
+      fireEvent.dragStart(email, { dataTransfer })
+      fireEvent.dragOver(social, { dataTransfer })
+      fireEvent.drop(social, { dataTransfer })
+
+      await waitFor(() => {
+        expect(rpcMock).toHaveBeenCalledWith('reorder_marketing_channels', {
+          p_channel_ids: ['ch-email', 'ch-social'],
+        })
+      })
+      expect(headerOrder()).toEqual(['Date', 'Email', 'Social'])
+    })
+
+    // The optimistic move must not outlive a rejected write — the likeliest
+    // rejection is a stale list, and leaving the new order on screen would show
+    // every other member an order the database never accepted.
+    it('puts the columns back when the order cannot be saved', async () => {
+      rpcMock.mockResolvedValue({ data: null, error: { message: 'Channel ordering is stale' } })
+      await renderChannelGrid()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Move Email left' }))
+
+      await waitFor(() => expect(rpcMock).toHaveBeenCalled())
+      await waitFor(() => expect(headerOrder()).toEqual(['Date', 'Social', 'Email']))
+    })
+
+    // Both ends of the row: nothing to swap with, so no write to send.
+    it('does not offer a move past either end of the grid', async () => {
+      await renderChannelGrid()
+
+      expect(screen.getByRole('button', { name: 'Move Social left' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Move Email right' })).toBeDisabled()
+      expect(rpcMock).not.toHaveBeenCalled()
+    })
   })
 
   // Dropping the last channel would delete the event out from under a form whose
