@@ -236,13 +236,17 @@ Corollary, specific to this repo: because all five people above are admins, *any
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `090`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `091`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-11: dev and prod are both at `089`, except that **prod has never had `087`**
-  and that gap is deliberate (see below) — `088`/`089` were applied to prod with
-  `--only=88,89 --allow-prod`, which is what the runner's `--only` flag exists for.
+  As of 2026-08-12: dev and prod are both at `090`, except that **prod has never had `087`**
+  and that gap is deliberate (see below) — `088`/`089`/`090` were applied to prod with
+  `--only=… --allow-prod`, which is what the runner's `--only` flag exists for.
+- **New tables need an explicit `REVOKE ALL`.** Supabase's default privileges grant every new
+  table in `public` a blanket ALL to `anon` and `authenticated`, so granting narrowly is not
+  enough — the wide grant is already there. `090` is the worked example (and its post-conditions
+  are what caught it); the same trap bit the appointments migrations twice.
 - A migration that rewrites RLS policies should carry its own post-conditions inside the
   transaction — assert the expected policy set, that RLS is still enabled, and that row counts
   did not move, so it rolls back instead of half-applying. `087` is the worked example, and

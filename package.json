@@ -21,7 +21,8 @@
     "check:marketing-calendars": "node --env-file=.env.local scripts/check-marketing-calendar-access.mjs",
     "check:marketing-channels": "node --env-file=.env.local scripts/check-marketing-channels.mjs",
     "check:appointments": "node --env-file=.env.local scripts/check-appointments.mjs",
-    "check:appointment-booking": "node --env-file=.env.local scripts/check-appointment-booking.mjs"
+    "check:appointment-booking": "node --env-file=.env.local scripts/check-appointment-booking.mjs",
+    "check:project-ids": "node --env-file=.env.local scripts/check-project-ids.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",
