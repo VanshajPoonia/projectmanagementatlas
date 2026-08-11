@@ -96,10 +96,12 @@ future session, that's a regression — don't assume it's still pending.
   assertMigrationTarget({allowProd}) = the migration runner: dev always
   allowed, prod ONLY via an explicit --allow-prod flag + loud banner. Only
   additive/non-destructive migrations may ever use --allow-prod.
-- Migrations: numbered SQL in scripts/, next number is 090. Dev and production
-  are both at 089, with ONE deliberate gap: 087 has never been applied to prod
-  (nobody is affected by its absence — see CLAUDE.md). 088/089 went to prod via
-  `--only=88,89 --allow-prod`, which is how you skip a held-back predecessor.
+- Migrations: numbered SQL in scripts/, next number is 091. Dev and production
+  are both at 090, with ONE deliberate gap: 087 has never been applied to prod
+  (nobody is affected by its absence — see CLAUDE.md). 088/089/090 went to prod
+  via `--only=… --allow-prod`, which is how you skip a held-back predecessor.
+  New tables need an explicit REVOKE ALL first — Supabase default-grants ALL on
+  every new public table to anon and authenticated (see 090).
   Verify with `pnpm migrate:status`, never with a number written down anywhere.
   Apply via the runner only: `pnpm migrate` (status:
   `pnpm migrate:status`). Never hand-run SQL in the Supabase editor. Each
@@ -109,8 +111,10 @@ future session, that's a regression — don't assume it's still pending.
   same throwaway-user pattern — re-run the relevant one after touching RLS:
   `pnpm check:board-roles` (board_members/tasks), `check:marketing-calendars`
   (per-calendar access), `check:marketing-channels` (channel ordering + who may
-  rename), `check:task-lifecycle`, `check:appointments`, `check:appointment-booking`,
-  `check:marketing-attachments`, `check:marketing-recurrence`.
+  rename), `check:project-ids` (number uniqueness under concurrency + ledger
+  permanence), `check:task-lifecycle`, `check:appointments`,
+  `check:appointment-booking`, `check:marketing-attachments`,
+  `check:marketing-recurrence`.
 - Before any destructive migration: take a fresh dev pg_dump snapshot
   (backups live in ~/Code/db-backups/; use
   /opt/homebrew/opt/libpq/bin/pg_dump if the Homebrew default errors on a
@@ -127,17 +131,21 @@ future session, that's a regression — don't assume it's still pending.
   delete, move, or unlock it.
 
 ## Git / shipping
-- Local `main` == origin/main (pushed + deployed as of 2026-08-11). Most recently shipped:
-  shared marketing check-offs + multi-channel event editing, and rearrangeable marketing
-  calendar columns (drag a channel header or use its arrows — order is shared, persisted
-  through the `reorder_marketing_channels` RPC in migration 088) plus a "Personal" business
-  unit alongside SRG/AGC (migration 089).
+- Local `main` == origin/main (pushed + deployed as of 2026-08-12). Most recently shipped:
+  the **Project ID Manager** (migration 090) — a new "Project IDs" module where anyone signed
+  in grabs the next YYMM+4-digit number (e.g. 26081111, sequence restarts at 1111 each Central
+  month) against a client name. The claimer is taken from the session, never picked from a
+  dropdown. `public.claim_project_id()` allocates under an advisory lock so simultaneous
+  clicks can't collide; `project_ids` has no INSERT/DELETE grant at all (the RPC is the only
+  way in, and nothing can un-claim a number) and only `client_name`/`company_id` are
+  column-grant-updatable. Before that: rearrangeable marketing calendar columns (088) and a
+  "Personal" business unit (089).
 - A push to `main` AUTO-DEPLOYS to prod within seconds. So: apply any schema
   migration to prod (`--allow-prod`) BEFORE merging code that depends on it —
   a missing 068 once shipped ahead of its migration and broke the live boards
   list for ~6h. Migrations first, then deploy. Prefer small sliced commits.
 - Do NOT add "Co-Authored-By: Claude" trailers to commits (repo rule).
-- Tests: `pnpm test` (currently 191 passing across 17 files — keep them green).
+- Tests: `pnpm test` (currently 208 passing across 18 files — keep them green).
   `pnpm lint` is broken repo-wide (ESLint 10 with no eslint.config.js); use
   `npx tsc --noEmit` for a real check until someone adds a flat config.
 

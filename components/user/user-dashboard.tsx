@@ -14,6 +14,7 @@ import type { SidebarNavGroup } from '../shell/app-sidebar'
 import Link from 'next/link'
 import ChatPanel from '../chat/chat-panel'
 import AppointmentsView from '../appointments/appointments-view'
+import ProjectIdsView from '../project-ids/project-ids-view'
 import CalendarView from '../calendar/calendar-view'
 import NotificationInfo from '../notifications/notification-info'
 import TaskNotificationToasts from '../notifications/task-notification-toasts'
@@ -78,6 +79,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   // Unlike the modules above, 'appointments' is seeded enabled=false (migration 080), so this
   // stays hidden until a super_admin switches it on.
   const showAppointments = isModuleEnabled(modules, 'appointments')
+  const showProjectIds = isModuleEnabled(modules, 'project_ids')
 
   // Tabs are the visible sections; only these are addressable via ?tab=.
   const allowedTabs = useMemo(
@@ -89,8 +91,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
       ...(showBoards ? ['boards'] : []),
       ...(showChat ? ['chat'] : []),
       ...(showAppointments ? ['appointments'] : []),
+      ...(showProjectIds ? ['project-ids'] : []),
     ],
-    [showPersonal, showCalendar, showMarketing, showBoards, showChat, showAppointments],
+    [showPersonal, showCalendar, showMarketing, showBoards, showChat, showAppointments, showProjectIds],
   )
 
   // Keep the active tab in sync with the URL so sections are deep-linkable and the
@@ -168,6 +171,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
           : []),
         ...(showAppointments
           ? [{ id: 'appointments', label: 'Appointments', icon: 'appointments', href: '/dashboard?tab=appointments', status: 'live' as const }]
+          : []),
+        ...(showProjectIds
+          ? [{ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: '/dashboard?tab=project-ids', status: 'live' as const }]
           : []),
       ],
     },
@@ -538,6 +544,15 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
           {showAppointments && (
             <TabsContent value="appointments">
               <AppointmentsView userId={user.id} />
+            </TabsContent>
+          )}
+
+          {showProjectIds && (
+            <TabsContent value="project-ids">
+              <ProjectIdsView
+                userId={user.id}
+                userName={user.full_name || user.email || 'Unknown user'}
+              />
             </TabsContent>
           )}
           </Tabs>

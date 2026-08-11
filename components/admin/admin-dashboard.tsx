@@ -16,6 +16,7 @@ import CalendarView from '../calendar/calendar-view'
 import ReportsView from '../reports/reports-view'
 import MetricsView from '../reports/metrics-view'
 import PersonalTasks from '../personal/personal-tasks'
+import ProjectIdsView from '../project-ids/project-ids-view'
 import BookmarksSection from '../bookmarks/bookmarks-section'
 import MarketingCalendar from '../marketing/marketing-calendar'
 import TaskNotificationToasts from '../notifications/task-notification-toasts'
@@ -79,6 +80,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   const showBoards = isModuleEnabled(modules, 'boards')
   const showChat = isModuleEnabled(modules, 'chat')
   const showPersonal = isModuleEnabled(modules, 'personal_tasks')
+  const showProjectIds = isModuleEnabled(modules, 'project_ids')
 
   // Sections addressable via ?tab= — matches the TabsTrigger values below.
   const allowedTabs = [
@@ -89,6 +91,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
     ...(showBoards ? ['boards'] : []),
     ...(showChat ? ['chat'] : []),
     ...(showPersonal ? ['personal'] : []),
+    ...(showProjectIds ? ['project-ids'] : []),
   ]
 
   // Keep the active tab in sync with the URL so sections are deep-linkable and the
@@ -157,6 +160,9 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
       : []),
     ...(showPersonal
       ? [{ id: 'personal', label: 'Personal', icon: 'lock', href: '/admin?tab=personal', status: 'live' as const }]
+      : []),
+    ...(showProjectIds
+      ? [{ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: '/admin?tab=project-ids', status: 'live' as const }]
       : []),
   ]
   const sidebarGroups: SidebarNavGroup[] = [
@@ -288,6 +294,15 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             <TabsContent value="personal">
               <PersonalTasks userId={user.id} />
             </TabsContent>
+
+            {showProjectIds && (
+              <TabsContent value="project-ids">
+                <ProjectIdsView
+                  userId={user.id}
+                  userName={user.full_name || user.email || 'Unknown user'}
+                />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
         </div>
