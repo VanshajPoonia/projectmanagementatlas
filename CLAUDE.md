@@ -236,13 +236,31 @@ Corollary, specific to this repo: because all five people above are admins, *any
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `091`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `093`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-12: dev and prod are both at `090`, except that **prod has never had `087`**
-  and that gap is deliberate (see below) — `088`/`089`/`090` were applied to prod with
-  `--only=… --allow-prod`, which is what the runner's `--only` flag exists for.
+  As of 2026-08-12: **dev is at `092`, prod is at `090`** — `091` (large task attachments) and
+  `092` (private chat attachments) are applied to the dev sandbox only and must reach prod
+  *before* their client code merges to `main`, or the Attachments tab queries a `storage_path`
+  column and chat queries an `attachment_path` column that do not exist there. Prod has
+  also never had `087`, and that gap is deliberate (see below) — `088`/`089`/`090` were applied
+  to prod with `--only=… --allow-prod`, which is what the runner's `--only` flag exists for.
+- **⚠️ `pnpm build` / `pnpm start` locally talk to PRODUCTION.** Next loads
+  `.env.$(NODE_ENV).local` ahead of `.env.local`, and this repo has a committed-in-workspace
+  `.env.production.local` holding prod credentials — so any production build bakes prod's
+  Supabase URL and anon key into the client bundle, and a local `pnpm start` session is a live
+  prod client. `pnpm dev` is unaffected (it uses `.env.local`, the dev sandbox). Before running
+  any browser test against `pnpm start`, move `.env.production.local` aside and rebuild, then
+  restore it — and confirm which project you got with:
+  `grep -rhoE '(icyfluwgyuimhwlddjyy|pxzpewaerhjwnwsbaklc)' .next/static/chunks/*.js | sort -u`
+- **CSP is production-only, so dev cannot catch an `img-src` bug.** `next.config.mjs` only sets
+  Content-Security-Policy when `NODE_ENV === 'production'`. `img-src` must list `blob:` and
+  `https://*.supabase.co` — verified in a real browser that without them the marketing
+  calendar's `URL.createObjectURL` preview and task attachments' signed-URL thumbnails are both
+  refused, while `data:` (the inline base64 path) still loads, which is exactly why the
+  marketing preview was silently broken in production for so long. Any new Storage-backed image
+  must be checked against a real production build, not `pnpm dev`.
 - **New tables need an explicit `REVOKE ALL`.** Supabase's default privileges grant every new
   table in `public` a blanket ALL to `anon` and `authenticated`, so granting narrowly is not
   enough — the wide grant is already there. `090` is the worked example (and its post-conditions

@@ -131,6 +131,31 @@ future session, that's a regression — don't assume it's still pending.
   delete, move, or unlock it.
 
 ## Git / shipping
+- ⚠️ **NOT ON PROD as of 2026-08-12: private chat attachments (migration 092) + a CSP fix.**
+  `chat-attachments` was created public with no size or MIME limit, so every DM attachment was
+  readable off the CDN by anyone holding the URL, with no session — and the client stored exactly
+  that public URL on `chat_messages.image_url`. 092 makes the bucket private (10 MB, MIME
+  allowlist), adds `chat_messages.attachment_path`, and narrows the read policy from 002's "any
+  authenticated user can read every chat file" to sender/recipient/admin. Safe to apply: **0 of 6
+  prod messages (and 0 of 4 dev) reference an attachment**, so there is no live link to break and
+  no backfill. One orphaned ~399 kB object per database is deliberately left in place.
+  Verified by `pnpm check:chat-attachments` (16/16, including an unauthenticated fetch of the old
+  public URL now returning 400). Rollback: `scripts/rollback/092_revert.sql`.
+  Alongside it, `next.config.mjs`'s CSP `img-src` gained `blob:` and `https://*.supabase.co` —
+  without them the marketing calendar's image preview was **already broken in production** and
+  the new task thumbnails would have shipped broken. CSP is production-only, so `pnpm dev` can
+  never catch this; verified against a real production build (thumbnail `naturalWidth=64`).
+- ⚠️ **UNCOMMITTED / NOT ON PROD as of 2026-08-12: large task attachments (migration 091).**
+  An admin-only, per-upload opt-in that routes a task attachment to the new private
+  `task-assets` Storage bucket (50 MB — the Supabase **Free** plan's hard per-file ceiling)
+  instead of base64-ing it into `task_attachments.file_data`. The inline path is untouched at
+  10 MB for everyone. `storage_path` and `file_data` are mutually exclusive (CHECK), the INSERT
+  policy rejects a `storage_path` from anyone `private.is_admin_user()` is false for, and
+  *reading* is deliberately not admin-gated. Verified: `pnpm check:task-attachments` (15/15
+  against real RLS) + 14/14 real-browser Playwright + 218 unit tests + `pnpm build`.
+  **091 is on dev only — apply it to prod BEFORE this code merges to `main`** (the Attachments
+  tab selects `storage_path`). Rollback: `scripts/rollback/091_revert.sql`. Note the Free-plan
+  storage budget is 1 GB in total, ~20 files at full size; that is why this is opt-in, not default.
 - Local `main` == origin/main (pushed + deployed as of 2026-08-12). Most recently shipped:
   the **Project ID Manager** (migration 090) — a new "Project IDs" module where anyone signed
   in grabs the next YYMM+4-digit number (e.g. 26081111, sequence restarts at 1111 each Central
@@ -145,7 +170,7 @@ future session, that's a regression — don't assume it's still pending.
   a missing 068 once shipped ahead of its migration and broke the live boards
   list for ~6h. Migrations first, then deploy. Prefer small sliced commits.
 - Do NOT add "Co-Authored-By: Claude" trailers to commits (repo rule).
-- Tests: `pnpm test` (currently 208 passing across 18 files — keep them green).
+- Tests: `pnpm test` (currently 218 passing across 19 files — keep them green).
   `pnpm lint` is broken repo-wide (ESLint 10 with no eslint.config.js); use
   `npx tsc --noEmit` for a real check until someone adds a flat config.
 

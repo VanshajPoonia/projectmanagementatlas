@@ -25,6 +25,16 @@ import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { findExactColumnForStatus } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
+import {
+  buildTaskAssetPath,
+  formatAttachmentSize,
+  isLargeAttachment,
+  resolveTaskAttachmentMimeType,
+  TASK_ASSET_BUCKET,
+  TASK_ASSET_SIGNED_URL_SECONDS,
+  TASK_ATTACHMENT_ACCEPT,
+  validateTaskAttachment,
+} from '@/lib/task-attachments'
 import SubtaskList from './subtask-list'
 
 // Mirrors the marketing calendar's custom-recurrence weekday row (and the booking
@@ -98,6 +108,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const [linkUrl, setLinkUrl] = useState('')
   const [newComment, setNewComment] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [largeUpload, setLargeUpload] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(null)
 
   useEffect(() => {
@@ -118,6 +129,17 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   // Mirrors the server-side restriction from migrations 065/067 — guest/client board
   // members can view but not create/edit/delete tasks.
   const isRestrictedMember = boardRole === 'guest' || boardRole === 'client'
+
+  // The large-file upload gate (migration 091). Read off the loaded profile rather
+  // than the isAdmin prop on purpose: app/dashboard/board/[id]/page.tsx hardcodes
+  // isAdmin={false} so that route's edit permissions stay non-admin, which would
+  // otherwise hide this toggle from an admin who opened the board from /dashboard
+  // rather than /admin. Both roles are included because private.is_admin_user() —
+  // the function the RLS policy actually calls — is true for admin AND super_admin
+  // (migration 047); writing role === 'admin' here would exclude Bobby and Kayla.
+  const canUploadLargeFiles = !isRestrictedMember && (
+    currentUser?.role === 'admin' || currentUser?.role === 'super_admin'
+  )
   const canEdit = !isRestrictedMember && Boolean(
     isAdmin
     || task?.created_by === currentUserId
@@ -153,28 +175,50 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const loadAttachments = async () => {
     const { data } = await supabase
       .from('task_attachments')
-      .select('id, task_id, file_name, file_type, file_size, created_at, uploaded_by:profiles(full_name, email)')
+      .select('id, task_id, file_name, file_type, file_size, storage_path, created_at, uploaded_by:profiles(full_name, email)')
       .eq('task_id', taskId)
       .order('created_at', { ascending: false })
 
     if (!data) return
 
-    // Images render an inline thumbnail and need file_data right away; everything
-    // else only needs it on download, so skip pulling those (often large) blobs here.
-    const imageIds = data.filter((attachment: any) => attachment.file_type?.startsWith('image/')).map((attachment: any) => attachment.id)
+    // Images render an inline thumbnail and need their bytes right away; everything
+    // else only needs them on download, so skip pulling those (often large) blobs here.
+    const images = data.filter((attachment: any) => attachment.file_type?.startsWith('image/'))
 
-    if (imageIds.length === 0) {
+    // Storage-backed rows (migration 091) carry no file_data at all — a thumbnail for
+    // one comes from a short-lived signed URL instead of a base64 data URI.
+    const inlineImageIds = images.filter((a: any) => !a.storage_path).map((a: any) => a.id)
+    const storageImagePaths = images.filter((a: any) => a.storage_path).map((a: any) => a.storage_path)
+
+    if (inlineImageIds.length === 0 && storageImagePaths.length === 0) {
       setAttachments(data)
       return
     }
 
-    const { data: imageData } = await supabase
-      .from('task_attachments')
-      .select('id, file_data')
-      .in('id', imageIds)
+    const [inlineResult, signedResult] = await Promise.all([
+      inlineImageIds.length
+        ? supabase.from('task_attachments').select('id, file_data').in('id', inlineImageIds)
+        : Promise.resolve({ data: [] as any[] }),
+      storageImagePaths.length
+        ? supabase.storage
+            .from(TASK_ASSET_BUCKET)
+            .createSignedUrls(storageImagePaths, TASK_ASSET_SIGNED_URL_SECONDS)
+        : Promise.resolve({ data: [] as any[] }),
+    ])
 
-    const fileDataById = new Map((imageData ?? []).map((row: any) => [row.id, row.file_data]))
-    setAttachments(data.map((attachment: any) => ({ ...attachment, file_data: fileDataById.get(attachment.id) })))
+    const fileDataById = new Map((inlineResult.data ?? []).map((row: any) => [row.id, row.file_data]))
+    const signedByPath = new Map(
+      (signedResult.data ?? [])
+        .filter((row: any) => row.signedUrl && !row.error)
+        .map((row: any) => [row.path, row.signedUrl]),
+    )
+
+    setAttachments(data.map((attachment: any) => ({
+      ...attachment,
+      file_data: attachment.storage_path
+        ? signedByPath.get(attachment.storage_path)
+        : fileDataById.get(attachment.id),
+    })))
   }
 
   const loadComments = async () => {
@@ -465,6 +509,60 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     }
   }
 
+  // The admin-only large-file path (migration 091). The object goes to Storage first;
+  // only if the metadata row then links successfully does the upload count as done —
+  // otherwise the object is removed again so a failed link cannot leave bytes behind
+  // eating into the 1 GB Free-plan storage budget with nothing pointing at them.
+  // Mirrors uploadMarketingAssetForItem in components/marketing/marketing-calendar.tsx.
+  const uploadLargeAttachment = async (file: File, input: HTMLInputElement) => {
+    const mimeType = resolveTaskAttachmentMimeType(file)
+    if (!mimeType || !currentUser) return
+
+    const storagePath = buildTaskAssetPath(taskId, mimeType)
+    setUploading(true)
+
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from(TASK_ASSET_BUCKET)
+        .upload(storagePath, file, {
+          cacheControl: '3600',
+          contentType: mimeType,
+          upsert: false,
+        })
+
+      if (uploadError) {
+        console.error('[v0] Large upload error:', uploadError)
+        toast.error('Could not upload file', { description: uploadError.message })
+        return
+      }
+
+      const { error: metadataError } = await supabase
+        .from('task_attachments')
+        .insert({
+          task_id: taskId,
+          file_name: file.name,
+          file_type: mimeType,
+          storage_path: storagePath,
+          file_size: file.size,
+          uploaded_by: currentUser.id,
+        })
+
+      if (metadataError) {
+        await supabase.storage.from(TASK_ASSET_BUCKET).remove([storagePath])
+        console.error('[v0] Large upload link error:', metadataError)
+        toast.error('The file could not be linked to this task', { description: metadataError.message })
+        return
+      }
+
+      logTaskActivity(supabase, taskId, currentUser.id, `added attachment "${file.name}"`)
+      await loadAttachments()
+      toast.success(`Attachment added (${formatAttachmentSize(file.size)})`)
+      input.value = ''
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !currentUser) {
@@ -474,17 +572,28 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
     console.log('[v0] Uploading file:', file.name, 'Size:', file.size)
 
-    // Check file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024
-    if (file.size > maxSize) {
-      console.log('[v0] File too large')
-      alert('File size must be less than 10MB')
+    // Two paths (migration 091): inline base64 into the DB at 10 MB for everyone, or
+    // — when an admin explicitly ticks "Large file" — Supabase Storage at 50 MB. The
+    // limits live in lib/task-attachments.ts alongside the reason each one is what it is.
+    const useLargePath = largeUpload && canUploadLargeFiles
+    const validationError = validateTaskAttachment(file, {
+      large: largeUpload,
+      isAdmin: canUploadLargeFiles,
+    })
+    if (validationError) {
+      console.log('[v0] File rejected:', validationError)
+      toast.error(validationError)
       e.target.value = '' // Reset input
       return
     }
 
+    if (useLargePath) {
+      await uploadLargeAttachment(file, e.target)
+      return
+    }
+
     setUploading(true)
-    
+
     try {
       // Convert file to base64 for storage
       const reader = new FileReader()
@@ -589,6 +698,19 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     if (error) {
       toast.error('Could not remove attachment', { description: error.message })
       return
+    }
+
+    // Storage-backed attachments (migration 091) leave the object behind when only
+    // the row is deleted, and those bytes keep counting against the storage budget.
+    // Deliberately after the row delete: if this fails the attachment is still gone
+    // from the UI, which is the outcome the user asked for.
+    if (attachment?.storage_path) {
+      const { error: objectError } = await supabase.storage
+        .from(TASK_ASSET_BUCKET)
+        .remove([attachment.storage_path])
+      if (objectError) {
+        console.error('[v0] Orphaned task asset object:', attachment.storage_path, objectError)
+      }
     }
 
     if (currentUser) {
@@ -1246,8 +1368,15 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">{attachment.file_name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {(attachment.file_size / 1024).toFixed(1)} KB
+                              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                {/* Was `${(file_size / 1024).toFixed(1)} KB`, which reads as
+                                    "40960.0 KB" once large files are in play. */}
+                                {formatAttachmentSize(attachment.file_size ?? 0)}
+                                {isLargeAttachment(attachment) && (
+                                  <span className="rounded bg-muted px-1 py-px text-[10px] font-medium uppercase tracking-wide">
+                                    Large
+                                  </span>
+                                )}
                               </p>
                               <p className="text-xs text-muted-foreground">
                                 {new Date(attachment.created_at).toLocaleDateString('en-US')}
@@ -1259,6 +1388,23 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                                 size="icon"
                                 className="h-8 w-8 bg-transparent"
                                 onClick={async () => {
+                                  // Storage-backed attachments (migration 091) are fetched
+                                  // through a short-lived signed URL — the bucket is private,
+                                  // so there is no public link to fall back on.
+                                  if (attachment.storage_path) {
+                                    const { data, error } = await supabase.storage
+                                      .from(TASK_ASSET_BUCKET)
+                                      .createSignedUrl(attachment.storage_path, TASK_ASSET_SIGNED_URL_SECONDS, {
+                                        download: attachment.file_name,
+                                      })
+                                    if (error || !data?.signedUrl) {
+                                      toast.error('Could not download file', { description: error?.message })
+                                      return
+                                    }
+                                    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+                                    return
+                                  }
+
                                   let fileData = attachment.file_data
                                   if (!fileData) {
                                     const { data } = await supabase
@@ -1304,7 +1450,9 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   type="file"
                   id="file-upload"
                   className="hidden"
-                  accept="*/*"
+                  // The large path is restricted to the formats the bucket's MIME
+                  // allowlist accepts (migration 091); the inline path never was.
+                  accept={largeUpload && canUploadLargeFiles ? TASK_ATTACHMENT_ACCEPT : '*/*'}
                   onChange={handleFileUpload}
                   disabled={uploading}
                 />
@@ -1317,8 +1465,33 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   <Upload className="w-4 h-4" />
                   {uploading ? 'Uploading...' : 'Upload File'}
                 </Button>
+
+                {/* Admin-only, explicit, per-upload opt-in. Hiding it is presentation
+                    only — migration 091's INSERT policy is what actually stops a
+                    non-admin taking the large path. */}
+                {canUploadLargeFiles && (
+                  <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md border p-2.5">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={largeUpload}
+                      onChange={(event) => setLargeUpload(event.target.checked)}
+                      disabled={uploading}
+                    />
+                    <span className="text-xs">
+                      <span className="font-medium">Large file (up to 50 MB)</span>
+                      <span className="block text-muted-foreground">
+                        Stores the file outside the database. Admins only, and shared storage
+                        is capped at 1 GB in total — use it for files that genuinely need it.
+                      </span>
+                    </span>
+                  </label>
+                )}
+
                 <p className="text-xs text-muted-foreground text-center mt-2">
-                  Images, PDFs, Videos, Documents, Sheets - All file types supported
+                  {largeUpload && canUploadLargeFiles
+                    ? 'Images, PDFs, Videos, Documents, Sheets, ZIP - up to 50 MB'
+                    : 'Images, PDFs, Videos, Documents, Sheets - All file types supported, up to 10MB'}
                 </p>
               </div>
             </TabsContent>

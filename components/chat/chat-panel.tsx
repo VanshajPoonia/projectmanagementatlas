@@ -8,6 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Send, Paperclip } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import {
+  buildChatAssetPath,
+  CHAT_ASSET_BUCKET,
+  CHAT_ASSET_SIGNED_URL_SECONDS,
+  CHAT_ATTACHMENT_ACCEPT,
+  resolveChatAttachmentMimeType,
+  validateChatAttachment,
+} from '@/lib/chat-attachments'
 import ChatMessage from './chat-message'
 
 interface ChatPanelProps {
@@ -22,6 +30,7 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
   const [selectedUser, setSelectedUser] = useState<string>('')
   const [users, setUsers] = useState<any[]>([])
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [unreadBySender, setUnreadBySender] = useState<Record<string, number>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -73,7 +82,29 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
       )
       .order('created_at', { ascending: true })
 
-    if (data) setMessages(data)
+    if (data) {
+      // The bucket is private since 092, so an attachment is rendered through a
+      // short-lived signed URL rather than the permanent public URL the old client
+      // stored on image_url. Signed in one batch here rather than per message, so a
+      // conversation costs one request no matter how many files it contains.
+      const paths = data.map((m: any) => m.attachment_path).filter(Boolean)
+      let signedByPath = new Map<string, string>()
+      if (paths.length) {
+        const { data: signed } = await supabase.storage
+          .from(CHAT_ASSET_BUCKET)
+          .createSignedUrls(paths, CHAT_ASSET_SIGNED_URL_SECONDS)
+        signedByPath = new Map(
+          (signed ?? [])
+            .filter((row: any) => row.signedUrl && !row.error)
+            .map((row: any) => [row.path, row.signedUrl]),
+        )
+      }
+      setMessages(data.map((m: any) => ({
+        ...m,
+        // image_url is the legacy fallback for anything sent before 092.
+        attachment_url: m.attachment_path ? signedByPath.get(m.attachment_path) ?? null : m.image_url,
+      })))
+    }
 
     // Opening a conversation marks its incoming messages as read.
     await supabase
@@ -140,33 +171,49 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
     const file = e.target.files?.[0]
     if (!file || !selectedUser) return
 
+    // The bucket enforces both of these too (migration 092) — checking here just
+    // turns a failed upload into a readable message.
+    const validationError = validateChatAttachment(file)
+    if (validationError) {
+      setUploadError(validationError)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
+    const mimeType = resolveChatAttachmentMimeType(file)!
+    // The path MUST start with the sender's id — the object policies read that back
+    // to decide who may upload and delete.
+    const filePath = buildChatAssetPath(currentUserId, mimeType)
+
     setUploading(true)
+    setUploadError(null)
 
     try {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${crypto.randomUUID()}.${fileExt}`
-      const filePath = `${currentUserId}/${fileName}`
-
       const { error: uploadError } = await supabase.storage
-        .from('chat-attachments')
-        .upload(filePath, file)
+        .from(CHAT_ASSET_BUCKET)
+        .upload(filePath, file, { contentType: mimeType, upsert: false })
 
       if (uploadError) throw uploadError
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('chat-attachments')
-        .getPublicUrl(filePath)
-
-      await supabase.from('chat_messages').insert({
+      // attachment_path, not a public URL: the bucket is private since 092.
+      const { error: messageError } = await supabase.from('chat_messages').insert({
         sender_id: currentUserId,
         recipient_id: selectedUser,
-        message: file.type.startsWith('image/') ? 'Image' : `File: ${file.name}`,
-        image_url: publicUrl,
+        message: mimeType.startsWith('image/') ? 'Image' : `File: ${file.name}`,
+        attachment_path: filePath,
       })
 
+      if (messageError) {
+        // Don't leave the object behind eating the shared storage budget with no
+        // message pointing at it.
+        await supabase.storage.from(CHAT_ASSET_BUCKET).remove([filePath])
+        throw messageError
+      }
+
       loadMessages()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading file:', error)
+      setUploadError(error?.message ? `Could not send file: ${error.message}` : 'Could not send file.')
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -228,13 +275,18 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
       </CardContent>
 
       <div className="border-t p-4">
+        {uploadError && (
+          <p className="mb-2 text-xs text-destructive">{uploadError}</p>
+        )}
         <form onSubmit={handleSendMessage} className="flex gap-2">
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleFileUpload}
             className="hidden"
-            accept="image/*,.pdf,.doc,.docx"
+            // Kept in step with the bucket's MIME allowlist (migration 092) so the
+            // picker cannot offer a type the database will refuse.
+            accept={CHAT_ATTACHMENT_ACCEPT}
           />
           <Button
             type="button"

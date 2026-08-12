@@ -10,8 +10,14 @@ interface ChatMessageProps {
 }
 
 export default function ChatMessage({ message, isOwn }: ChatMessageProps) {
-  const isImage = message.image_url && (message.message === 'Image' || message.message === '📷 Image')
-  
+  // Since migration 092 the chat bucket is private, so the panel resolves each
+  // attachment to a short-lived signed URL and hands it over as attachment_url.
+  // image_url is the legacy public-URL field, still rendered for anything sent
+  // before that. A message with an attachment whose URL could not be signed (an
+  // expired conversation, a deleted object) falls through to its text body.
+  const attachmentUrl = message.attachment_url ?? message.image_url ?? null
+  const isImage = attachmentUrl && (message.message === 'Image' || message.message === '📷 Image')
+
   return (
     <div className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : 'flex-row'} animate-in slide-in-from-bottom-2 duration-300`}>
       <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-semibold text-sm flex-shrink-0">
@@ -25,19 +31,19 @@ export default function ChatMessage({ message, isOwn }: ChatMessageProps) {
         
         <Card className={`p-3 ${isOwn ? 'bg-primary text-primary-foreground' : 'bg-background'} shadow-sm`}>
           {isImage ? (
-            <a href={message.image_url} target="_blank" rel="noopener noreferrer" className="block">
+            <a href={attachmentUrl} target="_blank" rel="noopener noreferrer" className="block">
               <div className="relative w-48 h-48 rounded-lg overflow-hidden">
                 <Image 
-                  src={message.image_url || "/placeholder.svg"} 
+                  src={attachmentUrl || "/placeholder.svg"} 
                   alt="Attachment" 
                   fill
                   className="object-cover hover:scale-105 transition-transform"
                 />
               </div>
             </a>
-          ) : message.image_url ? (
+          ) : attachmentUrl ? (
             <a 
-              href={message.image_url} 
+              href={attachmentUrl} 
               target="_blank" 
               rel="noopener noreferrer"
               className={`flex items-center gap-2 ${isOwn ? 'text-primary-foreground hover:underline' : 'text-primary hover:underline'}`}
