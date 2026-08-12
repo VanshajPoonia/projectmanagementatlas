@@ -13,6 +13,14 @@ import { createClient } from '@/lib/supabase/client'
 import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
 import { getAssignees, getAssigneeIds } from '@/lib/assignees'
+import { can, type Actor } from '@/lib/capabilities'
+import {
+  DEFAULT_DENSITY,
+  densityCardClass,
+  showsDescriptionPreview,
+  showsSecondaryDetail,
+  type Density,
+} from '@/components/shell/density'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, findExactColumnForStatus, getEffectiveStatusKey } from '@/lib/task-status'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
@@ -28,6 +36,8 @@ interface TaskCardProps {
   currentUserId: string
   /** The caller's board_members row for this board, if any (null = no row = full default access). */
   boardRole?: 'member' | 'guest' | 'client' | null
+  /** Viewer's own density preference; never shared, never written to the task. */
+  density?: Density
   users: any[]
   board?: any
   columns?: any[]
@@ -37,7 +47,7 @@ interface TaskCardProps {
   onUpdate?: () => void
 }
 
-export default function TaskCard({ task, isAdmin, currentUserId, boardRole = null, users, board, columns, subtasks, isDragging, onUpdate }: TaskCardProps) {
+export default function TaskCard({ task, isAdmin, currentUserId, boardRole = null, density = DEFAULT_DENSITY, users, board, columns, subtasks, isDragging, onUpdate }: TaskCardProps) {
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailInitialTab, setDetailInitialTab] = useState<'comments' | 'activity'>('comments')
   const [editingTitle, setEditingTitle] = useState(false)
@@ -49,13 +59,15 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
   const taskAssignees = getAssignees(task, users)
   const assigneeIds = getAssigneeIds(task)
   const taskDescription = cleanTaskDescription(task.description)
-  // Mirrors the server-side restriction from migrations 065/067 — guest/client board
-  // members can view but not create/edit/delete tasks.
-  const isRestrictedMember = boardRole === 'guest' || boardRole === 'client'
-  // Mirrors TaskDetailModal's canEdit/canEditDueDate rules, so inline edits on the
-  // tile follow the same permissions as the full modal.
-  const canEdit = !isRestrictedMember && (isAdmin || task.created_by === currentUserId || assigneeIds.includes(currentUserId))
-  const canEditDueDate = !isRestrictedMember && (isAdmin || task.created_by === currentUserId)
+  // Edit rules come from lib/capabilities.ts so the tile, the detail modal and the board
+  // cannot drift apart; platformRole is unused here (no capability on this surface reads
+  // it) so the isAdmin prop carries the whole decision, as it did before.
+  const actor: Actor = { userId: currentUserId, platformRole: 'user', boardRole, isAdmin }
+  const subject = { created_by: task.created_by, assigned_to: task.assigned_to, assigneeIds }
+  const editDecision = can(actor, 'task.edit', subject)
+  const dueDateDecision = can(actor, 'task.schedule', subject)
+  const canEdit = editDecision.allowed
+  const canEditDueDate = dueDateDecision.allowed
   const currentUser = users.find((u: any) => u.id === currentUserId)
   const statuses = useTaskStatuses()
 
@@ -241,7 +253,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
   return (
     <>
       <Card
-        className={`group min-w-0 cursor-grab overflow-hidden p-3 active:cursor-grabbing transition-colors hover:border-primary/40 hover:shadow-md ${
+        className={`group min-w-0 cursor-grab overflow-hidden active:cursor-grabbing transition-colors hover:border-primary/40 hover:shadow-md ${densityCardClass(density)} ${
           isDragging ? 'shadow-xl opacity-80 cursor-grabbing' : ''
         } ${isOverdue ? 'border-red-300 bg-red-50/30' : ''}`}
         onClick={() => {
@@ -249,7 +261,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
           setDetailOpen(true)
         }}
       >
-        <div className="space-y-2.5">
+        <div className={density === 'compact' ? 'space-y-1.5' : 'space-y-2.5'}>
           <div className="flex min-w-0 items-start justify-between gap-2">
             {editingTitle ? (
               <Input
@@ -300,7 +312,9 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
             </Button>
           </div>
 
-          {editingDesc ? (
+          {/* Compact exists to fit more work on screen, so the description preview and
+              its "add a description" affordance drop out entirely at that density. */}
+          {!showsSecondaryDetail(density) ? null : editingDesc ? (
             <Textarea
               autoFocus
               value={descDraft}
@@ -322,9 +336,9 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
             />
           ) : taskDescription ? (
             <p
-              className={`break-words text-xs text-muted-foreground line-clamp-3 [overflow-wrap:anywhere] ${
-                canEdit ? 'cursor-text rounded hover:bg-accent' : ''
-              }`}
+              className={`break-words text-xs text-muted-foreground [overflow-wrap:anywhere] ${
+                showsDescriptionPreview(density) ? 'line-clamp-6' : 'line-clamp-3'
+              } ${canEdit ? 'cursor-text rounded hover:bg-accent' : ''}`}
               onClick={(e) => {
                 if (!canEdit) return
                 e.stopPropagation()

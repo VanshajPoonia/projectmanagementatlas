@@ -20,6 +20,8 @@ import { sendTaskAssignmentEmail, sendCommentEmail, sendTaskUpdateEmail } from '
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { can, type Actor } from '@/lib/capabilities'
+import { RestrictionNote } from '@/components/shell/action-guard'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
@@ -126,29 +128,36 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     }
   }, [open, taskId])
 
-  // Mirrors the server-side restriction from migrations 065/067 — guest/client board
-  // members can view but not create/edit/delete tasks.
-  const isRestrictedMember = boardRole === 'guest' || boardRole === 'client'
+  // All five gates below come from lib/capabilities.ts, which is where the guest/client
+  // restriction (migrations 065/067) and the creator/assignee rules now live — one
+  // definition shared with task-card and board-view instead of three copies.
+  //
+  // `platformRole` is read off the loaded profile rather than the isAdmin prop on
+  // purpose: app/dashboard/board/[id]/page.tsx hardcodes isAdmin={false} so that route's
+  // edit permissions stay non-admin, and passing both lets `task.attach.large` (migration
+  // 091) still resolve for a real admin who opened the board from /dashboard. Both admin
+  // and super_admin count, because private.is_admin_user() — the function the RLS policy
+  // actually calls — is true for both (migration 047).
+  const actor: Actor = {
+    userId: currentUserId ?? '',
+    platformRole: (currentUser?.role as Actor['platformRole']) ?? 'user',
+    boardRole,
+    isAdmin,
+  }
+  const subject = {
+    created_by: task?.created_by,
+    assigned_to: task?.assigned_to,
+    assigneeIds: assignees,
+  }
+  const editDecision = can(actor, 'task.edit', subject)
+  const dueDateDecision = can(actor, 'task.schedule', subject)
+  const attachmentDeleteDecision = can(actor, 'task.attachment.delete', subject)
 
-  // The large-file upload gate (migration 091). Read off the loaded profile rather
-  // than the isAdmin prop on purpose: app/dashboard/board/[id]/page.tsx hardcodes
-  // isAdmin={false} so that route's edit permissions stay non-admin, which would
-  // otherwise hide this toggle from an admin who opened the board from /dashboard
-  // rather than /admin. Both roles are included because private.is_admin_user() —
-  // the function the RLS policy actually calls — is true for admin AND super_admin
-  // (migration 047); writing role === 'admin' here would exclude Bobby and Kayla.
-  const canUploadLargeFiles = !isRestrictedMember && (
-    currentUser?.role === 'admin' || currentUser?.role === 'super_admin'
-  )
-  const canEdit = !isRestrictedMember && Boolean(
-    isAdmin
-    || task?.created_by === currentUserId
-    || (typeof task?.assigned_to === 'string' ? task.assigned_to : task?.assigned_to?.id) === currentUserId
-    || assignees.includes(currentUserId)
-  )
-  const canDeleteAttachments = !isRestrictedMember && Boolean(isAdmin || task?.created_by === currentUserId)
+  const canUploadLargeFiles = can(actor, 'task.attach.large', subject).allowed
+  const canEdit = editDecision.allowed
+  const canDeleteAttachments = attachmentDeleteDecision.allowed
   // Per the PM portal spec: the due date can only be changed by the task's creator (or an admin).
-  const canEditDueDate = !isRestrictedMember && Boolean(isAdmin || task?.created_by === currentUserId)
+  const canEditDueDate = dueDateDecision.allowed
 
   const loadAssignees = async () => {
     const { data } = await supabase
@@ -873,6 +882,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* Every field below renders disabled when the viewer can't edit. A tooltip on
+              each one would be easy to miss when the whole form is read-only, so the
+              reason is stated once, plainly, at the top. */}
+          <RestrictionNote decision={editDecision} />
+
           {/* Title */}
           <div className="space-y-2">
             <Label>Title</Label>

@@ -2,16 +2,20 @@ import {
   Bell,
   Calendar,
   CalendarClock,
+  Clock,
   Crown,
   FileBarChart,
   Hash,
   Home,
   Kanban,
   LayoutDashboard,
+  Link2,
   ListChecks,
   Lock,
   Megaphone,
   MessageSquare,
+  Plus,
+  Search,
   Shield,
   SlidersHorizontal,
   type LucideIcon,
@@ -35,6 +39,11 @@ const ICONS: Record<string, LucideIcon> = {
   overview: LayoutDashboard,
   reports: FileBarChart,
   statuses: SlidersHorizontal,
+  // Command-palette-only keys (commands.ts), not used by any nav item.
+  plus: Plus,
+  search: Search,
+  clock: Clock,
+  link: Link2,
 }
 
 export function navIcon(key: string): LucideIcon {

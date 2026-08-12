@@ -33,6 +33,11 @@ import { ShareLinkDialog } from './share-link-dialog'
 import ChatPanel from '@/components/chat/chat-panel'
 import MobileBottomNav, { type NavItem } from '@/components/dashboard/mobile-bottom-nav'
 import { getAssigneeIds, getAssignees, getAssigneeNames } from '@/lib/assignees'
+import { allows, can, type Actor } from '@/lib/capabilities'
+import { ActionGuard } from '@/components/shell/action-guard'
+import { useRememberRecord } from '@/components/shell/use-recent-records'
+import { DensityToggle } from '@/components/shell/density-toggle'
+import { useDensity } from '@/components/shell/use-density'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
@@ -52,11 +57,16 @@ interface BoardViewProps {
 const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(id, full_name, email), task_assignees(user_id), task_tags(tag:tags(*)))'
 
 export default function BoardView({ board, columns: initialColumns, users, isAdmin, isSuperAdmin = false, currentUserId, boardRole = null }: BoardViewProps) {
-  // Mirrors the server-side restriction from migrations 065/067 (private.can_manage_task /
-  // the tasks INSERT policy) — guest/client board members can view but not create/edit/delete.
-  const isRestrictedMember = boardRole === 'guest' || boardRole === 'client'
   const router = useRouter()
   const searchParams = useSearchParams()
+  // Feeds the shell's Recent section and the ⌘K palette's Recent group. Written here
+  // rather than on the server route because it is a per-browser convenience, not data.
+  useRememberRecord(currentUserId, {
+    key: `board:${board.id}`,
+    kind: 'board',
+    label: board.title,
+    href: `${isAdmin ? '/admin' : '/dashboard'}/board/${board.id}`,
+  })
   const [columns, setColumns] = useState(initialColumns)
   const taskStatuses = useTaskStatuses()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -83,6 +93,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const supabase = useMemo(() => createClient(), [])
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
+  const { density, setDensity } = useDensity(currentUserId)
 
   // Deep link support: global search links here with ?task=<id> so it can open
   // the specific task, not just land on the board.
@@ -124,16 +135,22 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     router.push(isAdmin ? '/admin' : '/dashboard')
   }
 
+  // Delegates to lib/capabilities.ts so the board, the task tile and the detail modal
+  // share one definition of "may I change this task" (they used to hold three copies).
+  // platformRole is unused on this surface — no capability read here consults it — so the
+  // isAdmin prop carries the whole decision, exactly as it did before.
+  const createDecision = can(
+    { userId: currentUserId, platformRole: 'user', boardRole, isAdmin },
+    'task.create',
+  )
   const canManageTask = useCallback((task: any) => {
-    if (isRestrictedMember) return false
-    const assignedToId = typeof task?.assigned_to === 'string' ? task.assigned_to : task?.assigned_to?.id
-    return Boolean(
-      isAdmin
-      || task?.created_by === currentUserId
-      || assignedToId === currentUserId
-      || getAssigneeIds(task).includes(currentUserId)
-    )
-  }, [currentUserId, isAdmin, isRestrictedMember])
+    const actor: Actor = { userId: currentUserId, platformRole: 'user', boardRole, isAdmin }
+    return allows(actor, 'task.edit', {
+      created_by: task?.created_by,
+      assigned_to: task?.assigned_to,
+      assigneeIds: getAssigneeIds(task),
+    })
+  }, [currentUserId, isAdmin, boardRole])
 
   const columnColors = [
     '#3b82f6', // blue
@@ -664,6 +681,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                 </Button>
               </div>
 
+              {/* Density is per viewer: one person packing the board tight must never
+                  change how anyone else sees it. Persisted per user, per browser. */}
+              <DensityToggle density={density} onChange={setDensity} />
+
               {(isAdmin || board?.created_by === currentUserId) && (
                 <ShareLinkDialog resourceType="board" resourceId={board.id} />
               )}
@@ -814,16 +835,20 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                             </p>
                           </div>
                           <div className="flex items-center gap-1">
-                            {!isRestrictedMember && (
+                            {/* Guests/clients previously saw nothing here, which reads as a
+                                broken board rather than a permission boundary. The button
+                                now stays visible but inert, and says why on hover/focus. */}
+                            <ActionGuard decision={createDecision}>
                               <Button
                                 size="icon-sm"
                                 variant="ghost"
-                                onClick={() => handleOpenCreateDialog(column)}
+                                disabled={!createDecision.allowed}
+                                onClick={createDecision.allowed ? () => handleOpenCreateDialog(column) : undefined}
                                 aria-label={`Add task to ${column.title}`}
                               >
                                 <Plus className="w-4 h-4" />
                               </Button>
-                            )}
+                            </ActionGuard>
                             {isAdmin && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -875,6 +900,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                       isAdmin={isAdmin}
                                       currentUserId={currentUserId}
                                       boardRole={boardRole}
+                                      density={density}
                                       users={users}
                                       board={board}
                                       columns={columns}

@@ -5,11 +5,16 @@ import { useState } from 'react'
 import Link from 'next/link'
 
 import { cn } from '@/lib/utils'
-import { AppSidebar, type RecentItem, type SidebarNavGroup } from './app-sidebar'
+import { AppSidebar, type SidebarNavGroup } from './app-sidebar'
 import { AppTopbar } from './app-topbar'
 import { CommandPalette } from './command-palette'
+import { DensityToggle } from './density-toggle'
 import { navIcon } from './nav-icons'
+import { useDensity } from './use-density'
+import { useRecentRecords } from './use-recent-records'
 import { useSidebarState } from './use-sidebar-state'
+import type { Command } from './commands'
+import type { Density } from './density'
 import type { Role } from './nav-model'
 import type { Crumb } from './breadcrumbs'
 
@@ -26,15 +31,20 @@ interface AppShellProps {
   groups: SidebarNavGroup[]
   activeId: string | null
   breadcrumbs?: Crumb[]
-  recent?: RecentItem[]
   /** Essential items for the mobile bottom bar; defaults to the first group (≤5). */
   mobileItems?: SidebarNavGroup['items']
   /** Right-side topbar controls (theme, accent, account, …). */
   topbarActions?: React.ReactNode
+  /**
+   * Host commands for the ⌘K palette — Create actions and context actions for whatever
+   * is open. Each carries its own CapabilityDecision; see commands.ts.
+   */
+  commands?: Command[]
   title?: string
   /** Applied to the outer wrapper (e.g. accent CSS variables). */
   style?: React.CSSProperties
-  children: React.ReactNode
+  /** Receives the viewer's density so hosts can size their own content to match. */
+  children: React.ReactNode | ((density: Density) => React.ReactNode)
 }
 
 /**
@@ -42,20 +52,26 @@ interface AppShellProps {
  * breadcrumbs + command entry, keyboard command palette (⌘K), and a routed bottom
  * nav on mobile. Host-driven — pages pass their own nav groups + content.
  * Accessibility: skip-to-content link, keyboard-operable nav, motion-safe.
+ *
+ * The shell owns three per-user preferences, all persisted per user and per browser and
+ * never written to a shared record: sidebar collapse, view density, and recently viewed
+ * records.
  */
 export function AppShell({
   user,
   groups,
   activeId,
   breadcrumbs = [],
-  recent = [],
   mobileItems,
   topbarActions,
+  commands = [],
   title,
   style,
   children,
 }: AppShellProps) {
   const { collapsed, toggle } = useSidebarState(user.id)
+  const { density, setDensity } = useDensity(user.id)
+  const { records: recent } = useRecentRecords(user.id)
   const [commandOpen, setCommandOpen] = useState(false)
 
   const mobile = (mobileItems ?? groups[0]?.items ?? []).slice(0, 5)
@@ -74,7 +90,7 @@ export function AppShell({
         activeId={activeId}
         collapsed={collapsed}
         onToggle={toggle}
-        recent={recent}
+        recent={recent.map((r) => ({ label: r.label, href: r.href }))}
         title={title}
       />
 
@@ -83,10 +99,15 @@ export function AppShell({
           user={user}
           breadcrumbs={breadcrumbs}
           onOpenCommand={() => setCommandOpen(true)}
-          actions={topbarActions}
+          actions={
+            <>
+              <DensityToggle density={density} onChange={setDensity} />
+              {topbarActions}
+            </>
+          }
         />
         <main id="app-main" className="flex-1 pb-20 md:pb-0" tabIndex={-1}>
-          {children}
+          {typeof children === 'function' ? children(density) : children}
         </main>
       </div>
 
@@ -117,7 +138,13 @@ export function AppShell({
         })}
       </nav>
 
-      <CommandPalette groups={groups} open={commandOpen} onOpenChange={setCommandOpen} />
+      <CommandPalette
+        groups={groups}
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        recent={recent}
+        commands={commands}
+      />
     </div>
   )
 }
