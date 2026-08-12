@@ -10,6 +10,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveTab } from '../shell/tab-url'
 import { AppShell } from '../shell/app-shell'
+import { buildWorkspaceNav } from '../shell/workspace-nav'
+import type { Command } from '../shell/commands'
 import type { SidebarNavGroup } from '../shell/app-sidebar'
 import Link from 'next/link'
 import ChatPanel from '../chat/chat-panel'
@@ -80,6 +82,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   // stays hidden until a super_admin switches it on.
   const showAppointments = isModuleEnabled(modules, 'appointments')
   const showProjectIds = isModuleEnabled(modules, 'project_ids')
+  // These two render outside the tab list, so they were seeded into app_modules by 066 but
+  // never consumed — switching either off in Super Admin changed nothing. Gated here so the
+  // toggle means what it says.
+  const showAiAssistant = isModuleEnabled(modules, 'ai_assistant')
+  const showBookmarks = isModuleEnabled(modules, 'bookmarks')
 
   // Tabs are the visible sections; only these are addressable via ?tab=.
   const allowedTabs = useMemo(
@@ -137,48 +144,58 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const doneTasks = myTasks.filter(t => getNormalizedTaskStatus(t) === 'done')
   const activeTasks = myTasks.filter(t => getNormalizedTaskStatus(t) !== 'done')
 
-  const sidebarGroups: SidebarNavGroup[] = [
-    {
-      id: 'sections',
-      label: 'Workspace',
-      items: [
-        { id: 'tasks', label: 'Home', icon: 'home', href: '/dashboard?tab=tasks', status: 'live' },
-        ...(showPersonal
-          ? [{ id: 'personal', label: 'Personal', icon: 'lock', href: '/dashboard?tab=personal', status: 'live' as const }]
-          : []),
-        ...(showCalendar
-          ? [{ id: 'calendar', label: 'Calendar', icon: 'calendar', href: '/dashboard?tab=calendar', status: 'live' as const }]
-          : []),
-        ...(showMarketing
-          ? [{ id: 'marketing', label: 'Marketing', icon: 'megaphone', href: '/dashboard?tab=marketing', status: 'live' as const }]
-          : []),
-        ...(showBoards
-          ? [{ id: 'boards', label: 'Boards', icon: 'kanban', href: '/dashboard?tab=boards', status: 'live' as const }]
-          : []),
-        ...(showChat
-          ? [{
-          id: 'chat',
-          label: 'Chat',
-          icon: 'message',
-          href: '/dashboard?tab=chat',
-          status: 'live' as const,
-          badge: (
-            <span className="absolute -top-1 -right-2">
-              <ChatUnreadBadge userId={user.id} />
-            </span>
-          ),
-        }]
-          : []),
-        ...(showAppointments
-          ? [{ id: 'appointments', label: 'Appointments', icon: 'appointments', href: '/dashboard?tab=appointments', status: 'live' as const }]
-          : []),
-        ...(showProjectIds
-          ? [{ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: '/dashboard?tab=project-ids', status: 'live' as const }]
-          : []),
-      ],
-    },
-  ]
+  // Built from the shared workspace nav so this sidebar, the /my-work route, and the ⌘K
+  // palette can't drift apart — a module switched off disappears from all three at once.
+  // The chat unread badge is attached here because it is JSX, which the pure builder
+  // deliberately doesn't deal in.
+  const sidebarGroups: SidebarNavGroup[] = useMemo(
+    () =>
+      buildWorkspaceNav({ role: user.role, modules, canUseMarketingCalendar }).map((group) => ({
+        ...group,
+        items: group.items.map((item) =>
+          item.id === 'chat'
+            ? {
+                ...item,
+                badge: (
+                  <span className="absolute -top-1 -right-2">
+                    <ChatUnreadBadge userId={user.id} />
+                  </span>
+                ),
+              }
+            : item,
+        ),
+      })),
+    [user.role, user.id, modules, canUseMarketingCalendar],
+  )
   const activeLabel = sidebarGroups[0].items.find((i) => i.id === activeTab)?.label ?? 'Home'
+
+  // ⌘K "Create" entries. Both are navigations to where the create affordance already
+  // lives, and each is gated on the module that owns it — a create shortcut for a
+  // section a super_admin switched off would be a dead end.
+  const paletteCommands: Command[] = useMemo(() => {
+    const list: Command[] = []
+    if (showBoards) {
+      list.push({
+        id: 'create:board-task',
+        group: 'create',
+        label: 'New task on a board',
+        hint: 'Opens Boards',
+        icon: 'plus',
+        href: '/dashboard?tab=boards',
+      })
+    }
+    if (showPersonal) {
+      list.push({
+        id: 'create:personal-task',
+        group: 'create',
+        label: 'New personal task',
+        hint: 'Private to you',
+        icon: 'plus',
+        href: '/dashboard?tab=personal',
+      })
+    }
+    return list
+  }, [showBoards, showPersonal])
 
   return (
     <AppShell
@@ -186,6 +203,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
       groups={sidebarGroups}
       activeId={activeTab}
       breadcrumbs={[{ label: activeLabel }]}
+      commands={paletteCommands}
       style={accentStyle}
       topbarActions={
         <>
@@ -208,11 +226,12 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
       }
     >
       <TaskNotificationToasts userId={user.id} />
-      <AiChatWidget userId={user.id} />
+      {showAiAssistant && <AiChatWidget userId={user.id} />}
 
       <div className="flex min-h-0 flex-1">
-        {/* Bookmarks sidebar — hidden on mobile */}
-        <aside className={cn(
+        {/* Bookmarks sidebar — hidden on mobile. The whole rail is gated, not just its
+            contents, so switching the module off doesn't leave an empty collapsible strip. */}
+        {showBookmarks && <aside className={cn(
           "hidden md:flex flex-col flex-shrink-0 border-r bg-muted/10 overflow-hidden transition-[width] duration-200 ease-in-out",
           sidebarOpen ? "w-64" : "w-10"
         )}>
@@ -232,7 +251,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
               <BookmarksSection userId={user.id} isAdmin={isAdmin} embedded sidebar />
             </div>
           )}
-        </aside>
+        </aside>}
 
         {/* Main Content */}
         <div className={cn(

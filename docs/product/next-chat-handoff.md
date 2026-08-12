@@ -68,14 +68,60 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   plain member unaffected, zero console errors). UI wired: board-view.tsx /
   task-card.tsx / task-detail-modal.tsx's existing canEdit/canDelete/
   canEditDueDate checks now take a boardRole prop; user-dashboard.tsx /
-  admin-dashboard.tsx nav now reads useAppModules(). NOT wired: AiChatWidget /
-  BookmarksSection still render unconditionally (ai_assistant/bookmarks exist
-  as app_modules rows but aren't consumed at those render sites — pick up
-  only if actually needed).
-- NEXT actual work is NOT decided yet — options on the table: later PROMPT 3
-  slices (custom roles, full permission matrix, invitations, audit events),
-  finishing PROMPT 2, or moving to PROMPT 4 (canonical work-item domain).
-  ASK THE OWNER which — don't assume.
+  admin-dashboard.tsx nav now reads useAppModules(). (The AiChatWidget /
+  BookmarksSection gating that was outstanding here is now done — 2026-08-13.)
+- **NEW 2026-08-13 — the owner supplied a research pack in `plan/`** and asked for it
+  to be implemented. Three files: `ATLAS_01_…GUIDE.md` (competitor audit + design
+  guide; §13 is the build priority, §10 the concrete requirements),
+  `ATLAS_02_…PROMPTS_AUDITED.md` (Prompts A–M, one per session — its own header says
+  do NOT implement them all at once), and `ATLAS_MASTER_…PACK.md` (01+02 concatenated).
+  These do NOT replace master-prompt.md; they refine it. Mapping: Prompt A ≈ finishing
+  PROMPT 2, Prompt B ≈ later PROMPT 3 slices, Prompt C ≈ PROMPT 4 / FEATURES Phase 1.
+- **Foundation slice 1 of that pack ✅ DONE 2026-08-13, application-layer only, no
+  migration.** Shipped: `lib/capabilities.ts` (the canonical capability vocabulary —
+  board/task permission checks were copy-pasted inline across three files and now all
+  resolve through `can()`; behaviour pinned unchanged by 24 tests), `ActionGuard`/
+  `RestrictionNote` (unavailable actions explain themselves instead of vanishing), a
+  rebuilt ⌘K palette (Recent / Go to / Search results / Create, every command carrying
+  its `CapabilityDecision`, `runCommand` refusing denied ones), recently-viewed records
+  (the sidebar's Recent block existed but nothing ever fed it), per-user density
+  (Compact/Comfortable/Expanded on board cards), and **`/my-work`** — a real route,
+  where the nav had advertised "soon" over a 404. 315 tests green, build clean,
+  24/24 real-browser checks, `check:board-roles` still 9/9.
+- **Teams shipped 2026-08-13 (migration `094`, dev only) + three audit fixes.** Owner
+  asked for two teams (Atlas General, Shanks Realty), everyone in both, super admins
+  able to add/remove/move members. Audit first found `teams`/`team_members` held **0
+  rows on dev AND prod** with zero call sites, so this was a first population. `094`
+  seeds both business units (names match the `companies` rows but are deliberately NOT
+  FK'd — `companies` stays a marketing label), cross-joins every profile into both,
+  narrows management from `is_admin_user()` to `is_super_admin_user()`, and closes the
+  Supabase blanket-grant hole on those two tables. UI is a fourth tab on
+  `/admin/super-admin`: a **people × teams grid** (a *move* is only legible with both
+  teams on screen). `pnpm check:teams` 27/27 + 17/17 real-browser checks. Also fixed:
+  `task_notifications` were being marked read on page load whether or not anyone looked
+  (prod evidence: Bobby 0 unread of 6, Kayla 0 of 42, vs Tim 47/47 and Vanshaj 45/45);
+  the toast's "Open" button always went to `/dashboard` instead of the task; and
+  `ai_assistant`/`bookmarks` module toggles did nothing.
+- ⚠️ **`094` is applied to DEV ONLY and is not cleared for prod.** It rewrites RLS
+  policies and revokes grants = destructive by this repo's rule, so it needs the owner's
+  explicit go-ahead, not a drive-by `--allow-prod`. The UI degrades safely without it:
+  the Teams tab renders, the list is empty, and 064's admin-tier policy still applies.
+  Paired rollback exists at `scripts/rollback/094_revert.sql`.
+- NEXT actual work is NOT decided — ASK THE OWNER. The pack's own order says
+  Prompt C (canonical work-item + custom fields) is next. The honest open gaps from
+  Prompts A/B are smaller: the **Inbox** — which turns out to need **no new table**,
+  `task_notifications` (migration `035`) already exists with 169 prod rows and inbox-shaped
+  RLS, and now that the toast no longer eats them, unread state finally accumulates
+  (open question: what to do with the ~121 already-unread rows, some from June) —
+  work-item **context actions in ⌘K** (blocked: `board-view.tsx` renders outside
+  `AppShell`, so the shell has no selected-item context), favourites/pinned views,
+  undo-capable toasts, and the automated a11y / 200%-320% zoom passes Prompt A asks for.
+- **Audit finding, reported not fixed:** `anon` holds `TRUNCATE`/`DELETE` on **28 of 30**
+  public tables (all except `teams`/`team_members`, fixed by `094`, and `project_ids`,
+  which `090` got right). **Not a live leak** — all 12 `{public}`-role policies are gated
+  on `auth.uid()` and PostgREST doesn't expose `TRUNCATE` — but latent: one `USING (true)`
+  policy written without `TO authenticated` and `anon` is in. It's one mechanical migration
+  that rewrites grants on every live table, so give it its own session and owner sign-off.
 
 ## Commit history for the slice-1 work
 The slice-1 work above was committed 2026-07-24 in 3 sliced commits (not pushed):
@@ -109,7 +155,8 @@ future session, that's a regression — don't assume it's still pending.
   style).
 - Permanent, non-destructive verification harnesses exist and all follow the
   same throwaway-user pattern — re-run the relevant one after touching RLS:
-  `pnpm check:board-roles` (board_members/tasks), `check:marketing-calendars`
+  `pnpm check:board-roles` (board_members/tasks), `check:teams` (super-admin-only
+  team management, with an admin-tier control case), `check:marketing-calendars`
   (per-calendar access), `check:marketing-channels` (channel ordering + who may
   rename), `check:project-ids` (number uniqueness under concurrency + ledger
   permanence), `check:task-lifecycle`, `check:appointments`,
@@ -176,9 +223,13 @@ future session, that's a regression — don't assume it's still pending.
   a missing 068 once shipped ahead of its migration and broke the live boards
   list for ~6h. Migrations first, then deploy. Prefer small sliced commits.
 - Do NOT add "Co-Authored-By: Claude" trailers to commits (repo rule).
-- Tests: `pnpm test` (currently 223 passing across 20 files — keep them green).
+- Tests: `pnpm test` (currently 339 passing across 27 files — keep them green).
   `pnpm lint` is broken repo-wide (ESLint 10 with no eslint.config.js); use
   `npx tsc --noEmit` for a real check until someone adds a flat config.
+- `pnpm build` / `pnpm start` locally read `.env.production.local` and therefore talk
+  to PROD. To build safely: move that file aside, build, restore it, and confirm which
+  ref got baked with
+  `grep -rhoE '(icyfluwgyuimhwlddjyy|pxzpewaerhjwnwsbaklc)' .next/static/chunks/*.js | sort -u`.
 
 ## Working posture (my standing rule)
 For every prompt/feature: analyze → scope-check against build-navigation.md +

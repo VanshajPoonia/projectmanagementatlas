@@ -124,15 +124,29 @@ above. It is kept as-is (harmless, still passes) but is not gating anything mean
 
 **Phase 1 — plumbing.** In this order:
 - **B. Status FK. ✅ DONE (migration `063`).** See "Statuses" above.
-- **A. Teams, roles & real access control. Migrations `064`–`067`.** ⚠️ **"schema + UI" below is
-  accurate only for `board_members.role` — `teams` itself is schema-only, zero UI** (no creation
-  page, no membership management, no nav/sidebar presence; confirmed by repo-wide grep, no
-  `.from('teams')`/`team_members` call site outside the migration file). Corrected 2026-07-24 after
-  this heading previously overclaimed teams as done; don't read "DONE (schema + UI)" as covering
-  teams UI in any future session.
+- **A. Teams, roles & real access control. Migrations `064`–`067`, plus `094` for teams.**
   - `teams(id, name, color, position)` + `team_members(team_id, user_id)` — no `team_role` column;
     kept simpler than first sketched (plain membership only). Add a role column later if a real
-    need shows up — don't build it speculatively. **No UI consumes this table yet.**
+    need shows up — don't build it speculatively.
+  - **✅ DONE (schema + UI) — migration `094`, 2026-08-13.** `064` created these tables and
+    nothing ever wrote to them: verified against **both** dev and prod, 0 rows in each, zero call
+    sites repo-wide. `094` seeds the two business units the company actually runs on —
+    **Atlas General Contracting** and **Shanks Realty Group** — and puts every existing profile in
+    both (owner's instruction). Deliberately **not** FK'd to `companies`: that table stays a
+    marketing business-unit label per the ruling above, and the names are free to diverge.
+  - Management **narrowed** from `private.is_admin_user()` (admin + super_admin) to
+    `private.is_super_admin_user()`. Plain admins (Tim/Kogan/Mendy) lose a capability they held on
+    paper but never had a UI for. Verified by `pnpm check:teams` (27/27), which includes an
+    `admin`-tier control case proving the narrowing is real and not a blanket break.
+  - UI is `components/admin/team-management.tsx`, a fourth tab on the super-admin-only
+    `/admin/super-admin` page (alongside Companies/Users/Statuses). Membership is a **people ×
+    teams grid**, not a per-team member picker, because a *move* is only legible when both teams
+    are on screen at once. Pure logic lives in `lib/teams.ts` (+ 24 tests).
+  - ⚠️ **Nothing auto-joins a new account to a team.** `094` backfilled the profiles that existed
+    when it ran; a signup after that lands in no team. That is intentional (joining is a
+    super-admin decision), it is pinned by a check in `pnpm check:teams`, and the UI surfaces it
+    as a "not in any team" prompt. If you ever add an auto-join trigger, that prompt becomes dead
+    UI — update both.
   - `board_members.role` (`member` | `guest` | `client`, default `'member'`, migration `065`) on the
     **existing** table from `049_board_privacy.sql` — no parallel membership system. Enforced
     server-side: `guest`/`client` can view a board's tasks but not create/edit/delete them
@@ -234,15 +248,37 @@ Corollary, specific to this repo: because all five people above are admins, *any
 **non-admin** is given access to something — which for the marketing calendar has not happened yet
 (as of 2026-08-09 the sole calendar has exactly one member, Kayla).
 
+## The research pack in `plan/` (added by the owner, 2026-08-13)
+
+`plan/ATLAS_01_RESEARCH_AUDIT_AND_DESIGN_GUIDE.md` (competitor audit + design guide; **§13 is the
+build priority, §10 the concrete requirements**), `plan/ATLAS_02_CLAUDE_FINAL_BUILD_PROMPTS_AUDITED.md`
+(Prompts A–M), and `plan/ATLAS_MASTER_RESEARCH_AND_BUILD_PACK.md` (the two concatenated). These
+**refine** `docs/product/master-prompt.md`, they do not replace it: Prompt A ≈ finishing PROMPT 2,
+Prompt B ≈ later PROMPT 3 slices, Prompt C ≈ PROMPT 4 / FEATURES Phase 1.
+
+ATLAS_02's own header says to run **one prompt per session** and to audit before implementing — don't
+try to execute the whole pack at once. Plane/OpenProject/Vikunja/Leantime/Taiga are **design
+references only**; no code is copied from them, and ATLAS_01 §4 lists the specific claims about them
+that turned out to be wrong (OpenProject has no critical path; Taiga has no time tracking; Vikunja
+lists no native Calendar view). Foundation slice 1 (capability model, ⌘K rebuild, recents, density,
+`/my-work`) shipped 2026-08-13 — see FEATURES.md's changelog for exactly what and what was
+deliberately left out.
+
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `094`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `095`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-12: **dev and prod are both at `093`**, except that prod has still never had
-  `087` and that gap is deliberate (see below) — `088`–`093` were applied to prod with
-  `--only=… --allow-prod`, which is what the runner's `--only` flag exists for.
+  As of 2026-08-13: **dev is at `094`, prod is at `093`**, and prod has still never had `087`
+  (deliberate, see below) — `088`–`093` were applied to prod with `--only=… --allow-prod`, which
+  is what the runner's `--only` flag exists for.
+- ⚠️ **`094` is applied to dev only and is NOT cleared for prod.** It rewrites RLS policies
+  (narrowing team management to super_admin) and revokes grants, which the rule below classifies
+  as destructive — so it must not ride in on `--allow-prod` without the owner deciding. The
+  Super Admin > Teams UI merged alongside it degrades safely without it: the tab renders, the
+  list is empty, and 064's admin-tier policy still applies. Apply it deliberately when the owner
+  says so, then confirm with `pnpm migrate:status`.
 - **Every Storage bucket is private, 50 MB, 23 MIME types** (`task-assets`, `chat-attachments`,
   `marketing-assets`) as of `093`. 50 MB is the **Supabase Free plan's hard per-file ceiling** —
   a bucket's `file_size_limit` cannot exceed the project-wide upload limit, and on Free that
@@ -270,6 +306,15 @@ Corollary, specific to this repo: because all five people above are admins, *any
   table in `public` a blanket ALL to `anon` and `authenticated`, so granting narrowly is not
   enough — the wide grant is already there. `090` is the worked example (and its post-conditions
   are what caught it); the same trap bit the appointments migrations twice.
+  - **Scope of the outstanding gap, measured 2026-08-13: `anon` holds `TRUNCATE` + `DELETE` +
+    everything else on _28 of 30_ tables in `public`** — every table except `teams`/`team_members`,
+    which `094` fixed while it was in there, and `project_ids`, which `090` got right. **This is
+    not a live leak:** all 12 policies that target the `{public}` role are gated on `auth.uid()`
+    in some form, so a signed-out caller passes none of them, and PostgREST does not expose
+    `TRUNCATE`. It is a latent one — the day anyone writes a policy with `USING (true)` and
+    forgets `TO authenticated`, `anon` walks straight in. Fixing all 28 is a single mechanical
+    migration but it rewrites grants on every live table, so it wants its own session, its own
+    post-conditions, and the owner's sign-off. Do not bundle it into unrelated work.
 - A migration that rewrites RLS policies should carry its own post-conditions inside the
   transaction — assert the expected policy set, that RLS is still enabled, and that row counts
   did not move, so it rolls back instead of half-applying. `087` is the worked example, and

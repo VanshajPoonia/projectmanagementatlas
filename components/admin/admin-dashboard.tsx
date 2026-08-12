@@ -81,6 +81,11 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   const showChat = isModuleEnabled(modules, 'chat')
   const showPersonal = isModuleEnabled(modules, 'personal_tasks')
   const showProjectIds = isModuleEnabled(modules, 'project_ids')
+  // These two render outside the tab list, so they were seeded into app_modules by 066 but
+  // never consumed — switching either off in Super Admin changed nothing. Gated here so the
+  // toggle means what it says.
+  const showAiAssistant = isModuleEnabled(modules, 'ai_assistant')
+  const showBookmarks = isModuleEnabled(modules, 'bookmarks')
 
   // Sections addressable via ?tab= — matches the TabsTrigger values below.
   const allowedTabs = [
@@ -202,12 +207,13 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
         </>
       }
     >
-      <TaskNotificationToasts userId={user.id} />
-      <AiChatWidget userId={user.id} />
+      <TaskNotificationToasts userId={user.id} isAdmin />
+      {showAiAssistant && <AiChatWidget userId={user.id} />}
 
       <div className="flex min-h-0 flex-1">
-        {/* Bookmarks sidebar — hidden on mobile */}
-        <aside className={cn(
+        {/* Bookmarks sidebar — hidden on mobile. The whole rail is gated, not just its
+            contents, so switching the module off doesn't leave an empty collapsible strip. */}
+        {showBookmarks && <aside className={cn(
           "hidden md:flex flex-col flex-shrink-0 border-r bg-muted/10 overflow-hidden transition-[width] duration-200 ease-in-out",
           sidebarOpen ? "w-64" : "w-10"
         )}>
@@ -227,7 +233,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
               <BookmarksSection userId={user.id} isAdmin={true} embedded sidebar />
             </div>
           )}
-        </aside>
+        </aside>}
 
         {/* Main Content */}
         <div className="flex-1 min-w-0 px-4 py-8 overflow-x-hidden">
