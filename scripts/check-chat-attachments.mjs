@@ -23,7 +23,7 @@ if (!url || !anon || !service) {
 assertDevDatabase()
 
 const BUCKET = 'chat-attachments'
-const MAX_CHAT = 10 * 1024 * 1024
+const MAX_CHAT = 50 * 1024 * 1024 // 093: the Supabase Free per-file ceiling
 
 const admin = createClient(url, service, { auth: { autoRefreshToken: false, persistSession: false } })
 const stamp = Date.now()
@@ -66,8 +66,8 @@ try {
   // ---------------------------------------------------------------------------
   const { data: bucket } = await admin.storage.getBucket(BUCKET)
   check('chat-attachments is PRIVATE (was public — the whole point of 092)', bucket?.public === false)
-  check('chat-attachments caps files at 10 MB (was unlimited)', bucket?.file_size_limit === MAX_CHAT)
-  check('chat-attachments has a MIME allowlist (had none)', (bucket?.allowed_mime_types ?? []).length > 0)
+  check('chat-attachments caps files at 50 MB, the plan maximum (was unlimited)', bucket?.file_size_limit === MAX_CHAT)
+  check('chat-attachments has the full 23-type MIME allowlist (had none)', (bucket?.allowed_mime_types ?? []).length === 23)
 
   // ---------------------------------------------------------------------------
   // 2. A real send: object into the sender's folder, message referencing the path.

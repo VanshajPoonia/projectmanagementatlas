@@ -96,9 +96,9 @@ future session, that's a regression — don't assume it's still pending.
   assertMigrationTarget({allowProd}) = the migration runner: dev always
   allowed, prod ONLY via an explicit --allow-prod flag + loud banner. Only
   additive/non-destructive migrations may ever use --allow-prod.
-- Migrations: numbered SQL in scripts/, next number is 091. Dev and production
-  are both at 090, with ONE deliberate gap: 087 has never been applied to prod
-  (nobody is affected by its absence — see CLAUDE.md). 088/089/090 went to prod
+- Migrations: numbered SQL in scripts/, next number is 094. Dev and production
+  are both at 093, with ONE deliberate gap: 087 has never been applied to prod
+  (nobody is affected by its absence — see CLAUDE.md). 088–093 went to prod
   via `--only=… --allow-prod`, which is how you skip a held-back predecessor.
   New tables need an explicit REVOKE ALL first — Supabase default-grants ALL on
   every new public table to anon and authenticated (see 090).
@@ -114,7 +114,8 @@ future session, that's a regression — don't assume it's still pending.
   rename), `check:project-ids` (number uniqueness under concurrency + ledger
   permanence), `check:task-lifecycle`, `check:appointments`,
   `check:appointment-booking`, `check:marketing-attachments`,
-  `check:marketing-recurrence`.
+  `check:marketing-recurrence`, `check:task-attachments` (admin-only large
+  uploads), `check:chat-attachments` (DM attachments private + conversation-scoped).
 - Before any destructive migration: take a fresh dev pg_dump snapshot
   (backups live in ~/Code/db-backups/; use
   /opt/homebrew/opt/libpq/bin/pg_dump if the Homebrew default errors on a
@@ -131,7 +132,7 @@ future session, that's a regression — don't assume it's still pending.
   delete, move, or unlock it.
 
 ## Git / shipping
-- ⚠️ **NOT ON PROD as of 2026-08-12: private chat attachments (migration 092) + a CSP fix.**
+- ✅ **SHIPPED 2026-08-12 — private chat attachments (092) + max upload limits (093) + a CSP fix.**
   `chat-attachments` was created public with no size or MIME limit, so every DM attachment was
   readable off the CDN by anyone holding the URL, with no session — and the client stored exactly
   that public URL on `chat_messages.image_url`. 092 makes the bucket private (10 MB, MIME
@@ -141,11 +142,16 @@ future session, that's a regression — don't assume it's still pending.
   no backfill. One orphaned ~399 kB object per database is deliberately left in place.
   Verified by `pnpm check:chat-attachments` (16/16, including an unauthenticated fetch of the old
   public URL now returning 400). Rollback: `scripts/rollback/092_revert.sql`.
+  **093** then raised every bucket to the plan maximum: `task-assets`, `chat-attachments` and
+  `marketing-assets` are all now private / 50 MB / 23 MIME types. 50 MB is the Supabase **Free**
+  hard per-file ceiling — not a setting, it needs a plan change to exceed. The inline base64 task
+  path is deliberately still 10 MB (043); raising that puts 33%-inflated bytes into a 500 MB
+  database budget, which is the exact failure the large-file toggle exists to avoid.
   Alongside it, `next.config.mjs`'s CSP `img-src` gained `blob:` and `https://*.supabase.co` —
   without them the marketing calendar's image preview was **already broken in production** and
   the new task thumbnails would have shipped broken. CSP is production-only, so `pnpm dev` can
   never catch this; verified against a real production build (thumbnail `naturalWidth=64`).
-- ⚠️ **UNCOMMITTED / NOT ON PROD as of 2026-08-12: large task attachments (migration 091).**
+- ✅ **SHIPPED 2026-08-12 — large task attachments (migration 091).**
   An admin-only, per-upload opt-in that routes a task attachment to the new private
   `task-assets` Storage bucket (50 MB — the Supabase **Free** plan's hard per-file ceiling)
   instead of base64-ing it into `task_attachments.file_data`. The inline path is untouched at
@@ -153,9 +159,9 @@ future session, that's a regression — don't assume it's still pending.
   policy rejects a `storage_path` from anyone `private.is_admin_user()` is false for, and
   *reading* is deliberately not admin-gated. Verified: `pnpm check:task-attachments` (15/15
   against real RLS) + 14/14 real-browser Playwright + 218 unit tests + `pnpm build`.
-  **091 is on dev only — apply it to prod BEFORE this code merges to `main`** (the Attachments
-  tab selects `storage_path`). Rollback: `scripts/rollback/091_revert.sql`. Note the Free-plan
-  storage budget is 1 GB in total, ~20 files at full size; that is why this is opt-in, not default.
+  Applied to prod 2026-08-12 (post-conditions confirmed 12 existing attachments intact).
+  Rollback: `scripts/rollback/091_revert.sql`. Note the Free-plan storage budget is 1 GB in
+  total, ~20 files at full size; that is why this is opt-in, not default.
 - Local `main` == origin/main (pushed + deployed as of 2026-08-12). Most recently shipped:
   the **Project ID Manager** (migration 090) — a new "Project IDs" module where anyone signed
   in grabs the next YYMM+4-digit number (e.g. 26081111, sequence restarts at 1111 each Central
@@ -170,7 +176,7 @@ future session, that's a regression — don't assume it's still pending.
   a missing 068 once shipped ahead of its migration and broke the live boards
   list for ~6h. Migrations first, then deploy. Prefer small sliced commits.
 - Do NOT add "Co-Authored-By: Claude" trailers to commits (repo rule).
-- Tests: `pnpm test` (currently 218 passing across 19 files — keep them green).
+- Tests: `pnpm test` (currently 223 passing across 20 files — keep them green).
   `pnpm lint` is broken repo-wide (ESLint 10 with no eslint.config.js); use
   `npx tsc --noEmit` for a real check until someone adds a flat config.
 

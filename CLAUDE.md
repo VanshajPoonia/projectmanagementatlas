@@ -236,16 +236,21 @@ Corollary, specific to this repo: because all five people above are admins, *any
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `093`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `094`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-12: **dev is at `092`, prod is at `090`** — `091` (large task attachments) and
-  `092` (private chat attachments) are applied to the dev sandbox only and must reach prod
-  *before* their client code merges to `main`, or the Attachments tab queries a `storage_path`
-  column and chat queries an `attachment_path` column that do not exist there. Prod has
-  also never had `087`, and that gap is deliberate (see below) — `088`/`089`/`090` were applied
-  to prod with `--only=… --allow-prod`, which is what the runner's `--only` flag exists for.
+  As of 2026-08-12: **dev and prod are both at `093`**, except that prod has still never had
+  `087` and that gap is deliberate (see below) — `088`–`093` were applied to prod with
+  `--only=… --allow-prod`, which is what the runner's `--only` flag exists for.
+- **Every Storage bucket is private, 50 MB, 23 MIME types** (`task-assets`, `chat-attachments`,
+  `marketing-assets`) as of `093`. 50 MB is the **Supabase Free plan's hard per-file ceiling** —
+  a bucket's `file_size_limit` cannot exceed the project-wide upload limit, and on Free that
+  limit cannot be raised at all, so this is the maximum without changing plan. Total storage on
+  Free is 1 GB across every bucket, roughly 20 files at full size. The one limit deliberately
+  NOT raised is the **inline base64 path** for task attachments (043's 14 MB `octet_length`
+  CHECK ≈ 10 MB raw): those bytes land in the Postgres row inflated 33%, against a 500 MB
+  database budget. The admin-only "Large file" toggle exists so that path never has to grow.
 - **⚠️ `pnpm build` / `pnpm start` locally talk to PRODUCTION.** Next loads
   `.env.$(NODE_ENV).local` ahead of `.env.local`, and this repo has a committed-in-workspace
   `.env.production.local` holding prod credentials — so any production build bakes prod's

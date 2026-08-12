@@ -6,8 +6,11 @@
 // rendered through short-lived signed URLs, with the object policies scoping reads to
 // the sender, the recipient, and admins.
 //
-// 10 MB rather than the 50 MB task-attachment ceiling: chat is for quick shares, and
-// the whole Supabase Free storage budget is 1 GB.
+// 50 MB and the full shared type list, matching task attachments exactly (migration
+// 093, owner decision). 50 MB is the Supabase **Free plan's hard per-file ceiling** —
+// a bucket's limit cannot exceed the project-wide upload limit, and on Free that
+// cannot be raised at all, so this is the maximum without changing plan. Bear in mind
+// total storage on Free is 1 GB across every bucket: about 20 files at full size.
 
 import {
   extensionByMimeType,
@@ -19,42 +22,25 @@ import {
 } from './upload-mime'
 
 export const CHAT_ASSET_BUCKET = 'chat-attachments'
-export const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024
+export const MAX_CHAT_ATTACHMENT_BYTES = 50 * 1024 * 1024
 export const CHAT_ASSET_SIGNED_URL_SECONDS = 300
 
-// Video and Photoshop files are excluded from the bucket's allowlist in 092 — the
-// accept hint is narrowed to match so the picker does not offer what the DB refuses.
-const CHAT_EXCLUDED: string[] = [
-  'video/mp4',
-  'video/quicktime',
-  'video/webm',
-  'image/vnd.adobe.photoshop',
-  'application/postscript',
-]
-
+// 093 widened the bucket's allowlist to the full shared set, so chat accepts exactly
+// what task attachments do — no chat-specific exclusions any more.
 export const CHAT_ATTACHMENT_ACCEPT = UPLOAD_ACCEPT
-  .split(',')
-  .filter(entry => !CHAT_EXCLUDED.includes(entry) && !['.mp4', '.mov', '.webm', '.psd', '.ai', '.eps'].includes(entry))
-  .join(',')
 
 export const formatChatAttachmentSize = formatUploadSize
 
-export function resolveChatAttachmentMimeType(
-  file: Pick<UploadCandidate, 'name' | 'type'>,
-): UploadMimeType | null {
-  const mimeType = resolveUploadMimeType(file)
-  if (!mimeType || CHAT_EXCLUDED.includes(mimeType)) return null
-  return mimeType
-}
+export const resolveChatAttachmentMimeType = resolveUploadMimeType
 
 /** Returns an error string to show the user, or null when the file is acceptable. */
 export function validateChatAttachment(file: UploadCandidate): string | null {
   if (file.size <= 0) return 'This file is empty.'
   if (!resolveChatAttachmentMimeType(file)) {
-    return 'Choose an image, PDF, Office, text, or ZIP file.'
+    return 'Choose an image, video, PDF, Office, text, or ZIP file.'
   }
   if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
-    return 'Choose a file no larger than 10 MB.'
+    return 'Choose a file no larger than 50 MB.'
   }
   return null
 }
