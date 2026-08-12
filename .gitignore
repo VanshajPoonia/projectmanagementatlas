@@ -34,3 +34,6 @@ next-env.d.ts
 
 # Local Claude Code permission grants — machine-specific, not shared config.
 .claude/
+
+# macOS Finder metadata.
+.DS_Store
