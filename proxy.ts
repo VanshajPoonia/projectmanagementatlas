@@ -31,6 +31,32 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  // A deactivated account must not keep browsing on the token it already holds.
+  //
+  // The GoTrue ban applied by /api/admin/set-user-active stops them signing in or refreshing,
+  // and migration 101 strips their elevated access at the database on the next query — but an
+  // access token already in the browser stays valid for up to an hour, so without this they
+  // would sit in a UI that renders and then fails on every write. Signing them out here turns
+  // that into a clean redirect to the login page, which the ban then refuses.
+  //
+  // Deliberately not a security boundary: it is a UX consequence of one. The database and the
+  // auth server are what actually enforce this, and neither depends on this check running.
+  if (user) {
+    const { data: activeCheck } = await supabase
+      .from('profiles')
+      .select('is_active')
+      .eq('id', user.id)
+      .single()
+
+    if (activeCheck?.is_active === false) {
+      await supabase.auth.signOut()
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+  }
+
   // Protect admin routes
   if (request.nextUrl.pathname.startsWith('/admin') && user) {
     const { data: profile } = await supabase

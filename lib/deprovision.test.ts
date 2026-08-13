@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { REFUSAL_MESSAGES, checkDeletion, describeDeletion } from './deprovision'
+import {
+  REFUSAL_MESSAGES,
+  checkDeactivation,
+  checkDeletion,
+  describeDeactivation,
+  describeDeletion,
+} from './deprovision'
 
 describe('checkDeletion', () => {
   const other = { id: 'them', role: 'user' }
@@ -49,9 +55,16 @@ describe('checkDeletion', () => {
 describe('describeDeletion', () => {
   it('says plainly what is kept and what goes', () => {
     const text = describeDeletion('Alice', 0)
-    expect(text).toMatch(/tasks, comments and shared bookmarks stay/i)
-    expect(text).toMatch(/personal tasks, private messages and bookmarks are deleted/i)
+    expect(text).toMatch(/Kept:.*tasks, comments and shared bookmarks/i)
+    expect(text).toMatch(/Destroyed:.*personal tasks, private messages and personal bookmarks/i)
     expect(text).toMatch(/cannot be undone/i)
+  })
+
+  // The property that actually protects people. Deletion is irreversible and deactivation
+  // is not, so the destructive dialog has to name the reversible alternative — otherwise an
+  // admin who only wants to revoke access reaches for the permanent button.
+  it('points at the reversible alternative', () => {
+    expect(describeDeletion('Alice', 0)).toMatch(/switch off access/i)
   })
 
   it('mentions board transfer only when there are boards', () => {
@@ -62,5 +75,43 @@ describe('describeDeletion', () => {
 
   it('names the person being removed', () => {
     expect(describeDeletion('Kayla Viehland', 2)).toMatch(/Kayla Viehland/)
+  })
+})
+
+describe('describeDeactivation', () => {
+  it('leads with the fact that nothing is lost', () => {
+    const text = describeDeactivation('Alice')
+    expect(text).toMatch(/stays exactly as it is/i)
+    expect(text).toMatch(/still under their name/i)
+  })
+
+  it('says it is reversible', () => {
+    expect(describeDeactivation('Alice')).toMatch(/switch their access back on at any time/i)
+  })
+
+  it('says they will be signed out and locked out', () => {
+    const text = describeDeactivation('Alice')
+    expect(text).toMatch(/signed out/i)
+    expect(text).toMatch(/cannot sign back in/i)
+  })
+
+  // It must never read like the destructive option; that inversion is what made the old
+  // toggle dangerous.
+  it('never claims anything is deleted', () => {
+    expect(describeDeactivation('Alice')).not.toMatch(/delete|destroy|permanent/i)
+  })
+})
+
+describe('checkDeactivation', () => {
+  it('applies the same guards as deletion', () => {
+    expect(checkDeactivation({ id: 'me', role: 'user' }, 'me', 3)).toBe('self')
+    expect(checkDeactivation({ id: 'them', role: 'super_admin' }, 'me', 1)).toBe('last-super-admin')
+    expect(checkDeactivation({ id: 'them', role: 'user' }, 'me', 2)).toBeNull()
+  })
+
+  // Callers must pass the count of ACTIVE super admins. A second super admin who is already
+  // switched off is not a way back in, so counting them would allow locking everyone out.
+  it('treats an already-inactive second super admin as no safety net', () => {
+    expect(checkDeactivation({ id: 'them', role: 'super_admin' }, 'me', 1)).toBe('last-super-admin')
   })
 })

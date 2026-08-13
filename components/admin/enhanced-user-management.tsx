@@ -13,7 +13,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { describeDeletion } from '@/lib/deprovision'
+import { describeDeactivation, describeDeletion } from '@/lib/deprovision'
 
 interface EnhancedUserManagementProps {
   users: any[]
@@ -117,16 +117,30 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
     }
   }
 
+  // Goes through the API route rather than writing `profiles` directly. Two reasons: the
+  // direct write did nothing at all (nothing read is_active, so a "deactivated" person kept
+  // working), and migration 101 revoked authenticated's UPDATE on that column so the old
+  // call would now fail outright. The route sets the flag AND bans the account at the auth
+  // server, which is what actually stops them signing in.
   const handleToggleActive = async (userId: string, currentStatus: boolean, userName: string) => {
+    const turningOff = currentStatus
+    if (turningOff && !confirm(describeDeactivation(userName))) return
+
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_active: !currentStatus })
-        .eq('id', userId)
+      const response = await fetch('/api/admin/set-user-active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, isActive: !currentStatus }),
+      })
 
-      if (error) throw error
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body?.error || 'Failed to update user status')
 
-      setSuccess(`User ${userName} ${!currentStatus ? 'activated' : 'deactivated'} successfully`)
+      setSuccess(
+        turningOff
+          ? `${userName} is signed out and cannot sign back in. Their work is untouched, and you can switch this back on.`
+          : `${userName} can sign in again.`
+      )
       await refreshUsers()
     } catch (err: any) {
       setError(err.message || 'Failed to update user status')
@@ -327,7 +341,11 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
                     onClick={() => handleToggleActive(user.id, user.is_active !== false, user.full_name || user.email)}
                   >
                     {user.is_active === false ? <ToggleRight className="w-3 h-3" /> : <ToggleLeft className="w-3 h-3" />}
-                    {user.is_active === false ? 'Activate' : 'Deactivate'}
+                    {/* Named for what it does, not for a state. "Deactivate" sat next to a
+                        red Delete button and read as the milder cosmetic option, which is
+                        the opposite of the truth: this is the reversible way to remove
+                        access, and Delete is the permanent one. */}
+                    {user.is_active === false ? 'Restore access' : 'Switch off access'}
                   </Button>
                 </div>
               )}

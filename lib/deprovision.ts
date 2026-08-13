@@ -9,11 +9,11 @@
 // data go. Exactly one thing cannot be left to a foreign key, and this module is about that
 // one thing.
 
-/** Reasons a deletion is refused before anything is touched. */
+/** Reasons a deletion or deactivation is refused before anything is touched. */
 export type DeletionRefusal = 'self' | 'last-super-admin' | 'not-found'
 
 export const REFUSAL_MESSAGES: Record<DeletionRefusal, string> = {
-  self: 'You cannot delete your own account.',
+  self: 'You cannot remove your own access.',
   'last-super-admin':
     'This is the last super admin. Promote someone else first, or there would be nobody left who can manage the platform.',
   'not-found': 'That account no longer exists.',
@@ -58,6 +58,38 @@ export function checkDeletion(
  */
 export const REASSIGNED_ON_DELETE = ['boards'] as const
 
+/**
+ * Deactivation is refused for the same two cases as deletion, and for a sharper reason.
+ *
+ * Deleting yourself is obviously wrong and obviously irreversible. Deactivating yourself
+ * looks harmless right up until the page reloads and there is no longer an account that can
+ * undo it — the recovery is a database edit either way. The count passed in must be of
+ * *active* super admins: a second super admin who is already switched off is not a way back
+ * in.
+ */
+export function checkDeactivation(
+  target: DeletionCandidate | null | undefined,
+  actorId: string,
+  activeSuperAdminCount: number,
+): DeletionRefusal | null {
+  return checkDeletion(target, actorId, activeSuperAdminCount)
+}
+
+/**
+ * What deactivating someone does, shown before it is confirmed.
+ *
+ * Stated positively on purpose. The reason to reach for this instead of Delete is that
+ * nothing is lost, and an admin who does not know that will reach for Delete.
+ */
+export function describeDeactivation(name: string): string {
+  return (
+    `Switch off ${name}'s access?` +
+    ` They will be signed out and cannot sign back in.` +
+    ` Everything they have made stays exactly as it is, still under their name,` +
+    ` and you can switch their access back on at any time.`
+  )
+}
+
 /** Human-readable summary of what a deletion will do, shown before it is confirmed. */
 export function describeDeletion(name: string, boardCount: number): string {
   const boards =
@@ -66,9 +98,11 @@ export function describeDeletion(name: string, boardCount: number): string {
       : ` ${boardCount} board${boardCount === 1 ? '' : 's'} they created will transfer to you.`
 
   return (
-    `Delete ${name}'s account?` +
-    ` Their tasks, comments and shared bookmarks stay exactly where they are, shown as written by a removed user.` +
+    `Delete ${name}'s account permanently?\n\n` +
+    `This cannot be undone. If you only need to remove their access, close this and use ` +
+    `"Switch off access" instead — that is reversible and keeps their name on their work.\n\n` +
+    `Kept: their tasks, comments and shared bookmarks, but no longer under their name.` +
     boards +
-    ` Their personal tasks, private messages and bookmarks are deleted with the account. This cannot be undone.`
+    `\nDestroyed: their personal tasks, private messages and personal bookmarks.`
   )
 }
