@@ -5,7 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Lock, Plus, X, Calendar } from 'lucide-react'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { showUndoableToast } from '@/components/shell/undo-toast'
 
 interface PersonalTasksProps {
   userId: string
@@ -66,11 +68,36 @@ export default function PersonalTasks({ userId }: PersonalTasksProps) {
     }
   }
 
-  const handleDelete = async (taskId: string) => {
-    const { error } = await supabase.from('personal_tasks').delete().eq('id', taskId)
-    if (!error) {
-      setTasks(tasks.filter(t => t.id !== taskId))
+  // Deleting used to be a single unconfirmed click with no feedback at all — the row simply
+  // vanished and there was no way back. It stays one click (a confirmation on every private
+  // to-do would be heavier than the mistake it prevents), but the whole row is captured
+  // first and the toast offers to put it back exactly as it was, original id included.
+  const handleDelete = async (task: any) => {
+    const snapshot = { ...task }
+    const { error } = await supabase.from('personal_tasks').delete().eq('id', task.id)
+    if (error) {
+      toast.error('Couldn’t delete that task', { description: error.message })
+      return
     }
+    setTasks(prev => prev.filter(t => t.id !== task.id))
+
+    showUndoableToast(toast, {
+      message: 'Task deleted',
+      description: snapshot.title,
+      undoneMessage: 'Task restored',
+      onUndo: async () => {
+        // Re-inserted with its original id, so this is the same row coming back rather than
+        // a lookalike copy.
+        const { data, error: restoreError } = await supabase
+          .from('personal_tasks')
+          .insert(snapshot)
+          .select()
+          .single()
+        if (restoreError) return { ok: false, error: restoreError.message }
+        setTasks(prev => (prev.some(t => t.id === data.id) ? prev : [data, ...prev]))
+        return { ok: true }
+      },
+    })
   }
 
   const isOverdue = (task: any) =>
@@ -135,12 +162,17 @@ export default function PersonalTasks({ userId }: PersonalTasksProps) {
                 </span>
               )}
 
+              {/* Named explicitly: a bare X reads as nothing to a screen reader, and
+                  opacity-0 until hover means it is keyboard-reachable but invisible — so
+                  focus-visible has to bring it back or a keyboard user tabs into a control
+                  they cannot see. */}
               <button
                 type="button"
-                onClick={() => handleDelete(task.id)}
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                aria-label={`Delete ${task.title}`}
+                onClick={() => handleDelete(task)}
+                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-ring rounded-sm text-muted-foreground hover:text-destructive transition-opacity outline-none focus-visible:ring-2"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
           ))}

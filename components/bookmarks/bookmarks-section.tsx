@@ -17,7 +17,9 @@ import {
   Folder, FileText, Globe, Calendar, Mail, MessageSquare, Cloud, Database,
   Image, Video, ShoppingCart, CreditCard, Users, Settings, BookOpen,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { showUndoableToast } from '@/components/shell/undo-toast'
 
 const ICONS: Record<string, any> = {
   Link: LinkIcon, Folder, FileText, Globe, Calendar, Mail, MessageSquare,
@@ -72,7 +74,7 @@ function BookmarkTile({ bookmark, canManage, onEdit, onDelete }: any) {
               <Pencil className="w-4 h-4 mr-2" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onDelete(bookmark.id)} className="text-red-600">
+            <DropdownMenuItem onClick={() => onDelete(bookmark)} className="text-red-600">
               <Trash className="w-4 h-4 mr-2" />
               Delete
             </DropdownMenuItem>
@@ -161,9 +163,33 @@ export default function BookmarksSection({ userId, isAdmin, embedded = false, si
     loadBookmarks()
   }
 
-  const handleDelete = async (id: string) => {
-    await supabase.from('bookmarks').delete().eq('id', id)
-    setBookmarks(bookmarks.filter(b => b.id !== id))
+  // Same shape as personal-tasks: this was a silent hard delete behind one menu item, and a
+  // company-scoped bookmark disappears for everyone, not just the person who clicked. The
+  // whole row is captured first so undo restores it with its original id.
+  const handleDelete = async (bookmark: any) => {
+    const snapshot = { ...bookmark }
+    const { error: deleteError } = await supabase.from('bookmarks').delete().eq('id', bookmark.id)
+    if (deleteError) {
+      toast.error('Couldn’t delete that bookmark', { description: deleteError.message })
+      return
+    }
+    setBookmarks(prev => prev.filter(b => b.id !== bookmark.id))
+
+    showUndoableToast(toast, {
+      message: 'Bookmark deleted',
+      description: snapshot.title ?? snapshot.url,
+      undoneMessage: 'Bookmark restored',
+      onUndo: async () => {
+        const { data, error: restoreError } = await supabase
+          .from('bookmarks')
+          .insert(snapshot)
+          .select()
+          .single()
+        if (restoreError) return { ok: false, error: restoreError.message }
+        setBookmarks(prev => (prev.some(b => b.id === data.id) ? prev : [...prev, data]))
+        return { ok: true }
+      },
+    })
   }
 
   const companyBookmarks = bookmarks.filter(b => b.scope === 'company')

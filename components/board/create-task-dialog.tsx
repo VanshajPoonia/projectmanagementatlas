@@ -14,6 +14,7 @@ import { sendTaskAssignmentEmail } from '@/lib/email'
 import { LinkIcon, Plus, X, Tag } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
+import { isDirty, useUnsavedChanges } from '@/components/shell/unsaved-changes'
 import { findExactColumnForStatus } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
 
@@ -50,6 +51,20 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
   const taskStatuses = useTaskStatuses()
+
+  // Unsaved-change protection. Escape, the X, or a click on the overlay used to throw away
+  // everything typed here — title, description, assignees, links, tags and the first comment
+  // — with no warning at all.
+  //
+  // The baseline is "an untouched form", not the values the dialog opened with: `status` and
+  // `visibility` are pre-filled from the column and a default, so including them would make a
+  // freshly opened dialog report itself dirty and prompt on every close. Only fields the user
+  // has to type or pick count.
+  const dirty = isDirty(
+    { title, description, assignees, dueDate, links, linkTitle, linkUrl, selectedTagIds, initialComment, priority },
+    { title: '', description: '', assignees: [], dueDate: '', links: [], linkTitle: '', linkUrl: '', selectedTagIds: [], initialComment: '', priority: null },
+  )
+  const guardedClose = useUnsavedChanges(dirty, onOpenChange)
 
   // Only an explicit status link (or exact managed-status title on a legacy board)
   // may choose the initial status. Fuzzy title inference is what allowed cards to be
@@ -261,7 +276,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={guardedClose}>
       <DialogContent className="max-w-lg max-h-[95vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Create New Task</DialogTitle>
