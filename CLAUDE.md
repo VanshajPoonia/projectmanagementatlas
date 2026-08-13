@@ -182,6 +182,48 @@ above. It is kept as-is (harmless, still passes) but is not gating anything mean
 **Phase 2 — de-hardcode.** Remove the three items in §3 above. Members/guests/clients are added to
 the one existing org directly (no "create org" step — there's nothing to create).
 
+### ⚠️ A passing RLS harness does not mean the feature works (learned 2026-08-13, Prompt B)
+
+`pnpm check:board-roles` was 9/9 green on migrations `065`/`067` for weeks. The guest/client
+feature was nonetheless **unusable and actively self-destroying**, because everything broken was
+above the database:
+
+1. **No UI could grant the role.** `board-management.tsx` inserted `{board_id, user_id}` with no
+   `role`, so every membership landed on the `'member'` DEFAULT. Guest and client were reachable
+   only by hand-written SQL.
+2. **Editing a board silently escalated privileges.** The member sync was a
+   `delete().eq('board_id', …)` followed by a re-insert that dropped `role`. Renaming a board
+   promoted its guests to full members, and `private.can_manage_task` keys off exactly that
+   column — so they could immediately write. Verified by replaying the UI's own calls before
+   any fix was designed.
+3. **Membership edits by a non-creator reported success while changing nothing.** `061` made the
+   board's creator the sole owner of the list, and PostgREST does not treat a zero-row
+   DELETE/UPDATE as an error, so the DELETE no-op'd, the INSERT was refused with `42501`, and
+   the code checked neither.
+
+Fixed in `lib/board-membership.ts` (diff, never rewrite — `plan(x, x)` writes nothing) plus
+`components/admin/board-member-picker.tsx`. Every membership write now asks for its rows back and
+compares the count, because that is the only way to tell a refusal from a no-op. The gate is
+`pnpm check:access-matrix` (51 checks), which covers the plan's full matrix and pins all three
+regressions. **When a permission feature is verified only at the database, check that a human can
+actually reach it and that unrelated writes cannot undo it.**
+
+Two more defects fell out of building that harness:
+
+- **Private boards leaked their column structure** (fixed by `099`). `061` applied board privacy
+  to tasks/comments/attachments/links/tags but never to `columns`, which still carried `001`'s
+  `USING (auth.uid() IS NOT NULL)`. Any signed-in user could read the column titles and order of
+  any private board by id. Contents stayed hidden, so this leaked the *shape* of private work.
+  Write policies on `columns` are deliberately unchanged — `status-management.tsx` renames
+  columns across every board at once and must still reach private ones.
+- **The board actions menu never closed** (fixed in `board-management.tsx`). `handleEditBoard`
+  called `e.preventDefault()`, which Radix reads as "keep the menu open", so after saving, the
+  modal menu was still mounted and `body { pointer-events: none }` was left in place — the whole
+  page was unclickable until the user dismissed it by hand. The preventDefault looked necessary
+  because the cards wrap their content in a `<Link>`, but `DropdownMenuContent` is portaled out
+  of that subtree, so a menu-item click never reaches the link. No other component in the repo
+  has this pattern; it was checked.
+
 **Phase 3 — the risk story.** Where it stops being a task tracker and starts answering
 *"what is at risk?"*:
 - Subtasks — `tasks.parent_task_id` (nullable, self-referencing). Board queries need
@@ -266,13 +308,26 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `098`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `100`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-13: **dev is at `097`, prod is at `094`** (`094` and `095` were applied to prod
-  by the owner). Prod has still never had `087` (deliberate, see below) — `088`–`093` were
-  applied with `--only=… --allow-prod`, which is what the runner's `--only` flag exists for.
+  As of 2026-08-13: **dev is at `099`, prod is at `095` applied / 2 pending** (`087` and `096`,
+  both deliberate). Prod has still never had `087` (deliberate, see below) — `088`–`093` and
+  `097` were applied with `--only=… --allow-prod`, which is what the runner's `--only` flag
+  exists for.
+- ⚠️ **`098` and `099` are applied to dev only, and both need a decision before prod.**
+  Neither is `--allow-prod` eligible on the "purely additive" rule.
+  - `098` (audit events) adds a table, which is additive, but it also puts **triggers on five
+    existing tables** (`board_members`, `team_members`, `marketing_calendar_members`,
+    `profiles`, `app_modules`). A trigger changes the behaviour of writes that already
+    happen, so it is not additive in the sense that rule means. It is self-verifying
+    (post-conditions inside the transaction) and reverts with
+    `scripts/rollback/098_revert.sql`, which **destroys the recorded history** — dump the
+    table first if the intent is "roll back the code, keep the log".
+  - `099` **rewrites an RLS policy** on `columns`, so it is destructive by this repo's own
+    definition and must not use `--allow-prod`. It closes a real disclosure (see below), so
+    it wants applying deliberately rather than being left indefinitely.
 - ⚠️ **`096` and `097` are applied to dev only.**
   - `096` (signup trigger) is a **no-op on prod**, which already has the trigger — verified.
     Worth applying only so both databases are provably identical.

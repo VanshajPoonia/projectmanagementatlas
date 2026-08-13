@@ -6,6 +6,7 @@ import {
   Crown,
   FileBarChart,
   Hash,
+  History,
   Home,
   Kanban,
   LayoutDashboard,
@@ -40,6 +41,7 @@ const ICONS: Record<string, LucideIcon> = {
   overview: LayoutDashboard,
   reports: FileBarChart,
   statuses: SlidersHorizontal,
+  history: History,
   // Command-palette-only keys (commands.ts), not used by any nav item.
   plus: Plus,
   search: Search,

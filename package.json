@@ -15,6 +15,7 @@
     "migrate:baseline": "node --env-file=.env.local scripts/migrate.mjs --baseline",
     "check:isolation": "node --env-file=.env.local scripts/check-isolation.mjs",
     "check:board-roles": "node --env-file=.env.local scripts/check-board-roles.mjs",
+    "check:access-matrix": "node --env-file=.env.local scripts/check-access-matrix.mjs",
     "check:teams": "node --env-file=.env.local scripts/check-teams.mjs",
     "check:favorites": "node --env-file=.env.local scripts/check-favorites.mjs",
     "check:grants": "node --env-file=.env.local scripts/check-grants.mjs",

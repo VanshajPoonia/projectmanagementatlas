@@ -9,18 +9,28 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette, Archive, ArchiveRestore, Globe, Lock, Users, ChevronDown, ChevronRight, LayoutGrid, List } from 'lucide-react'
+import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette, Archive, ArchiveRestore, Globe, Lock, ChevronDown, ChevronRight, LayoutGrid, List } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import Link from 'next/link'
 import { cleanBoardDescription } from '@/lib/display-text'
+import BoardMemberPicker from './board-member-picker'
+import {
+  canManageMembership,
+  isNoopPlan,
+  planMembershipChanges,
+  toMembershipRow,
+  type MembershipRow,
+} from '@/lib/board-membership'
 
 interface BoardManagementProps {
   boards: any[]
   isSuperAdmin?: boolean
+  /** Needed to tell whether this admin created the board — see canManageMembership. */
+  currentUserId?: string | null
 }
 
-export default function BoardManagement({ boards: initialBoards, isSuperAdmin = false }: BoardManagementProps) {
+export default function BoardManagement({ boards: initialBoards, isSuperAdmin = false, currentUserId = null }: BoardManagementProps) {
   const [boards, setBoards] = useState(initialBoards)
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
   const [archivedBoards, setArchivedBoards] = useState<any[]>([])
@@ -32,7 +42,11 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
   const [description, setDescription] = useState('')
   const [boardColor, setBoardColor] = useState('#3b82f6')
   const [isPrivate, setIsPrivate] = useState(false)
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
+  const [members, setMembers] = useState<MembershipRow[]>([])
+  // What was actually in the database when the edit dialog opened. Kept separately from
+  // `members` so the save can diff against it instead of rewriting every row — see
+  // lib/board-membership.ts for why rewriting was a privilege-escalation bug.
+  const [loadedMembers, setLoadedMembers] = useState<MembershipRow[]>([])
   const [allUsers, setAllUsers] = useState<{ id: string; full_name: string | null; email: string | null }[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -45,6 +59,19 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
       }
     )
   }, [])
+
+  // The create and edit dialogs share one set of form fields, so opening Create straight
+  // after an Edit used to inherit that board's title and access list. Harmless for text
+  // the user can see and overwrite; not harmless for a member list.
+  const openCreateDialog = () => {
+    setTitle('')
+    setDescription('')
+    setIsPrivate(false)
+    setMembers([])
+    setLoadedMembers([])
+    setError(null)
+    setOpen(true)
+  }
 
   const handleCreateBoard = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -88,18 +115,28 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
 
       await supabase.from('columns').insert(columns)
 
-      // Add explicit members for private boards
-      if (isPrivate && selectedMembers.length > 0) {
-        await supabase.from('board_members').insert(
-          selectedMembers.map(userId => ({ board_id: board.id, user_id: userId }))
+      // Written for public boards too, not just private ones. Migrations 065/067 key the
+      // guest/client restriction off the membership row itself rather than off `is_private`,
+      // so restricting someone on an open board is both meaningful and, until now,
+      // unreachable from any UI.
+      if (members.length > 0) {
+        const { error: memberError } = await supabase.from('board_members').insert(
+          members.map(({ user_id, role }) => ({ board_id: board.id, user_id, role }))
         )
+        // The board exists at this point, so failing silently here would leave a private
+        // board with nobody but its creator on it and no indication why.
+        if (memberError) {
+          setBoards([board, ...boards])
+          setError('Board created, but its access list could not be saved. Open Edit Board to try again.')
+          return
+        }
       }
 
       setBoards([board, ...boards])
       setTitle('')
       setDescription('')
       setIsPrivate(false)
-      setSelectedMembers([])
+      setMembers([])
       setOpen(false)
     } catch (err) {
       setError('Failed to create board. Please try again.')
@@ -108,19 +145,76 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
     }
   }
 
+  // ⚠️ No preventDefault here, deliberately. Radix reads a prevented default on a menu item
+  // as "keep the menu open", so this handler used to leave the actions menu hanging open
+  // behind the dialog — and because that menu is modal, `body { pointer-events: none }` was
+  // left in place after saving, making the whole page unclickable until the user dismissed
+  // the menu by hand. The preventDefault looked necessary because these cards wrap their
+  // content in a <Link>, but DropdownMenuContent is portaled out of that subtree, so a menu
+  // item click never reaches the link in the first place.
   const handleEditBoard = async (board: any, e: React.MouseEvent) => {
-    e.preventDefault()
     e.stopPropagation()
     setEditingBoard(board)
     setTitle(board.title)
     setDescription(board.description || '')
     setBoardColor(board.color || '#3b82f6')
     setIsPrivate(board.is_private ?? false)
-    // Load existing members
+    setError(null)
+    // Roles come back with the rows now; dropping them here is what made the old save
+    // reset everyone to 'member'.
     const { data: memberRows } = await supabase
-      .from('board_members').select('user_id').eq('board_id', board.id)
-    setSelectedMembers((memberRows ?? []).map((r: any) => r.user_id))
+      .from('board_members').select('user_id, role').eq('board_id', board.id)
+    const loaded = (memberRows ?? []).map(toMembershipRow)
+    setLoadedMembers(loaded)
+    setMembers(loaded)
     setEditOpen(true)
+  }
+
+  /**
+   * Apply a membership plan, returning a human-readable failure or null.
+   *
+   * Every write asks for its rows back and checks the count, because PostgREST does not
+   * treat a zero-row DELETE or UPDATE as an error — under RLS those simply match nothing
+   * and report success. That is precisely how the previous version told a non-creator
+   * admin their changes had been saved when the database had rejected all of them.
+   */
+  const applyMembershipPlan = async (
+    boardId: string,
+    plan: ReturnType<typeof planMembershipChanges>,
+  ): Promise<string | null> => {
+    const REJECTED = 'The access list was not saved — only the board’s creator can change it.'
+
+    if (plan.remove.length > 0) {
+      const { data, error } = await supabase
+        .from('board_members').delete()
+        .eq('board_id', boardId).in('user_id', plan.remove).select('user_id')
+      if (error) return error.message
+      if ((data?.length ?? 0) !== plan.remove.length) return REJECTED
+    }
+
+    if (plan.insert.length > 0) {
+      const { data, error } = await supabase
+        .from('board_members')
+        .insert(plan.insert.map(({ user_id, role }) => ({ board_id: boardId, user_id, role })))
+        .select('user_id')
+      if (error) return error.message
+      if ((data?.length ?? 0) !== plan.insert.length) return REJECTED
+    }
+
+    // Grouped by role so this is at most one round-trip per distinct role, not per person.
+    const byRole = new Map<string, string[]>()
+    for (const row of plan.update) {
+      byRole.set(row.role, [...(byRole.get(row.role) ?? []), row.user_id])
+    }
+    for (const [role, userIds] of byRole) {
+      const { data, error } = await supabase
+        .from('board_members').update({ role })
+        .eq('board_id', boardId).in('user_id', userIds).select('user_id')
+      if (error) return error.message
+      if ((data?.length ?? 0) !== userIds.length) return REJECTED
+    }
+
+    return null
   }
 
   const handleUpdateBoard = async (e: React.FormEvent) => {
@@ -149,12 +243,18 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
 
       if (error) throw error
 
-      // Sync members: delete all then re-insert
-      await supabase.from('board_members').delete().eq('board_id', editingBoard.id)
-      if (isPrivate && selectedMembers.length > 0) {
-        await supabase.from('board_members').insert(
-          selectedMembers.map(userId => ({ board_id: editingBoard.id, user_id: userId }))
-        )
+      // Diff, never rewrite. An edit that does not touch the access list now issues zero
+      // membership writes, which is what stops an unrelated change (a title, a colour)
+      // from resetting a guest's role to 'member' and handing them write access.
+      const plan = planMembershipChanges(loadedMembers, members)
+      if (!isNoopPlan(plan)) {
+        const membershipError = await applyMembershipPlan(editingBoard.id, plan)
+        if (membershipError) {
+          // The board's own fields are already saved, so say so rather than implying the
+          // whole save failed. The dialog stays open with the user's list intact.
+          setError(`The board was saved, but its access list was not: ${membershipError}`)
+          return
+        }
       }
 
       // Look up the editor's display info from the already-loaded users list rather
@@ -183,7 +283,8 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
       setDescription('')
       setBoardColor('#3b82f6')
       setIsPrivate(false)
-      setSelectedMembers([])
+      setMembers([])
+      setLoadedMembers([])
     } catch (err) {
       setError('Failed to update board. Please try again.')
     } finally {
@@ -205,8 +306,9 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
     loadArchived()
   }, [isSuperAdmin])
 
+  // Same reasoning as handleEditBoard: prevented default keeps the menu (and its
+  // pointer-events lock) alive after the action has run.
   const handleArchiveBoard = async (boardId: string, boardTitle: string, e: React.MouseEvent) => {
-    e.preventDefault()
     e.stopPropagation()
 
     const confirmed = window.confirm(
@@ -338,22 +440,16 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
                   <Lock className="w-4 h-4" /> Private
                 </button>
               </div>
-              {isPrivate && (
-                <div className="space-y-1.5 pt-1">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Only you and the people you pick can see this board — other admins can&apos;t</p>
-                  <div className="max-h-40 overflow-y-auto rounded border divide-y">
-                    {allUsers.map(u => (
-                      <label key={u.id} className="flex items-center gap-2 px-3 py-2 hover:bg-accent cursor-pointer text-sm">
-                        <input type="checkbox" checked={selectedMembers.includes(u.id)}
-                          onChange={ev => setSelectedMembers(prev => ev.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id))}
-                          className="rounded"
-                        />
-                        <span className="truncate">{u.full_name || u.email}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Shown for public boards too — a Guest/Client row restricts someone who
+                  would otherwise have full access, which only exists on open boards. */}
+              <BoardMemberPicker
+                users={allUsers}
+                value={members}
+                onChange={setMembers}
+                isPrivate={isPrivate}
+                disabled={loading}
+                canManage={canManageMembership(editingBoard, currentUserId)}
+              />
             </div>
             <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
               <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setEditOpen(false)} disabled={loading}>
@@ -395,7 +491,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
               <span className="hidden sm:inline">List</span>
             </Button>
           </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={(next) => (next ? openCreateDialog() : setOpen(false))}>
           <DialogTrigger asChild>
             <Button className="min-w-0 flex-1 gap-2 sm:flex-none">
               <Plus className="w-4 h-4" />
@@ -453,22 +549,15 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
                     <Lock className="w-4 h-4" /> Private
                   </button>
                 </div>
-                {isPrivate && (
-                  <div className="space-y-1.5 pt-1">
-                    <p className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Only you and the people you pick can see this board — other admins can&apos;t</p>
-                    <div className="max-h-40 overflow-y-auto rounded border divide-y">
-                      {allUsers.map(u => (
-                        <label key={u.id} className="flex items-center gap-2 px-3 py-2 hover:bg-accent cursor-pointer text-sm">
-                          <input type="checkbox" checked={selectedMembers.includes(u.id)}
-                            onChange={ev => setSelectedMembers(prev => ev.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id))}
-                            className="rounded"
-                          />
-                          <span className="truncate">{u.full_name || u.email}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                {/* No canManage check on create: the person filling this in becomes the
+                    board's creator, so 061's policy will accept their writes. */}
+                <BoardMemberPicker
+                  users={allUsers}
+                  value={members}
+                  onChange={setMembers}
+                  isPrivate={isPrivate}
+                  disabled={loading}
+                />
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? 'Creating Board...' : 'Create Board'}
@@ -631,7 +720,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
           <Kanban className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-xl font-semibold mb-2">No boards yet</h3>
           <p className="text-muted-foreground mb-6">Create your first board to get started</p>
-          <Button onClick={() => setOpen(true)}>
+          <Button onClick={openCreateDialog}>
             <Plus className="w-4 h-4 mr-2" />
             Create Board
           </Button>

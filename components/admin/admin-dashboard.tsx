@@ -10,6 +10,8 @@ import { resolveActiveTab } from '../shell/tab-url'
 import { AppShell } from '../shell/app-shell'
 import type { SidebarNavGroup } from '../shell/app-sidebar'
 import BoardManagement from './board-management'
+import AccessLog from './access-log'
+import { allows } from '@/lib/capabilities'
 import TaskOverview from './task-overview'
 import ChatPanel from '../chat/chat-panel'
 import CalendarView from '../calendar/calendar-view'
@@ -93,6 +95,12 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   const showAiAssistant = isModuleEnabled(modules, 'ai_assistant')
   const showBookmarks = isModuleEnabled(modules, 'bookmarks')
 
+  // The audit trail (migration 098). Not a module: a log you can switch off is not a log,
+  // and the point of recording access changes is that nobody chooses whether they are
+  // recorded. Gated on the capability instead, which resolves to admin + super_admin and
+  // matches the table's own RLS policy.
+  const canViewAudit = allows({ userId: user.id, platformRole: user.role }, 'audit.view')
+
   // Sections addressable via ?tab= — matches the TabsTrigger values below.
   const allowedTabs = [
     'overview',
@@ -103,6 +111,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
     ...(showChat ? ['chat'] : []),
     ...(showPersonal ? ['personal'] : []),
     ...(showProjectIds ? ['project-ids'] : []),
+    ...(canViewAudit ? ['access-log'] : []),
   ]
 
   // Keep the active tab in sync with the URL so sections are deep-linkable and the
@@ -174,6 +183,9 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
       : []),
     ...(showProjectIds
       ? [{ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: '/admin?tab=project-ids', status: 'live' as const }]
+      : []),
+    ...(canViewAudit
+      ? [{ id: 'access-log', label: 'Access log', icon: 'history', href: '/admin?tab=access-log', status: 'live' as const }]
       : []),
   ]
   const sidebarGroups: SidebarNavGroup[] = [
@@ -297,7 +309,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
             </TabsContent>
 
             <TabsContent value="boards">
-              <BoardManagement boards={boards} isSuperAdmin={isSuperAdmin} />
+              <BoardManagement boards={boards} isSuperAdmin={isSuperAdmin} currentUserId={user.id} />
             </TabsContent>
 
             <TabsContent value="chat">
@@ -314,6 +326,12 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
                   userId={user.id}
                   userName={user.full_name || user.email || 'Unknown user'}
                 />
+              </TabsContent>
+            )}
+
+            {canViewAudit && (
+              <TabsContent value="access-log">
+                <AccessLog currentUserId={user.id} currentUserRole={user.role} />
               </TabsContent>
             )}
           </Tabs>
