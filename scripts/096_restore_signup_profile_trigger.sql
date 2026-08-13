@@ -21,9 +21,17 @@
 -- identical trigger). It is worth applying anyway so both databases are provably in the same
 -- state rather than assumed to be.
 --
--- Prod's one pre-existing orphan is `cami@goatlasgo.us` (created 2026-01-21, never signed in):
--- an auth account with no profiles row. It predates this and is NOT created by this migration;
--- deciding whether to give it a profile or delete the account is the owner's call.
+-- Prod had one pre-existing orphan when this was written: `cami@goatlasgo.us` (created
+-- 2026-01-21, never signed in) — an auth account with no profiles row. It was NOT caused by
+-- this migration or by 095. `scripts/019_delete_cami_reassign_to_kayla.sql` had deleted that
+-- person's `profiles` row and reassigned their work to Kayla, but never removed the matching
+-- `auth.users` row, so the account lingered as a half-finished deletion. Removed on the owner's
+-- instruction 2026-08-13, after verifying it owned zero rows across all 37 user-reference
+-- columns and no storage objects. Production is now 10 auth accounts / 10 profiles, 0 orphans.
+--
+-- Worth generalising: deleting a `profiles` row does NOT delete the account. The FK runs the
+-- other way (profiles.id -> auth.users.id ON DELETE CASCADE), so removing a user means deleting
+-- the auth account and letting the cascade take the profile, not the reverse.
 --
 -- To re-check either database:
 --     SELECT tgname, tgenabled FROM pg_trigger
