@@ -182,18 +182,45 @@ try {
   check('both business-unit teams exist', (seeded ?? []).length === 2,
     (seeded ?? []).map((t) => t.name).join(', '))
 
-  // 094 backfilled every profile that existed when it ran. This harness's own throwaway
-  // accounts were created afterwards and are deliberately NOT in a team — joining a team is a
-  // super-admin decision, not something a signup silently performs (see `unassigned` below).
-  // So the invariant to assert is "every pre-existing profile", not "every profile".
-  const { data: allProfiles } = await admin.from('profiles').select('id')
-  const preExisting = (allProfiles ?? []).filter((p) => !createdUserIds.includes(p.id)).map((p) => p.id)
-  for (const team of seeded ?? []) {
-    const { data: members } = await admin.from('team_members').select('user_id').eq('team_id', team.id)
-    const memberIds = new Set((members ?? []).map((m) => m.user_id))
-    const missing = preExisting.filter((id) => !memberIds.has(id))
-    check(`every pre-existing profile is in "${team.name}"`, missing.length === 0,
-      `${preExisting.length - missing.length}/${preExisting.length}`)
+  // 094 backfilled every profile that existed WHEN IT RAN. Anyone who signed up afterwards is
+  // deliberately in no team — joining is a super-admin decision, not something a signup
+  // silently performs (see `unassigned` below).
+  //
+  // The cutoff is read from the migration ledger rather than approximated by "everyone except
+  // this harness's own throwaways". That earlier version was wrong in a way that took a while
+  // to see: it was guaranteed to start failing the first time a REAL account was created after
+  // 094, reporting a data problem where there was only a stale assumption. Two of this file's
+  // own checks were in direct tension until this was pinned to a timestamp.
+  const { data: ledger } = await admin
+    .from('applied_migrations')
+    .select('applied_at')
+    .like('filename', '094%')
+    .maybeSingle()
+
+  if (!ledger?.applied_at) {
+    // Not applied here (prod is the live case). Say so rather than passing vacuously.
+    check('094 is applied, so the backfill can be checked at all', false, 'no ledger row for 094')
+  } else {
+    const backfillCutoff = ledger.applied_at
+    const { data: allProfiles } = await admin.from('profiles').select('id, created_at')
+    const backfilled = (allProfiles ?? [])
+      .filter((p) => p.created_at <= backfillCutoff && !createdUserIds.includes(p.id))
+      .map((p) => p.id)
+    const laterSignups = (allProfiles ?? []).filter(
+      (p) => p.created_at > backfillCutoff && !createdUserIds.includes(p.id),
+    ).length
+
+    for (const team of seeded ?? []) {
+      const { data: members } = await admin.from('team_members').select('user_id').eq('team_id', team.id)
+      const memberIds = new Set((members ?? []).map((m) => m.user_id))
+      const missing = backfilled.filter((id) => !memberIds.has(id))
+      check(
+        `every profile that predates 094 is in "${team.name}"`,
+        missing.length === 0,
+        `${backfilled.length - missing.length}/${backfilled.length}` +
+          (laterSignups > 0 ? `, ${laterSignups} later signup(s) correctly excluded` : ''),
+      )
+    }
   }
 
   // A new account joins no team until a super admin puts it in one. That is the intended
