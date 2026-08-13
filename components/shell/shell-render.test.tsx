@@ -46,12 +46,23 @@ describe('AppSidebar', () => {
     expect(screen.getByText('soon')).toBeInTheDocument()
   })
 
-  it('hides text labels when collapsed (icon-only rail)', () => {
+  it('hides the group heading when collapsed (icon-only rail)', () => {
     render(<AppSidebar groups={groups} activeId="home" collapsed={true} onToggle={() => {}} />)
-    // Labels are not rendered inline when collapsed (tooltip content is not mounted until hover).
+    // The group heading genuinely disappears — it labels nothing focusable.
     expect(screen.queryByText('Work')).not.toBeInTheDocument()
     // Links still exist (icon-only), so navigation is preserved.
     expect(screen.getAllByRole('link').length).toBe(2)
+  })
+
+  // Item labels are a different case from the group heading: they are the *accessible name*
+  // of a link. Dropping them from the DOM left the collapsed rail announcing eight
+  // indistinguishable "link"s, since the icon is aria-hidden and the tooltip is not mounted
+  // until hover. They are now always present and only visually hidden.
+  it('keeps nav item labels available to assistive tech when collapsed', () => {
+    render(<AppSidebar groups={groups} activeId="home" collapsed={true} onToggle={() => {}} />)
+    expect(screen.getByRole('link', { name: /Home/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Inbox/ })).toBeInTheDocument()
+    expect(screen.getByText('Home')).toHaveClass('sr-only')
   })
 
   it('fires onToggle when the collapse button is pressed', () => {

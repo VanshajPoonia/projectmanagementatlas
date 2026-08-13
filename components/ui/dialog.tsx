@@ -5,10 +5,25 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { useDialogFocusRestore } from '@/components/shell/use-focus-restore'
 
+/**
+ * Dialog root.
+ *
+ * Adds focus restoration on top of Radix. Radix re-focuses the exact node that was active
+ * when the dialog opened, which fails throughout this codebase because dialogs are driven by
+ * host `open` state rather than by a `DialogTrigger`: opening one re-renders the host, the
+ * trigger button becomes a new node, and focusing the stale one silently does nothing. Focus
+ * ended up on `document.body` after closing *any* dialog in the app — verified in a real
+ * browser. See components/shell/use-focus-restore.ts for the full reasoning.
+ *
+ * Applied here rather than at each call site so every dialog gets it, including ones added
+ * later by someone who never reads this comment.
+ */
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  useDialogFocusRestore(props.open === true)
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
 }
 
