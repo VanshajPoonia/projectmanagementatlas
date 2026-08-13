@@ -266,26 +266,22 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `097`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `098`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-13: **dev is at `096`, prod is at `093`**, and prod has still never had `087`
-  (deliberate, see below) — `088`–`093` were applied to prod with `--only=… --allow-prod`, which
-  is what the runner's `--only` flag exists for.
-- ⚠️ **`094`, `095` and `096` are applied to dev only and are NOT yet on prod.** All three are
-  verified on the sandbox with post-conditions and paired rollbacks, but `094`/`095` rewrite
-  policies and grants, which the rule below classifies as destructive, so they need a deliberate
-  decision rather than a drive-by `--allow-prod`. Apply in order:
-  `node --env-file=.env.production.local scripts/migrate.mjs --only=094,095,096 --allow-prod`
-  - `094` (teams): the UI degrades safely without it — the tab renders, the list is empty, and
-    064's admin-tier policy still applies.
-  - `095` (revoke anon): before applying, confirm **no external integration** uses the prod anon
-    key to read `public` tables directly. Everything in this repo goes through the service role
-    server-side, which is what made it safe here, but an outside script would not show up in a
-    grep of this codebase.
-  - `096` (signup trigger): a **no-op on prod**, which already has the trigger — verified, see
-    below. Worth applying anyway so both databases are provably identical.
+  As of 2026-08-13: **dev is at `097`, prod is at `094`** (`094` and `095` were applied to prod
+  by the owner). Prod has still never had `087` (deliberate, see below) — `088`–`093` were
+  applied with `--only=… --allow-prod`, which is what the runner's `--only` flag exists for.
+- ⚠️ **`096` and `097` are applied to dev only.**
+  - `096` (signup trigger) is a **no-op on prod**, which already has the trigger — verified.
+    Worth applying only so both databases are provably identical.
+  - `097` (`user_favorites`) is **purely additive** — one new table, no existing policy or row
+    touched — so unlike `094`/`095` it is straightforwardly `--allow-prod` eligible:
+    `node --env-file=.env.production.local scripts/migrate.mjs --only=097 --allow-prod`
+    Without it the star renders and every click fails, so apply it **before** merging the code.
+    Rollback `scripts/rollback/097_revert.sql` **destroys real user data** (everyone's stars);
+    snapshot the table first if the intent is "roll back the code, keep the favourites".
 - **Dev-sandbox drift to know about: the `on_auth_user_created` trigger.** The sandbox was
   missing it entirely (the function `handle_new_user` existed, attached to nothing) because the
   trigger lives on `auth.users`, **outside the `public` schema**, so a public-only clone drops

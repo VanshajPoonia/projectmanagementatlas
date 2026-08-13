@@ -102,25 +102,33 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   (prod evidence: Bobby 0 unread of 6, Kayla 0 of 42, vs Tim 47/47 and Vanshaj 45/45);
   the toast's "Open" button always went to `/dashboard` instead of the task; and
   `ai_assistant`/`bookmarks` module toggles did nothing.
-- ⚠️ **`094`, `095` and `096` are applied to DEV ONLY. Prod is still at `093`.** All three
-  are verified with post-conditions and paired rollbacks, but `094`/`095` rewrite policies
-  and grants = destructive by this repo's rule, so they need the owner's explicit
-  go-ahead, not a drive-by `--allow-prod`. Apply in order:
-  `node --env-file=.env.production.local scripts/migrate.mjs --only=094,095,096 --allow-prod`
-  Before `095` on prod, confirm **no external integration** uses the prod anon key against
-  `public` tables — everything in this repo goes through the service role server-side,
-  but an outside script wouldn't show up in a grep of this codebase. `096` is a no-op on
-  prod (it already has the trigger) and is worth applying only so both databases are
-  provably identical. Rollbacks: `scripts/rollback/09{4,5,6}_revert.sql`.
-- NEXT actual work is NOT decided — ASK THE OWNER. The pack's own order says
-  Prompt C (canonical work-item + custom fields) is next. The honest open gaps from
-  Prompts A/B are smaller: the **Inbox** — which turns out to need **no new table**,
-  `task_notifications` (migration `035`) already exists with 169 prod rows and inbox-shaped
-  RLS, and now that the toast no longer eats them, unread state finally accumulates
-  (open question: what to do with the ~121 already-unread rows, some from June) —
-  work-item **context actions in ⌘K** (blocked: `board-view.tsx` renders outside
-  `AppShell`, so the shell has no selected-item context), favourites/pinned views,
-  undo-capable toasts, and the automated a11y / 200%-320% zoom passes Prompt A asks for.
+- ✅ **`094` and `095` are now on PROD** (applied by the owner, 2026-08-13). Prod is at `094`
+  applied / 2 pending, both deliberate. **`096` and `097` are dev-only.** `096` is a no-op on
+  prod (it already has the trigger), worth applying only so both databases are provably
+  identical. **`097` (`user_favorites`) is purely additive and IS `--allow-prod` eligible** —
+  apply it *before* merging Prompt A's code or every star click fails:
+  `node --env-file=.env.production.local scripts/migrate.mjs --only=097 --allow-prod`
+  Rollbacks: `scripts/rollback/09{4,5,6,7}_revert.sql`. Note `097`'s rollback destroys real
+  user data (everyone's stars) — snapshot the table first if the intent is code-only.
+- **✅ ATLAS_02 Prompt A is CLOSED (2026-08-13).** Favourites (migration `097` — sidebar block,
+  ⌘K group, stars on board cards and the board header), undo-capable toasts on the two silent
+  hard deletes, unsaved-change protection on the create-task dialog, axe automation, and the
+  200%/320% zoom passes. That automation found four real defects, three of them pre-existing:
+  collapsed sidebar links had **no accessible name at all**; **dialog focus restoration never
+  worked anywhere** (focus fell to `body` after closing any dialog — fixed generally in the
+  shared `Dialog` wrapper); the page **scrolled sideways at 320px**; and a board card
+  overflowed its grid cell by 91px, stealing the star's click target. `pnpm check:teams` was
+  also repaired — it had two checks in direct tension and was guaranteed to fail the first
+  time a real account was created after `094`. **Deliberately deferred: pinned views**, which
+  need saved views (Prompt E) to exist; `user_favorites.entity_type` already accepts `'view'`.
+- NEXT actual work is NOT decided — ASK THE OWNER. The pack's own order says **Prompt B**
+  (finish single-org access control; its one honest gap is membership **audit events**) then
+  **Prompt C** (canonical work-item + custom fields = FEATURES Phase 1). Also still open: the
+  **Inbox** (Prompt F) — needs **no new table**, `task_notifications` (migration `035`) already
+  exists with 169 prod rows and inbox-shaped RLS, and now that the toast no longer eats them
+  unread state finally accumulates (open question: what to do with the ~121 already-unread
+  rows, some from June) — and work-item **context actions in ⌘K** (blocked: `board-view.tsx`
+  renders outside `AppShell`, so the shell has no selected-item context).
 - **`095` closed the anon-grant gap (dev only).** `anon` now holds nothing on any table,
   sequence or function in `public`, and the *default privileges* are narrowed so new
   tables don't inherit it. `authenticated` keeps all its DML; only TRUNCATE/REFERENCES/
@@ -165,7 +173,7 @@ future session, that's a regression — don't assume it's still pending.
   assertMigrationTarget({allowProd}) = the migration runner: dev always
   allowed, prod ONLY via an explicit --allow-prod flag + loud banner. Only
   additive/non-destructive migrations may ever use --allow-prod.
-- Migrations: numbered SQL in scripts/, next number is 094. Dev and production
+- Migrations: numbered SQL in scripts/, next number is 098. Dev and production
   are both at 093, with ONE deliberate gap: 087 has never been applied to prod
   (nobody is affected by its absence — see CLAUDE.md). 088–093 went to prod
   via `--only=… --allow-prod`, which is how you skip a held-back predecessor.
@@ -179,7 +187,9 @@ future session, that's a regression — don't assume it's still pending.
 - Permanent, non-destructive verification harnesses exist and all follow the
   same throwaway-user pattern — re-run the relevant one after touching RLS:
   `pnpm check:board-roles` (board_members/tasks), `check:grants` (anon holds nothing
-  in public; the booking RPCs still do), `check:teams` (super-admin-only
+  in public; the booking RPCs still do), `check:favorites` (a favourites list is private
+  to its owner with NO admin exemption, and starring a private board grants nothing),
+  `check:teams` (super-admin-only
   team management, with an admin-tier control case), `check:marketing-calendars`
   (per-calendar access), `check:marketing-channels` (channel ordering + who may
   rename), `check:project-ids` (number uniqueness under concurrency + ledger
@@ -247,7 +257,7 @@ future session, that's a regression — don't assume it's still pending.
   a missing 068 once shipped ahead of its migration and broke the live boards
   list for ~6h. Migrations first, then deploy. Prefer small sliced commits.
 - Do NOT add "Co-Authored-By: Claude" trailers to commits (repo rule).
-- Tests: `pnpm test` (currently 339 passing across 27 files — keep them green).
+- Tests: `pnpm test` (currently 429 passing across 33 files — keep them green).
   `pnpm lint` is broken repo-wide (ESLint 10 with no eslint.config.js); use
   `npx tsc --noEmit` for a real check until someone adds a flat config.
 - `pnpm build` / `pnpm start` locally read `.env.production.local` and therefore talk
