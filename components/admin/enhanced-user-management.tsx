@@ -13,6 +13,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { describeDeletion } from '@/lib/deprovision'
 
 interface EnhancedUserManagementProps {
   users: any[]
@@ -79,7 +80,14 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
   }
 
   const handleDeleteUser = async (userId: string, userName: string) => {
-    if (!confirm(`Are you sure you want to delete ${userName}? This action cannot be undone.`)) {
+    // Count their boards first, so the confirmation can say what will change hands rather
+    // than leaving the operator to discover it afterwards.
+    const { count: boardCount } = await supabase
+      .from('boards')
+      .select('id', { count: 'exact', head: true })
+      .eq('created_by', userId)
+
+    if (!confirm(describeDeletion(userName, boardCount ?? 0))) {
       return
     }
 
@@ -90,11 +98,19 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
         body: JSON.stringify({ userId }),
       })
 
+      const body = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error('Failed to delete user')
+        // The server refuses for reasons worth reading — deleting yourself, or removing the
+        // last super admin. Replacing them with "Failed to delete user" told the operator
+        // nothing and made a deliberate refusal look like a bug.
+        throw new Error(body?.error || 'Failed to delete user')
       }
 
-      setSuccess(`User ${userName} deleted successfully`)
+      setSuccess(
+        body?.boardsTransferred
+          ? `${userName} was deleted. Their work was kept, and ${body.boardsTransferred} board${body.boardsTransferred === 1 ? '' : 's'} transferred to you.`
+          : `${userName} was deleted. Their work was kept.`
+      )
       await refreshUsers()
     } catch (err: any) {
       setError(err.message || 'Failed to delete user')

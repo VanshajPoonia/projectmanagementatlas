@@ -308,7 +308,7 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `100`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `101`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
@@ -316,6 +316,25 @@ deliberately left out.
   both deliberate). Prod has still never had `087` (deliberate, see below) — `088`–`093` and
   `097` were applied with `--only=… --allow-prod`, which is what the runner's `--only` flag
   exists for.
+- ⚠️ **`100` (deprovisioning) is dev-only too, and is the one to apply first.** It fixes a
+  live bug: `boards.created_by` and `tasks.created_by` were `NOT NULL` with an
+  `ON DELETE SET NULL` foreign key — a straight contradiction, so Postgres aborted the
+  delete of anyone who had ever created a board with an opaque "Database error deleting
+  user". Every board here is created by an admin, so in practice **no admin account could
+  ever be deprovisioned.** The same migration stops three things being silently destroyed
+  when a delete did succeed: `task_comments.user_id`/`author_id` and `bookmarks.created_by`
+  were `CASCADE`, so a departing person took their comments and every **company-scope**
+  bookmark they had created with them. All are `SET NULL` now, so the content survives and
+  only the attribution goes. Personal bookmarks still cascade through `user_id`, which is
+  correct. `share_links.created_by` is deliberately left `CASCADE` — a public share URL
+  minted by someone who has been removed should stop working.
+  - **Boards are the one thing reassigned rather than nulled**, and that happens in
+    `app/api/admin/delete-user/route.ts`, not in SQL. `boards.created_by` is not a byline:
+    `061` makes it the sole authority over a private board's membership list, with no admin
+    bypass, so a NULL creator would freeze that list permanently. The route transfers boards
+    to the super admin doing the deletion first, then deletes the account. Tasks and
+    comments are deliberately **not** reassigned — that would make them claim to have been
+    written by whoever ran the deletion. Gate: `pnpm check:deprovision` (20 checks).
 - ⚠️ **`098` and `099` are applied to dev only, and both need a decision before prod.**
   Neither is `--allow-prod` eligible on the "purely additive" rule.
   - `098` (audit events) adds a table, which is additive, but it also puts **triggers on five

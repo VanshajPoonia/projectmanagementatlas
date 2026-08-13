@@ -1307,8 +1307,12 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                         </Avatar>
                         <div className="flex-1 space-y-1">
                           <div className="flex items-center gap-2">
+                            {/* A comment outlives its author now (migration 100): deleting an
+                                account keeps what they wrote and nulls the attribution. Without
+                                this fallback the name rendered as an empty string, which reads
+                                as a broken comment rather than one by someone who has left. */}
                             <span className="text-sm font-medium">
-                              {comment.author?.full_name || comment.author?.email}
+                              {comment.author?.full_name || comment.author?.email || 'Removed user'}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {new Date(comment.created_at).toLocaleDateString('en-US')}
