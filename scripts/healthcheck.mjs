@@ -55,14 +55,24 @@ async function checkDatabase() {
     return record('Database', 'fail', 'Missing NEXT_PUBLIC_SUPABASE_URL / ANON_KEY')
   }
   try {
-    // `companies` is publicly viewable under RLS, so the anon key is enough — this
-    // exercises the real session-client path, not a privileged bypass.
+    // Uses the anon key on purpose: this exercises the real session-client path, not a
+    // privileged bypass.
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/companies?select=id&limit=1`,
       { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } }
     )
     if (res.ok) return record('Database', 'ok', `Supabase REST reachable (HTTP ${res.status})`)
-    return record('Database', 'fail', `Supabase REST HTTP ${res.status}`)
+
+    // ⚠️ 401 + Postgres 42501 means HEALTHY. Migration 095 revoked every anon privilege
+    // in `public`, so this unauthenticated probe is now always refused — and the old
+    // `res.ok` test reported the database as down from the moment 095 landed. PostgREST
+    // can only produce 42501 by asking Postgres and being refused, which proves the
+    // reachability this check exists to measure. See app/api/health/route.ts.
+    const body = await res.json().catch(() => null)
+    if (body?.code === '42501') {
+      return record('Database', 'ok', `Supabase REST reachable (HTTP ${res.status}, anon correctly refused)`)
+    }
+    return record('Database', 'fail', `Supabase REST HTTP ${res.status}${body?.code ? ` (${body.code})` : ''}`)
   } catch (e) {
     return record('Database', 'fail', String(e?.message || e))
   }
