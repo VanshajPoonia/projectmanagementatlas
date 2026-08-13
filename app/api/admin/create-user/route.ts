@@ -54,14 +54,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    // Update profile with role
-    const { error: profileError } = await supabaseAdmin
+    // Set the profile's name and role.
+    //
+    // This used to be a bare .update().eq(), which silently depends on the on_auth_user_created
+    // trigger having already inserted the row. An UPDATE matching zero rows is NOT an error in
+    // PostgREST, so if the trigger were ever missing this route would report success while
+    // leaving the account with no profile at all — and since profiles.role drives every
+    // permission check, that user would be broken on arrival with nothing to show why.
+    // (The dev sandbox was in exactly that state: the trigger lives on auth.users, outside the
+    // `public` schema, so a public-only clone dropped it. Migration 096 restores it.)
+    //
+    // upsert makes the route correct with or without the trigger, and .select() means a failure
+    // to land the row is reported instead of assumed.
+    const { data: profileRows, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .update({ full_name: fullName, role })
-      .eq('id', data.user.id)
+      .upsert(
+        { id: data.user.id, email: data.user.email, full_name: fullName, role },
+        { onConflict: 'id' },
+      )
+      .select('id')
 
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 400 })
+    }
+
+    if (!profileRows || profileRows.length === 0) {
+      return NextResponse.json(
+        { error: 'Account was created but its profile could not be saved. Check the user in Super Admin before they sign in.' },
+        { status: 500 },
+      )
     }
 
     return NextResponse.json({ success: true, user: data.user })

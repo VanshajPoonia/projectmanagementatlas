@@ -16,6 +16,7 @@
     "check:isolation": "node --env-file=.env.local scripts/check-isolation.mjs",
     "check:board-roles": "node --env-file=.env.local scripts/check-board-roles.mjs",
     "check:teams": "node --env-file=.env.local scripts/check-teams.mjs",
+    "check:grants": "node --env-file=.env.local scripts/check-grants.mjs",
     "check:task-lifecycle": "node --env-file=.env.local scripts/check-task-lifecycle.mjs",
     "check:task-attachments": "node --env-file=.env.local scripts/check-task-attachments.mjs",
     "check:chat-attachments": "node --env-file=.env.local scripts/check-chat-attachments.mjs",

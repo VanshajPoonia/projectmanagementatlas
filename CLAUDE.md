@@ -266,19 +266,32 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `095`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `097`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-13: **dev is at `094`, prod is at `093`**, and prod has still never had `087`
+  As of 2026-08-13: **dev is at `096`, prod is at `093`**, and prod has still never had `087`
   (deliberate, see below) — `088`–`093` were applied to prod with `--only=… --allow-prod`, which
   is what the runner's `--only` flag exists for.
-- ⚠️ **`094` is applied to dev only and is NOT cleared for prod.** It rewrites RLS policies
-  (narrowing team management to super_admin) and revokes grants, which the rule below classifies
-  as destructive — so it must not ride in on `--allow-prod` without the owner deciding. The
-  Super Admin > Teams UI merged alongside it degrades safely without it: the tab renders, the
-  list is empty, and 064's admin-tier policy still applies. Apply it deliberately when the owner
-  says so, then confirm with `pnpm migrate:status`.
+- ⚠️ **`094`, `095` and `096` are applied to dev only and are NOT yet on prod.** All three are
+  verified on the sandbox with post-conditions and paired rollbacks, but `094`/`095` rewrite
+  policies and grants, which the rule below classifies as destructive, so they need a deliberate
+  decision rather than a drive-by `--allow-prod`. Apply in order:
+  `node --env-file=.env.production.local scripts/migrate.mjs --only=094,095,096 --allow-prod`
+  - `094` (teams): the UI degrades safely without it — the tab renders, the list is empty, and
+    064's admin-tier policy still applies.
+  - `095` (revoke anon): before applying, confirm **no external integration** uses the prod anon
+    key to read `public` tables directly. Everything in this repo goes through the service role
+    server-side, which is what made it safe here, but an outside script would not show up in a
+    grep of this codebase.
+  - `096` (signup trigger): a **no-op on prod**, which already has the trigger — verified, see
+    below. Worth applying anyway so both databases are provably identical.
+- **Dev-sandbox drift to know about: the `on_auth_user_created` trigger.** The sandbox was
+  missing it entirely (the function `handle_new_user` existed, attached to nothing) because the
+  trigger lives on `auth.users`, **outside the `public` schema**, so a public-only clone drops
+  it. Production is fine — 11 auth accounts, 10 profiles, and the five most recent accounts all
+  have their row. Restored by `096`. If you ever re-clone prod into the sandbox, expect to lose
+  it again and re-apply `096`. Anything else living outside `public` has the same exposure.
 - **Every Storage bucket is private, 50 MB, 23 MIME types** (`task-assets`, `chat-attachments`,
   `marketing-assets`) as of `093`. 50 MB is the **Supabase Free plan's hard per-file ceiling** —
   a bucket's `file_size_limit` cannot exceed the project-wide upload limit, and on Free that
@@ -306,15 +319,23 @@ deliberately left out.
   table in `public` a blanket ALL to `anon` and `authenticated`, so granting narrowly is not
   enough — the wide grant is already there. `090` is the worked example (and its post-conditions
   are what caught it); the same trap bit the appointments migrations twice.
-  - **Scope of the outstanding gap, measured 2026-08-13: `anon` holds `TRUNCATE` + `DELETE` +
-    everything else on _28 of 30_ tables in `public`** — every table except `teams`/`team_members`,
-    which `094` fixed while it was in there, and `project_ids`, which `090` got right. **This is
-    not a live leak:** all 12 policies that target the `{public}` role are gated on `auth.uid()`
-    in some form, so a signed-out caller passes none of them, and PostgREST does not expose
-    `TRUNCATE`. It is a latent one — the day anyone writes a policy with `USING (true)` and
-    forgets `TO authenticated`, `anon` walks straight in. Fixing all 28 is a single mechanical
-    migration but it rewrites grants on every live table, so it wants its own session, its own
-    post-conditions, and the owner's sign-off. Do not bundle it into unrelated work.
+  - **✅ CLOSED by `095` (2026-08-13).** `anon` now holds **nothing** on any table, sequence or
+    function in `public`, and the *default privileges* were narrowed too, so a new table no
+    longer inherits the grant. `authenticated` keeps every DML privilege it had (RLS is what
+    constrains a signed-in user); only `TRUNCATE`/`REFERENCES`/`TRIGGER` were taken away, and
+    `TRUNCATE` is the one privilege RLS never covers. Gate: `pnpm check:grants` (16/16).
+  - ⚠️ **Three function grants are deliberately preserved and must stay:** `book_appointment`,
+    `cancel_appointment`, `check_booking_rate_limit` keep `EXECUTE` for `anon`, because `082`
+    granted them on purpose and `app/api/book/cancel/[token]/route.ts` genuinely calls one with
+    an anon client. `095` asserts all three survive, so it fails loudly rather than silently
+    breaking public booking.
+  - Worth knowing for next time: `REVOKE ... FROM anon` was **not enough** for three SECURITY
+    DEFINER helpers. Postgres grants `EXECUTE` to `PUBLIC` implicitly on every new function, so
+    their ACLs carried a leading `=X/postgres` that only `REVOKE ... FROM PUBLIC` removes.
+    `is_board_member` was the one actually reachable over PostgREST.
+  - Still open: `postgres` could not alter `supabase_admin`'s default privileges (not a member),
+    so a table created through the **Supabase dashboard** still inherits the wide grant and needs
+    a manual `REVOKE`. Tables created by migrations (which run as `postgres`) are covered.
 - A migration that rewrites RLS policies should carry its own post-conditions inside the
   transaction — assert the expected policy set, that RLS is still enabled, and that row counts
   did not move, so it rolls back instead of half-applying. `087` is the worked example, and

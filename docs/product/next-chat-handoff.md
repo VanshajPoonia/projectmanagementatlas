@@ -102,11 +102,16 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   (prod evidence: Bobby 0 unread of 6, Kayla 0 of 42, vs Tim 47/47 and Vanshaj 45/45);
   the toast's "Open" button always went to `/dashboard` instead of the task; and
   `ai_assistant`/`bookmarks` module toggles did nothing.
-- ⚠️ **`094` is applied to DEV ONLY and is not cleared for prod.** It rewrites RLS
-  policies and revokes grants = destructive by this repo's rule, so it needs the owner's
-  explicit go-ahead, not a drive-by `--allow-prod`. The UI degrades safely without it:
-  the Teams tab renders, the list is empty, and 064's admin-tier policy still applies.
-  Paired rollback exists at `scripts/rollback/094_revert.sql`.
+- ⚠️ **`094`, `095` and `096` are applied to DEV ONLY. Prod is still at `093`.** All three
+  are verified with post-conditions and paired rollbacks, but `094`/`095` rewrite policies
+  and grants = destructive by this repo's rule, so they need the owner's explicit
+  go-ahead, not a drive-by `--allow-prod`. Apply in order:
+  `node --env-file=.env.production.local scripts/migrate.mjs --only=094,095,096 --allow-prod`
+  Before `095` on prod, confirm **no external integration** uses the prod anon key against
+  `public` tables — everything in this repo goes through the service role server-side,
+  but an outside script wouldn't show up in a grep of this codebase. `096` is a no-op on
+  prod (it already has the trigger) and is worth applying only so both databases are
+  provably identical. Rollbacks: `scripts/rollback/09{4,5,6}_revert.sql`.
 - NEXT actual work is NOT decided — ASK THE OWNER. The pack's own order says
   Prompt C (canonical work-item + custom fields) is next. The honest open gaps from
   Prompts A/B are smaller: the **Inbox** — which turns out to need **no new table**,
@@ -116,12 +121,30 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   work-item **context actions in ⌘K** (blocked: `board-view.tsx` renders outside
   `AppShell`, so the shell has no selected-item context), favourites/pinned views,
   undo-capable toasts, and the automated a11y / 200%-320% zoom passes Prompt A asks for.
-- **Audit finding, reported not fixed:** `anon` holds `TRUNCATE`/`DELETE` on **28 of 30**
-  public tables (all except `teams`/`team_members`, fixed by `094`, and `project_ids`,
-  which `090` got right). **Not a live leak** — all 12 `{public}`-role policies are gated
-  on `auth.uid()` and PostgREST doesn't expose `TRUNCATE` — but latent: one `USING (true)`
-  policy written without `TO authenticated` and `anon` is in. It's one mechanical migration
-  that rewrites grants on every live table, so give it its own session and owner sign-off.
+- **`095` closed the anon-grant gap (dev only).** `anon` now holds nothing on any table,
+  sequence or function in `public`, and the *default privileges* are narrowed so new
+  tables don't inherit it. `authenticated` keeps all its DML; only TRUNCATE/REFERENCES/
+  TRIGGER were removed. Gate: `pnpm check:grants` (16/16). ⚠️ Three function grants are
+  deliberately kept and asserted: `book_appointment`, `cancel_appointment`,
+  `check_booking_rate_limit` — `082` granted them on purpose and
+  `app/api/book/cancel/[token]/route.ts` calls one with an anon client. Two traps worth
+  remembering: `has_sequence_privilege()` gets evaluated before a `relkind` filter unless
+  you add an `OFFSET 0` fence, and `REVOKE ... FROM anon` is a **no-op** where the grant
+  actually came from Postgres's implicit `EXECUTE TO PUBLIC` (three SECURITY DEFINER
+  helpers were in that state; `is_board_member` was reachable over PostgREST).
+- **`096` restored the `on_auth_user_created` trigger — the dev sandbox had lost it.**
+  `handle_new_user` existed as an orphaned function attached to nothing. This is
+  **sandbox drift, not a prod bug**: the trigger sits on `auth.users`, outside `public`,
+  so a public-only clone drops it. Prod verified healthy (11 auth accounts, 10 profiles,
+  five most recent all have their row). **If you ever re-clone prod into the sandbox,
+  expect to lose it again and re-apply `096`.**
+- **Fixed `app/api/admin/create-user/route.ts`.** It used a bare `.update().eq()` on
+  profiles, silently depending on that trigger. A zero-row UPDATE is not an error in
+  PostgREST, so on any database missing the trigger it returned `success: true` while
+  creating an account with **no profile** — and `profiles.role` drives every permission
+  check. Now upserts and verifies a row came back. Note `/signup` is deliberately
+  disabled (redirects to `/login`), so this route is the *only* way accounts get made,
+  which is exactly why its silent failure mode mattered.
 
 ## Commit history for the slice-1 work
 The slice-1 work above was committed 2026-07-24 in 3 sliced commits (not pushed):
@@ -155,7 +178,8 @@ future session, that's a regression — don't assume it's still pending.
   style).
 - Permanent, non-destructive verification harnesses exist and all follow the
   same throwaway-user pattern — re-run the relevant one after touching RLS:
-  `pnpm check:board-roles` (board_members/tasks), `check:teams` (super-admin-only
+  `pnpm check:board-roles` (board_members/tasks), `check:grants` (anon holds nothing
+  in public; the booking RPCs still do), `check:teams` (super-admin-only
   team management, with an admin-tier control case), `check:marketing-calendars`
   (per-calendar access), `check:marketing-channels` (channel ordering + who may
   rename), `check:project-ids` (number uniqueness under concurrency + ledger
