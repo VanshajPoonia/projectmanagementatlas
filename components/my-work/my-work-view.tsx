@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { AlertTriangle, CalendarDays, CircleDot, Info, Sparkles } from 'lucide-react'
@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import ThemeToggle from '@/components/theme-toggle'
 import { useAppModules } from '@/lib/modules'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
+import { useFavorites } from '@/lib/use-favorites'
 import { isTaskOwnedBy } from '@/lib/assignees'
 import { getTaskStatusLabel } from '@/lib/task-status'
 import { UNANSWERED_QUESTIONS, buildMyWork, daysUntil, myWorkSummary } from '@/lib/my-work'
@@ -46,6 +47,14 @@ function dueLabel(due: unknown): { text: string; overdue: boolean } | null {
 export default function MyWorkView({ user, tasks }: MyWorkViewProps) {
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
   const basePath = isAdmin ? '/admin' : '/dashboard'
+
+  // The sidebar's Favourites block. My Work has no board list of its own, which is exactly
+  // why useFavorites resolves its own targets rather than taking them as a prop.
+  const favoriteBoardHref = useCallback(
+    (boardId: string) => `${basePath}/board/${boardId}`,
+    [basePath],
+  )
+  const { resolved: favoriteItems } = useFavorites(user?.id, { boardHref: favoriteBoardHref })
 
   const modules = useAppModules()
   const { calendars } = useMarketingCalendars()
@@ -97,6 +106,7 @@ export default function MyWorkView({ user, tasks }: MyWorkViewProps) {
       groups={groups}
       activeId="my-work"
       breadcrumbs={[{ label: 'My Work' }]}
+      favorites={favoriteItems}
       commands={commands}
       topbarActions={<ThemeToggle />}
     >

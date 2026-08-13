@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -37,6 +38,10 @@ import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 import { isTaskOwnedBy } from '@/lib/assignees'
 import { useAppModules, isModuleEnabled } from '@/lib/modules'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
+import { useFavorites } from '@/lib/use-favorites'
+import { withFavoritesFirst } from '@/lib/favorites'
+import { FavoriteStar } from '../shell/favorite-star'
+import { EmptyState } from '../shell/states'
 
 interface UserDashboardProps {
   user: any
@@ -68,6 +73,29 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   // a member of at least one calendar," not an email compare. See use-marketing-calendars.ts.
   const { calendars: marketingCalendars, refetch: refetchMarketingCalendars } = useMarketingCalendars()
   const canUseMarketingCalendar = isAdmin || marketingCalendars.length > 0
+
+  // Starred boards (migration 097). The hook resolves each star against boards this viewer
+  // can actually read, so a favourite that outlived its board just disappears.
+  const boardHref = useCallback((boardId: string) => `/dashboard/board/${boardId}`, [])
+  const {
+    favorites,
+    resolved: favoriteItems,
+    starred: isBoardStarred,
+    isPending: isStarPending,
+    toggle: toggleFavorite,
+  } = useFavorites(user.id, { boardHref })
+
+  const handleToggleFavorite = async (boardId: string, boardTitle: string, next: boolean) => {
+    const ok = await toggleFavorite('board', boardId, next)
+    if (!ok) {
+      toast.error(next ? `Couldn’t favourite ${boardTitle}` : `Couldn’t remove ${boardTitle}`, {
+        description: 'The change was undone. Check your connection and try again.',
+      })
+    }
+  }
+
+  // Starred boards float to the top of the grid; the star on each card is what says why.
+  const orderedBoards = useMemo(() => withFavoritesFirst(boards, favorites), [boards, favorites])
 
   // Module activation (PROMPT 3 "1-C"): app_modules is a singleton config table (one org, no
   // org_id) — everything defaults enabled=true, so this is a no-op until a super_admin flips a
@@ -203,11 +231,16 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
       groups={sidebarGroups}
       activeId={activeTab}
       breadcrumbs={[{ label: activeLabel }]}
+      favorites={favoriteItems}
       commands={paletteCommands}
       style={accentStyle}
       topbarActions={
         <>
-          <AccentThemePicker color={accentColor} onChange={setAccentColor} onReset={resetAccentColor} />
+          {/* Same reasoning as the density toggle in AppShell: personalization is what gives
+              way first when the topbar has to fit a 320px viewport. */}
+          <span className="hidden sm:contents">
+            <AccentThemePicker color={accentColor} onChange={setAccentColor} onReset={resetAccentColor} />
+          </span>
           <ThemeToggle />
           <AccountSettings
             userId={user.id}
@@ -499,9 +532,15 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                 </div>
               </CardHeader>
               <CardContent className="px-4 sm:px-6">
-                {boardsViewMode === 'list' ? (
+                {orderedBoards.length === 0 ? (
+                  <EmptyState
+                    icon={<Kanban />}
+                    title="No boards yet"
+                    description="Boards are where work lives — a column per stage, a card per task. An admin creates them, so ask one to set up your first project board."
+                  />
+                ) : boardsViewMode === 'list' ? (
                   <div className="space-y-2">
-                    {boards.map((board) => (
+                    {orderedBoards.map((board) => (
                       <Link key={board.id} href={`/dashboard/board/${board.id}`} className="block">
                         <Card className="flex-row items-start gap-3 p-3 transition-all hover:border-primary/30 hover:shadow-md sm:items-center">
                           <Kanban className="mt-0.5 h-5 w-5 flex-shrink-0 text-muted-foreground sm:mt-0" />
@@ -513,17 +552,33 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                               </p>
                             )}
                           </div>
+                          <FavoriteStar
+                            active={isBoardStarred('board', board.id)}
+                            pending={isStarPending('board', board.id)}
+                            label={board.title}
+                            onToggle={(next) => handleToggleFavorite(board.id, board.title, next)}
+                          />
                         </Card>
                       </Link>
                     ))}
                   </div>
                 ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {boards.map((board) => (
-                    <Link key={board.id} href={`/dashboard/board/${board.id}`}>
-                      <Card className="hover:shadow-md transition-all cursor-pointer hover:border-primary/30">
+                  {orderedBoards.map((board) => (
+                    // `block` matters: without it the Link is inline, its Card overflows the
+                    // grid cell, and neighbouring cards overlap — which silently stole the
+                    // click target from the star on the card to its left. The list view above
+                    // already had it; the tile view never did. Found by the browser pass, not
+                    // by looking.
+                    <Link key={board.id} href={`/dashboard/board/${board.id}`} className="block">
+                      <Card className="h-full hover:shadow-md transition-all cursor-pointer hover:border-primary/30">
                         <CardHeader className="px-4 sm:px-6">
-                          <div className="flex items-start gap-3">
+                          {/* min-w-0 is load-bearing. CardHeader is a CSS grid, and a grid
+                              item defaults to min-width:auto — it refuses to shrink below its
+                              min-content width. Adding the star pushed this row's min-content
+                              past the column, so the row rendered 91px wider than its own
+                              card and the star landed on top of the next one. */}
+                          <div className="flex min-w-0 items-start gap-3">
                             <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
                               <Kanban className="w-5 h-5 text-primary-foreground" />
                             </div>
@@ -545,6 +600,12 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
                                 </p>
                               )}
                             </div>
+                            <FavoriteStar
+                              active={isBoardStarred('board', board.id)}
+                              pending={isStarPending('board', board.id)}
+                              label={board.title}
+                              onToggle={(next) => handleToggleFavorite(board.id, board.title, next)}
+                            />
                           </div>
                         </CardHeader>
                       </Card>

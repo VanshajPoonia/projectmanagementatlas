@@ -16,12 +16,14 @@ import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { navIcon } from './nav-icons'
 import {
+  buildFavoriteCommands,
   buildNavigationCommands,
   buildRecentCommands,
   groupCommands,
   runCommand,
   type Command,
 } from './commands'
+import type { FavoriteItem } from './app-sidebar'
 import type { NavGroup } from './nav-model'
 import type { RecentRecord } from './recent-records'
 
@@ -30,6 +32,8 @@ interface CommandPaletteProps {
   groups: NavGroup[]
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Starred boards, already resolved against what this viewer can open. */
+  favorites?: FavoriteItem[]
   /** Recently viewed records, newest first. */
   recent?: RecentRecord[]
   /**
@@ -63,6 +67,7 @@ export function CommandPalette({
   groups,
   open,
   onOpenChange,
+  favorites = [],
   recent = [],
   commands = [],
 }: CommandPaletteProps) {
@@ -146,12 +151,13 @@ export function CommandPalette({
   const rendered = useMemo(
     () =>
       groupCommands([
+        ...buildFavoriteCommands(favorites),
         ...buildRecentCommands(recent),
         ...buildNavigationCommands(groups),
         ...searchCommands,
         ...commands,
       ]),
-    [recent, groups, searchCommands, commands],
+    [favorites, recent, groups, searchCommands, commands],
   )
 
   const navigate = (href: string) => {

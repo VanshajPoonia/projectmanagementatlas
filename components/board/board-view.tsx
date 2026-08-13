@@ -36,6 +36,8 @@ import { getAssigneeIds, getAssignees, getAssigneeNames } from '@/lib/assignees'
 import { allows, can, type Actor } from '@/lib/capabilities'
 import { ActionGuard } from '@/components/shell/action-guard'
 import { useRememberRecord } from '@/components/shell/use-recent-records'
+import { FavoriteStar } from '@/components/shell/favorite-star'
+import { useFavorites } from '@/lib/use-favorites'
 import { DensityToggle } from '@/components/shell/density-toggle'
 import { useDensity } from '@/components/shell/use-density'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
@@ -94,6 +96,19 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
   const { density, setDensity } = useDensity(currentUserId)
+
+  // Favourites (migration 097). This page renders outside AppShell, so it gets no sidebar
+  // Favourites block — but it is the natural place to *add* one, so the star lives by the
+  // board title here.
+  const favoriteBoardHref = useCallback(
+    (boardId: string) => `${isAdmin ? '/admin' : '/dashboard'}/board/${boardId}`,
+    [isAdmin],
+  )
+  const {
+    starred: isBoardStarred,
+    isPending: isStarPending,
+    toggle: toggleFavorite,
+  } = useFavorites(currentUserId, { boardHref: favoriteBoardHref })
 
   // Deep link support: global search links here with ?task=<id> so it can open
   // the specific task, not just land on the board.
@@ -635,6 +650,21 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h1 className="text-xl font-bold tracking-tight">{boardTitle}</h1>
+                    {/* Starring from inside the board matters more than starring from the
+                        list: this is where you realise you keep coming back to it. */}
+                    <FavoriteStar
+                      active={isBoardStarred('board', board.id)}
+                      pending={isStarPending('board', board.id)}
+                      label={boardTitle}
+                      onToggle={async (next) => {
+                        const ok = await toggleFavorite('board', board.id, next)
+                        if (!ok) {
+                          toast.error('Couldn’t update favourites', {
+                            description: 'The change was undone. Check your connection and try again.',
+                          })
+                        }
+                      }}
+                    />
                     {isAdmin && (
                       <Button
                         variant="ghost"

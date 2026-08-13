@@ -5,7 +5,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 
 import { cn } from '@/lib/utils'
-import { AppSidebar, type SidebarNavGroup } from './app-sidebar'
+import { AppSidebar, type FavoriteItem, type SidebarNavGroup } from './app-sidebar'
 import { AppTopbar } from './app-topbar'
 import { CommandPalette } from './command-palette'
 import { DensityToggle } from './density-toggle'
@@ -31,6 +31,12 @@ interface AppShellProps {
   groups: SidebarNavGroup[]
   activeId: string | null
   breadcrumbs?: Crumb[]
+  /**
+   * The viewer's starred boards, already resolved against what they can see. Owned by the
+   * host rather than fetched here because the host is the one that already has the board
+   * list to resolve against; see lib/favorites.ts::resolveFavorites.
+   */
+  favorites?: FavoriteItem[]
   /** Essential items for the mobile bottom bar; defaults to the first group (≤5). */
   mobileItems?: SidebarNavGroup['items']
   /** Right-side topbar controls (theme, accent, account, …). */
@@ -62,6 +68,7 @@ export function AppShell({
   groups,
   activeId,
   breadcrumbs = [],
+  favorites = [],
   mobileItems,
   topbarActions,
   commands = [],
@@ -90,6 +97,7 @@ export function AppShell({
         activeId={activeId}
         collapsed={collapsed}
         onToggle={toggle}
+        favorites={favorites}
         recent={recent.map((r) => ({ label: r.label, href: r.href }))}
         title={title}
       />
@@ -101,7 +109,15 @@ export function AppShell({
           onOpenCommand={() => setCommandOpen(true)}
           actions={
             <>
-              <DensityToggle density={density} onChange={setDensity} />
+              {/*
+                Density is a comfort setting, and the first thing to give up when the topbar
+                runs out of room: `contents` keeps the layout byte-identical at >=sm while
+                removing it entirely below, where the row cannot fit without forcing the page
+                to scroll sideways.
+              */}
+              <span className="hidden sm:contents">
+                <DensityToggle density={density} onChange={setDensity} />
+              </span>
               {topbarActions}
             </>
           }
@@ -142,6 +158,7 @@ export function AppShell({
         groups={groups}
         open={commandOpen}
         onOpenChange={setCommandOpen}
+        favorites={favorites}
         recent={recent}
         commands={commands}
       />

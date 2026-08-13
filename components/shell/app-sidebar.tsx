@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { PanelLeftClose, PanelLeftOpen, Clock } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, Clock, Star } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,12 @@ import { navIcon } from './nav-icons'
 import type { NavItem } from './nav-model'
 
 export interface RecentItem {
+  label: string
+  href: string
+}
+
+export interface FavoriteItem {
+  key: string
   label: string
   href: string
 }
@@ -31,6 +37,8 @@ interface AppSidebarProps {
   activeId: string | null
   collapsed: boolean
   onToggle: () => void
+  /** Already resolved against what this viewer can actually see; see lib/favorites.ts. */
+  favorites?: FavoriteItem[]
   recent?: RecentItem[]
   title?: string
 }
@@ -40,6 +48,7 @@ export function AppSidebar({
   activeId,
   collapsed,
   onToggle,
+  favorites = [],
   recent = [],
   title = 'Project Manager',
 }: AppSidebarProps) {
@@ -100,9 +109,23 @@ export function AppSidebar({
                         <Icon className="size-4" aria-hidden="true" />
                         {item.badge}
                       </span>
-                      {!collapsed && <span className="truncate">{item.label}</span>}
-                      {!collapsed && item.status === 'planned' && (
-                        <span className="text-muted-foreground ml-auto text-[10px] font-normal">soon</span>
+                      {/*
+                        The label is always in the DOM, only visually hidden when the rail is
+                        collapsed. Rendering it conditionally left every collapsed nav link
+                        with no accessible name — the icon is aria-hidden and the tooltip is
+                        not mounted until hover, so a screen reader announced eight
+                        indistinguishable "link"s. Caught by a11y.test.tsx.
+                      */}
+                      <span className={cn('truncate', collapsed && 'sr-only')}>{item.label}</span>
+                      {item.status === 'planned' && (
+                        <span
+                          className={cn(
+                            'text-muted-foreground ml-auto text-[10px] font-normal',
+                            collapsed && 'sr-only',
+                          )}
+                        >
+                          soon
+                        </span>
                       )}
                     </Link>
                   )
@@ -123,28 +146,66 @@ export function AppSidebar({
             </div>
           ))}
 
+          {/*
+            Favourites sit above Recent deliberately. Recent is what the app noticed you
+            doing; Favourites is what you told it to keep. The curated list should not be
+            pushed down the page by an automatic one.
+          */}
+          {favorites.length > 0 && !collapsed && (
+            <SidebarLinkList
+              heading="Favourites"
+              icon={Star}
+              items={favorites.map((f) => ({ key: f.key, label: f.label, href: f.href }))}
+              iconClassName="text-amber-500 fill-current"
+            />
+          )}
+
           {recent.length > 0 && !collapsed && (
-            <div className="mb-4">
-              <p className="text-muted-foreground px-2 pb-1 text-xs font-medium tracking-wide uppercase">
-                Recent
-              </p>
-              <ul className="space-y-0.5">
-                {recent.slice(0, 5).map((r) => (
-                  <li key={r.href}>
-                    <Link
-                      href={r.href}
-                      className="text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground flex items-center gap-3 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:ring-ring focus-visible:ring-2"
-                    >
-                      <Clock className="size-4 shrink-0" aria-hidden="true" />
-                      <span className="truncate">{r.label}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <SidebarLinkList
+              heading="Recent"
+              icon={Clock}
+              items={recent.slice(0, 5).map((r) => ({ key: r.href, label: r.label, href: r.href }))}
+            />
           )}
         </div>
       </nav>
     </TooltipProvider>
+  )
+}
+
+/**
+ * The secondary sidebar lists (Favourites, Recent). Same markup, same focus treatment — one
+ * component so the two cannot drift into looking like different kinds of thing.
+ */
+function SidebarLinkList({
+  heading,
+  icon: Icon,
+  items,
+  iconClassName,
+}: {
+  heading: string
+  icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
+  items: Array<{ key: string; label: string; href: string }>
+  iconClassName?: string
+}) {
+  return (
+    <div className="mb-4">
+      <p className="text-muted-foreground px-2 pb-1 text-xs font-medium tracking-wide uppercase">
+        {heading}
+      </p>
+      <ul className="space-y-0.5">
+        {items.map((item) => (
+          <li key={item.key}>
+            <Link
+              href={item.href}
+              className="text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground focus-visible:ring-ring flex items-center gap-3 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:ring-2"
+            >
+              <Icon className={cn('size-4 shrink-0', iconClassName)} aria-hidden={true} />
+              <span className="truncate">{item.label}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

@@ -18,6 +18,7 @@ import {
   Search,
   Shield,
   SlidersHorizontal,
+  Star,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -44,6 +45,7 @@ const ICONS: Record<string, LucideIcon> = {
   search: Search,
   clock: Clock,
   link: Link2,
+  star: Star,
 }
 
 export function navIcon(key: string): LucideIcon {

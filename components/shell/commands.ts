@@ -18,9 +18,10 @@ import type { NavGroup } from './nav-model'
 import type { RecentRecord } from './recent-records'
 
 /** Palette sections, in render order. */
-export type CommandGroupId = 'recent' | 'navigate' | 'search' | 'create' | 'context'
+export type CommandGroupId = 'favorite' | 'recent' | 'navigate' | 'search' | 'create' | 'context'
 
 export const COMMAND_GROUP_LABELS: Record<CommandGroupId, string> = {
+  favorite: 'Favourites',
   recent: 'Recent',
   navigate: 'Go to',
   search: 'Search results',
@@ -28,7 +29,11 @@ export const COMMAND_GROUP_LABELS: Record<CommandGroupId, string> = {
   context: 'This board',
 }
 
+// Favourites lead: they are the one section the user curated by hand, so they should be the
+// first thing under the cursor when the palette opens empty. Recent follows, being the
+// app's guess rather than the user's instruction.
 export const COMMAND_GROUP_ORDER: readonly CommandGroupId[] = [
+  'favorite',
   'recent',
   'navigate',
   'search',
@@ -145,6 +150,29 @@ export function buildNavigationCommands(groups: NavGroup[]): Command[] {
       href: item.href,
     })),
   )
+}
+
+/**
+ * Starred boards — the palette's "the things I always come back to" section.
+ *
+ * Takes already-resolved favourites (see lib/favorites.ts::resolveFavorites), so a star
+ * pointing at a board the viewer can no longer open never reaches the palette. That matters
+ * more here than in the sidebar: the palette is a search surface, and a hit for a board name
+ * you cannot open would leak the name.
+ */
+export function buildFavoriteCommands(
+  favorites: ReadonlyArray<{ key: string; label: string; href: string }>,
+  limit = 6,
+): Command[] {
+  return favorites.slice(0, limit).map((favorite) => ({
+    id: `favorite:${favorite.key}`,
+    group: 'favorite' as const,
+    label: favorite.label,
+    hint: 'Favourite',
+    icon: 'star',
+    keywords: ['favourite', 'favorite', 'starred'],
+    href: favorite.href,
+  }))
 }
 
 /** Recently viewed records, newest first — the palette's "where was I?" section. */

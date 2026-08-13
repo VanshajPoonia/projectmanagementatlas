@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   COMMAND_GROUP_ORDER,
+  buildFavoriteCommands,
   buildNavigationCommands,
   buildRecentCommands,
   groupCommands,
@@ -159,5 +160,61 @@ describe('buildRecentCommands', () => {
   it('caps the section so recents never crowd out search results', () => {
     const many = Array.from({ length: 8 }, (_, i) => ({ ...records[0], key: `board:${i}` }))
     expect(buildRecentCommands(many, 3)).toHaveLength(3)
+  })
+})
+
+describe('buildFavoriteCommands', () => {
+  const favorites = [
+    { key: 'board:1', label: 'Atlas Rebuild', href: '/dashboard/board/1' },
+    { key: 'board:2', label: 'SRG Listings', href: '/dashboard/board/2' },
+  ]
+
+  it('builds one command per favourite, in order', () => {
+    const commands = buildFavoriteCommands(favorites)
+    expect(commands.map((c) => c.label)).toEqual(['Atlas Rebuild', 'SRG Listings'])
+    expect(commands.every((c) => c.group === 'favorite')).toBe(true)
+  })
+
+  it('matches on both spellings so neither audience has to guess', () => {
+    const [first] = buildFavoriteCommands(favorites)
+    expect(first.keywords).toContain('favourite')
+    expect(first.keywords).toContain('favorite')
+  })
+
+  it('caps the section', () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ ...favorites[0], key: `board:${i}` }))
+    expect(buildFavoriteCommands(many, 4)).toHaveLength(4)
+  })
+
+  it('renders nothing when nothing is starred', () => {
+    expect(buildFavoriteCommands([])).toEqual([])
+  })
+
+  // The palette is a search surface: a hit for a board the viewer cannot open would leak
+  // its name. resolveFavorites is what drops those, so this asserts the contract that the
+  // palette only ever receives already-resolved favourites.
+  it('trusts its input to be resolved and does not filter again', () => {
+    expect(buildFavoriteCommands(favorites).map((c) => c.href)).toEqual([
+      '/dashboard/board/1',
+      '/dashboard/board/2',
+    ])
+  })
+})
+
+describe('command group order', () => {
+  it('puts what the user curated above what the app guessed', () => {
+    expect(COMMAND_GROUP_ORDER.indexOf('favorite')).toBeLessThan(
+      COMMAND_GROUP_ORDER.indexOf('recent'),
+    )
+  })
+
+  it('groups favourites into their own labelled section', () => {
+    const groups = groupCommands([
+      ...buildFavoriteCommands([{ key: 'board:1', label: 'Atlas', href: '/b/1' }]),
+      ...buildRecentCommands([
+        { key: 'board:2', kind: 'board', label: 'Other', href: '/b/2', at: 1 },
+      ]),
+    ])
+    expect(groups.map((g) => g.label)).toEqual(['Favourites', 'Recent'])
   })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { LayoutDashboard, LogOut, Calendar, Home, Bookmark, ChevronLeft, Sparkles } from 'lucide-react'
@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils'
 import { isTaskOwnedBy } from '@/lib/assignees'
 import { useAppModules, isModuleEnabled } from '@/lib/modules'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
+import { useFavorites } from '@/lib/use-favorites'
 
 interface AdminDashboardProps {
   user: any
@@ -42,6 +43,11 @@ interface AdminDashboardProps {
 
 export default function AdminDashboard({ user, users, boards, tasks }: AdminDashboardProps) {
   const isSuperAdmin = user.role === 'super_admin'
+
+  // Starred boards for the sidebar and ⌘K. Admin board links go through /admin/board/:id,
+  // which is why the href builder is passed in rather than inferred.
+  const favoriteBoardHref = useCallback((boardId: string) => `/admin/board/${boardId}`, [])
+  const { resolved: favoriteItems } = useFavorites(user.id, { boardHref: favoriteBoardHref })
 
   // Aggregate views count deliverables, not checklist items, so they stay on
   // top-level tasks. Counting subtasks here would change every historical report
@@ -188,6 +194,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
       groups={sidebarGroups}
       activeId={activeTab}
       breadcrumbs={[{ label: activeLabel }]}
+      favorites={favoriteItems}
       topbarActions={
         <>
           <ThemeToggle />
