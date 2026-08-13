@@ -308,7 +308,7 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `101`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `102`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
@@ -316,6 +316,23 @@ deliberately left out.
   both deliberate). Prod has still never had `087` (deliberate, see below) — `088`–`093` and
   `097` were applied with `--only=… --allow-prod`, which is what the runner's `--only` flag
   exists for.
+- ⚠️ **`101` makes deactivation real, and it is the most important of the batch.**
+  `profiles.is_active` had a prominent Activate/Deactivate toggle in Super Admin and was read
+  by **nothing** — 0 policies, 0 helpers, 0 lines of app code. A "deactivated" person kept
+  full access and could sign in, while the admin saw a red Inactive badge. Present and
+  believed is worse than missing. It also meant the *reversible* way to remove someone did
+  not work, leaving permanent deletion as the only functioning path. Now enforced in three
+  layers: a GoTrue ban (the real boundary), `is_active` folded into
+  `is_admin_user`/`is_super_admin_user`/`can_manage_task` plus the tasks/comments/chat INSERT
+  policies (so elevated access dies on the next query, not when the token expires), and
+  `proxy.ts` signing them out on the next page load. Gate: `pnpm check:deactivation` (17).
+  - Two traps worth remembering. **Patching `can_manage_task` was not enough**: task creation
+    never calls it, because `067` had to key the INSERT check off a *column* id. Comments and
+    chat have their own checks too. **A column-level `REVOKE` cannot shrink a table-wide
+    grant** — `REVOKE UPDATE (is_active) … FROM authenticated` silently did nothing while
+    `authenticated` held table-wide UPDATE; the fix is to drop the table grant and re-grant
+    the exact self-service columns. Both were caught by the migration's own post-conditions
+    and harness, not by reading.
 - ⚠️ **`100` (deprovisioning) is dev-only too, and is the one to apply first.** It fixes a
   live bug: `boards.created_by` and `tasks.created_by` were `NOT NULL` with an
   `ON DELETE SET NULL` foreign key — a straight contradiction, so Postgres aborted the
