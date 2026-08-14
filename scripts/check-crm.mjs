@@ -124,6 +124,56 @@ try {
   check('the disposition carriers are blank at rest',
     carriers?.status_change_reason === null && carriers?.status_change_note === null)
 
+  /* ── 3b. the carriers cannot outlive the transition they describe (migration 104) ──
+     103 registered the trigger as BEFORE UPDATE *OF status*, so a write that set only the
+     carriers never reached it, and the in-function early return skipped blanking them when
+     the status was named but unchanged. Either way they persisted, and the NEXT transition
+     read them and stamped that stale disposition onto the interval it opened — the audit
+     trail asserting something that never happened. All three steps are pinned here. */
+  await member
+    .from('crm_orders')
+    .update({ status_change_reason: 'Waiting on documentation', status_change_note: 'stale' })
+    .eq('id', orderId)
+  const { data: afterCarrierOnly } = await member
+    .from('crm_orders').select('status_change_reason, status_change_note').eq('id', orderId).single()
+  check('a carrier-only write does not persist',
+    afterCarrierOnly?.status_change_reason === null && afterCarrierOnly?.status_change_note === null,
+    `${afterCarrierOnly?.status_change_reason}`)
+
+  await member
+    .from('crm_orders')
+    .update({ status: 'in_progress', status_change_reason: 'Waiting on internal review', status_change_note: 'no-op' })
+    .eq('id', orderId)
+  const { data: afterNoop } = await member
+    .from('crm_orders').select('status_change_reason, status_change_note').eq('id', orderId).single()
+  check('a no-op status write does not persist the carriers either',
+    afterNoop?.status_change_reason === null && afterNoop?.status_change_note === null,
+    `${afterNoop?.status_change_reason}`)
+
+  await member.from('crm_orders').update({ status: 'ready_for_estimate' }).eq('id', orderId)
+  const { data: inherited } = await member
+    .from('crm_order_status_history').select('*').eq('order_id', orderId).eq('status', 'ready_for_estimate')
+  check('a later transition inherits no stale disposition',
+    inherited?.[0]?.reason === null && inherited?.[0]?.note === null,
+    `${inherited?.[0]?.reason}`)
+
+  /* ── 3c. a losing move must say why, below the UI (migration 104) ─────────────────── */
+  const { error: noReasonErr } = await member
+    .from('crm_orders').update({ status: 'cancel' }).eq('id', orderId)
+  check('cancel is refused with no reason', Boolean(noReasonErr), noReasonErr?.code ?? 'UPDATE SUCCEEDED')
+
+  const { error: withReasonErr } = await member
+    .from('crm_orders')
+    .update({ status: 'cancel', status_change_reason: 'Waiting on customer', status_change_note: 'went elsewhere' })
+    .eq('id', orderId)
+  check('cancel is accepted once a reason is given', !withReasonErr, withReasonErr?.message)
+  await member.from('crm_orders').update({ status: 'in_progress' }).eq('id', orderId)
+
+  /* ── 3d. references cannot collide (migration 104) ────────────────────────────────── */
+  const { data: refA } = await member.rpc('claim_crm_client_ref')
+  const { data: refB } = await member.rpc('claim_crm_client_ref')
+  check('two reference claims never return the same value', Boolean(refA) && refA !== refB, `${refA} vs ${refB}`)
+
   /* ── 4. the history is not application-writable ──────────────────────────────────── */
   const openRow = afterMove?.find(r => r.exited_at === null)
 

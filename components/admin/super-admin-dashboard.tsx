@@ -3,12 +3,13 @@
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, ShieldCheck, Users, Building2, SlidersHorizontal, UsersRound } from 'lucide-react'
+import { ArrowLeft, ShieldCheck, Users, Building2, SlidersHorizontal, UsersRound, ToggleLeft } from 'lucide-react'
 import { ThemeControls } from '@/components/theme/theme-controls'
 import EnhancedUserManagement from './enhanced-user-management'
 import CompanyManagement from './company-management'
 import StatusManagement from './status-management'
 import TeamManagement from './team-management'
+import ModuleManagement from './module-management'
 
 interface SuperAdminDashboardProps {
   users: any[]
@@ -53,7 +54,7 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
 
       <main className="container mx-auto px-3 py-5 sm:px-4 sm:py-8">
         <Tabs defaultValue="companies" className="space-y-6">
-          <TabsList className="grid h-auto w-full max-w-2xl grid-cols-4 rounded-lg p-1">
+          <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5 rounded-lg p-1">
             <TabsTrigger value="companies" className="min-w-0 gap-1 px-1.5 py-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
               <Building2 className="h-4 w-4" />
               Companies
@@ -69,6 +70,10 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
             <TabsTrigger value="statuses" className="min-w-0 gap-1 px-1.5 py-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
               <SlidersHorizontal className="h-4 w-4" />
               Statuses
+            </TabsTrigger>
+            <TabsTrigger value="modules" className="min-w-0 gap-1 px-1.5 py-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
+              <ToggleLeft className="h-4 w-4" />
+              Modules
             </TabsTrigger>
           </TabsList>
 
@@ -86,6 +91,10 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
 
           <TabsContent value="statuses">
             <StatusManagement />
+          </TabsContent>
+
+          <TabsContent value="modules">
+            <ModuleManagement />
           </TabsContent>
         </Tabs>
       </main>

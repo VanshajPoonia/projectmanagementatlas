@@ -109,8 +109,12 @@ export function CrmIntakeForm({
     }
     setSaving(true)
 
-    // The reference is minted by an advisory-locked RPC, not by counting rows here, so two
-    // people submitting intake at the same moment cannot be handed the same C- number.
+    // The reference is drawn from a Postgres sequence inside an RPC (migration 104), not
+    // counted from the rows here, so two people submitting intake at the same moment cannot be
+    // handed the same C- number. 103's version took an advisory lock and read MAX(...), which
+    // did not work: the lock ends with the RPC's transaction, and the INSERT below happens in
+    // a separate request afterwards, so both callers read the same MAX and the second INSERT
+    // died on the UNIQUE constraint.
     const { data: ref, error: refError } = await supabase.rpc('claim_crm_client_ref')
     if (refError) {
       setSaving(false)

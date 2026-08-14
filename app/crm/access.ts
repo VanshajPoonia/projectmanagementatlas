@@ -36,8 +36,11 @@ export async function requireCrmAccess(
     .eq('module_key', 'crm')
     .maybeSingle()
 
-  // Absent row means the module was never seeded — treat as off, matching lib/modules.ts's
-  // rule that a module a super admin has never switched on must not appear.
+  // Absent row means the module was never seeded — treated as off here, which is deliberately
+  // STRICTER than lib/modules.ts's generic fallback (an unknown key there stays available, so
+  // a failure to read app_modules never hides working features). CRM is listed explicitly in
+  // DEFAULT_MODULES as enabled:false, so the nav agrees; this is the backstop for the case
+  // where the row is missing entirely rather than merely unreadable.
   if (!module?.enabled) return null
 
   return {
