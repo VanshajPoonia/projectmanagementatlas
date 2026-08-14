@@ -312,10 +312,14 @@ deliberately left out.
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-14: **dev is at `102`, prod is at `095` applied / 2 pending** (`087` and `096`,
-  both deliberate). Prod has still never had `087` (deliberate, see below) — `088`–`093` and
+  As of 2026-08-15: **dev is at `104`; prod has `101` and `103`, with `087`, `102` and `104`
+  outstanding.** Prod has still never had `087` (deliberate, see below) — `088`–`093` and
   `097` were applied with `--only=… --allow-prod`, which is what the runner's `--only` flag
-  exists for.
+  exists for. ⚠️ **The code for `102` and `104` is already deployed to production**, so
+  applying both is overdue, not optional: without `102` the "Move to another board" button
+  calls an RPC that does not exist, and without `104` the CRM status history can record a
+  disposition nobody supplied (see below). Neither number was written down correctly before —
+  this block said prod was at `095` when it was actually at `101`. Run `pnpm migrate:status`.
 - **`103` (CRM) is dev-only and purely additive** — seven new tables, one `app_modules` row,
   no existing table, policy, grant or row touched. That makes it `--allow-prod` eligible on
   this repo's own rule, unlike `098`–`102`. The module seeds **`enabled = false`**, so
@@ -331,13 +335,50 @@ deliberately left out.
     an admin are both refused when they try to forge, backdate or delete a row.
   - **The disposition rides in the same UPDATE as the status**, via two write-only carrier
     columns (`status_change_reason` / `status_change_note`) that the trigger copies onto the
-    new interval and then blanks. They are always NULL at rest. The alternative — a second
-    write afterwards — needs the history table to be application-writable, which is exactly
-    what the module refuses.
+    new interval and then blanks. They are always NULL at rest **only since `104`** — see
+    below. The alternative — a second write afterwards — needs the history table to be
+    application-writable, which is exactly what the module refuses.
   - ⚠️ **Three triggers, not one, because the timings differ.** `BEFORE INSERT` may still edit
     `NEW` but the row does not exist yet, so writing history there fails the `order_id`
     foreign key; `AFTER INSERT` can write it; `BEFORE UPDATE` does both in one pass. The
     migration's own post-conditions caught this on the first run.
+- ⚠️ **`104` fixes three defects in `103` and is the one to apply to prod next.** It replaces
+  only objects `103` itself created and touches no other table, policy or grant, so it is
+  `--allow-prod` eligible. Gate: `pnpm check:crm`, now 33 checks. Reproduce the worst of the
+  three with `node --env-file=.env.local scripts/probe-carriers.mjs`.
+  - ⚠️ **The audit trail could assert a disposition nobody supplied — the one thing the whole
+    module is built to prevent.** `103` registered the transition trigger as
+    `BEFORE UPDATE **OF status**`, so an UPDATE that set only the `status_change_*` carriers
+    never fired it and the values were simply stored; and when `status` *was* named but
+    unchanged, the function took an early `RETURN NEW` that skipped blanking them. Either way
+    "always NULL at rest" was false, and the **next** real transition read the stale pair and
+    stamped it onto the interval it opened. Observed on dev: an order moved to Won came back
+    carrying reason "Waiting on documentation" and note "no-op note", neither supplied by the
+    caller. The lesson generalises past this module: **a trigger with an `OF column` clause
+    cannot police the columns it does not fire on**, and any early return from a trigger that
+    consumes write-only carrier columns must still clear them.
+  - **`requires_reason` was UI-deep.** `crm_statuses.requires_reason` was honoured by the
+    Status Control screen and by nothing underneath it, so a cancel written by an import or
+    psql recorded no reason. `104` enforces it in the trigger. Note the INSERT path is
+    deliberately *not* gated, so historical closed/cancelled work can still be imported.
+  - **The reference minters raced, and `090`'s pattern is why.** `claim_crm_client_ref` /
+    `claim_crm_order_no` took `pg_advisory_xact_lock`, read `MAX(...)` and returned a string.
+    **The lock dies with the RPC's transaction, and the caller's INSERT lands in a separate
+    request after it** — so two intakes submitted together read the same MAX, were handed the
+    same reference, and the second died on the UNIQUE constraint with a raw 23505.
+    `claim_project_id` (090) is safe only because it does the INSERT *inside* the locked
+    function. When that shape does not fit, use a real `SEQUENCE`, which is race-free without
+    a lock; gaps from a rolled-back intake are fine, because a reference is an identifier and
+    not a count.
+- ⚠️ **`app_modules` had no writer at all until 2026-08-15.** `066` gave the table an
+  "Admins manage modules" policy (`private.is_admin_user()`, so admin *and* super_admin) and a
+  full DML grant; `080` seeded `appointments` disabled and `103` seeded `crm` disabled; and no
+  screen anywhere could switch either on. Both modules were reachable only by hand-written SQL
+  — the guest/client lesson repeating exactly. Fixed by
+  `components/admin/module-management.tsx`, a fifth **Modules** tab on `/admin/super-admin`.
+  Its writes ask for their rows back and compare the count, because an RLS refusal returns
+  zero rows and no error. `ai_assistant` and `bookmarks` are labelled in that UI as not yet
+  consumed at their render sites, which is still true.
 - ⚠️ **`102` is dev-only and rewrites an RLS policy, so it is destructive by this repo's own
   definition and must NOT use `--allow-prod`.** It is also a hard dependency of the
   "Move to another board" button on a task — without it `move_task_to_board` does not exist
