@@ -10,11 +10,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { VoiceInputButton } from '@/components/ui/voice-input-button'
 import { ShareLinkDialog } from './share-link-dialog'
+import { MoveTaskDialog } from './move-task-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download, LinkIcon, ExternalLink, Plus, History, Repeat } from 'lucide-react'
+import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download, LinkIcon, ExternalLink, Plus, History, Repeat, FolderInput } from 'lucide-react'
 import { format } from 'date-fns'
 import { sendTaskAssignmentEmail, sendCommentEmail, sendTaskUpdateEmail } from '@/lib/email'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -112,6 +113,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const [uploading, setUploading] = useState(false)
   const [largeUpload, setLargeUpload] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [moveOpen, setMoveOpen] = useState(false)
 
   useEffect(() => {
     if (open && taskId) {
@@ -867,11 +869,24 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <div className="flex items-center justify-between gap-2 pr-8">
+          <div className="flex flex-wrap items-center justify-between gap-2 pr-8">
             <DialogTitle>Task Details</DialogTitle>
-            {(isAdmin || task?.created_by === currentUserId) && (
-              <ShareLinkDialog resourceType="task" resourceId={taskId} />
-            )}
+            <div className="flex items-center gap-2">
+              {/* Filing a card on the wrong board used to be unfixable: the only way out was
+                  to retype it elsewhere and delete the original, losing its comments,
+                  attachments, activity and subtasks. Hidden for subtasks, which have no board
+                  of their own — they live wherever their parent lives, and the RPC refuses
+                  them for that reason. */}
+              {canEdit && task && !task.parent_task_id && (
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => setMoveOpen(true)}>
+                  <FolderInput className="h-4 w-4" />
+                  <span className="hidden sm:inline">Move</span>
+                </Button>
+              )}
+              {(isAdmin || task?.created_by === currentUserId) && (
+                <ShareLinkDialog resourceType="task" resourceId={taskId} />
+              )}
+            </div>
           </div>
           {task?.created_at && (
             <p className="text-xs text-muted-foreground">
@@ -1008,7 +1023,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                 <CalendarIcon className="w-4 h-4" />
                 Entry Date (Completed)
               </Label>
-              <div className="w-full p-2 border rounded-md bg-green-50 text-green-700 font-medium">
+              <div className="w-full rounded-md border bg-green-50 p-2 font-medium text-green-700 dark:bg-green-950 dark:text-green-300">
                 {new Date(task.entry_date).toLocaleString()}
               </div>
             </div>
@@ -1026,11 +1041,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                 onClick={() => canEdit && setIsRecurring(!isRecurring)}
                 disabled={!canEdit}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  isRecurring ? 'bg-primary' : 'bg-gray-300'
+                  isRecurring ? 'bg-primary' : 'bg-muted-foreground/40'
                 } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
                     isRecurring ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
@@ -1365,7 +1380,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                         if (isPDF) return <FileText className="w-8 h-8 text-red-500" />
                         if (isVideo) return <Video className="w-8 h-8 text-purple-500" />
                         if (isDoc) return <FileIcon className="w-8 h-8 text-blue-500" />
-                        return <FileIcon className="w-8 h-8 text-gray-500" />
+                        return <FileIcon className="w-8 h-8 text-muted-foreground" />
                       }
                       
                       return (
@@ -1634,6 +1649,25 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             </div>
           </div>
         </div>
+
+        {/* Rendered inside the modal so it survives while this dialog is open; Radix portals
+            it out of the DOM subtree, so nesting is only a React-tree relationship. */}
+        <MoveTaskDialog
+          open={moveOpen}
+          onOpenChange={setMoveOpen}
+          taskId={taskId}
+          taskStatus={status}
+          currentBoardId={board?.id}
+          currentBoardTitle={board?.title}
+          currentUserId={currentUser?.id ?? currentUserId}
+          onMoved={() => {
+            // The task is no longer on the board underneath this modal, so leaving the modal
+            // open would show a card that the board behind it can no longer render. Close
+            // first, then refresh the board so the card disappears from where it used to be.
+            onClose()
+            onUpdate()
+          }}
+        />
       </DialogContent>
     </Dialog>
   )

@@ -40,6 +40,7 @@ import { FavoriteStar } from '@/components/shell/favorite-star'
 import { useFavorites } from '@/lib/use-favorites'
 import { DensityToggle } from '@/components/shell/density-toggle'
 import { useDensity } from '@/components/shell/use-density'
+import { ThemeControls } from '@/components/theme/theme-controls'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
@@ -715,6 +716,12 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   change how anyone else sees it. Persisted per user, per browser. */}
               <DensityToggle density={density} onChange={setDensity} />
 
+              {/* A board renders outside AppShell (kanban needs the full viewport width), so it
+                  gets none of the topbar's controls for free — including this one. Without it,
+                  opening a board was a one-way trip out of dark mode: the only way back was to
+                  navigate to a dashboard, flip it there, and come back. */}
+              <ThemeControls />
+
               {(isAdmin || board?.created_by === currentUserId) && (
                 <ShareLinkDialog resourceType="board" resourceId={board.id} />
               )}
@@ -895,7 +902,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                     <SlidersHorizontal className="w-4 h-4 mr-2" />
                                     Link Status
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleDeleteColumn(column.id)} className="text-red-600">
+                                  <DropdownMenuItem onClick={() => handleDeleteColumn(column.id)} className="text-red-600 dark:text-red-400">
                                     <Trash className="w-4 h-4 mr-2" />
                                     Delete Column
                                   </DropdownMenuItem>
