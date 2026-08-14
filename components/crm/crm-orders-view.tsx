@@ -15,8 +15,12 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import {
+  activeStatuses,
   clientDisplayName,
+  formatDuration,
+  intervalDuration,
   isPastSla,
+  openInterval,
   isPastTargetClose,
   orderAgeDays,
   type CrmClientSummary,
@@ -66,7 +70,9 @@ export function CrmOrdersView({
   const [creating, setCreating] = useState(false)
 
   const clientById = useMemo(() => new Map(clients.map(c => [c.id, c])), [clients])
+  // Resolve against every status, offer only the live ones. See lib/crm.ts activeStatuses().
   const statusByKey = useMemo(() => new Map(statuses.map(s => [s.key, s])), [statuses])
+  const selectable = useMemo(() => activeStatuses(statuses), [statuses])
   const profileById = useMemo(() => new Map(profiles.map(p => [p.id, p])), [profiles])
 
   const filtered = useMemo(() => {
@@ -113,7 +119,7 @@ export function CrmOrdersView({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>All statuses</SelectItem>
-            {statuses.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
+            {selectable.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={ownerFilter} onValueChange={setOwnerFilter}>
@@ -156,10 +162,10 @@ export function CrmOrdersView({
       ) : (
         <div className="bg-card overflow-hidden rounded-lg border">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
+            <table className="w-full min-w-[1000px] text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
-                  {['Order #', 'Client', 'Type', 'Status', 'Owner', 'Age', 'Target close', 'Priority'].map(h => (
+                  {['Order #', 'Client', 'Type', 'Status', 'In status', 'Owner', 'Age', 'Target close', 'Priority'].map(h => (
                     <th key={h} scope="col" className="px-3 py-2.5 text-left text-xs font-semibold whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -169,6 +175,7 @@ export function CrmOrdersView({
                   const client = clientById.get(order.client_id)
                   const status = statusByKey.get(order.status)
                   const owner = order.owner_id ? profileById.get(order.owner_id) : null
+                  const open = openInterval(openIntervals, order.id)
                   const late = isPastSla(order, status, openIntervals, now)
                   const pastTarget = isPastTargetClose(order, now)
                   return (
@@ -183,12 +190,21 @@ export function CrmOrdersView({
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap capitalize">{order.order_type}</td>
                       <td className="px-3 py-2.5"><StatusPill status={status} /></td>
+                      {/* An SLA is a budget for the CURRENT status, not for the order's whole
+                          life, so the breach is shown against time-in-status. It used to
+                          redden the Age cell, which measures something else entirely and made
+                          a two-day-old order look overdue because of one slow stage. */}
+                      <td className={cn('px-3 py-2.5 whitespace-nowrap tabular-nums', late && 'text-red-600 dark:text-red-400 font-medium')}>
+                        {open ? formatDuration(intervalDuration(open, now)) : '—'}
+                        {late && status?.sla_hours ? (
+                          <span className="sr-only"> (past the {status.sla_hours} hour target for {status.label})</span>
+                        ) : null}
+                      </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         {owner?.full_name || owner?.email || <span className="text-muted-foreground">Unassigned</span>}
                       </td>
-                      <td className={cn('px-3 py-2.5 whitespace-nowrap tabular-nums', late && 'text-red-600 dark:text-red-400 font-medium')}>
+                      <td className="px-3 py-2.5 whitespace-nowrap tabular-nums">
                         {orderAgeDays(order, now).toFixed(1)} days
-                        {late && <span className="sr-only"> (past status target)</span>}
                       </td>
                       <td className={cn('px-3 py-2.5 whitespace-nowrap', pastTarget && 'text-red-600 dark:text-red-400 font-medium')}>
                         {order.target_close_date ? format(new Date(`${order.target_close_date}T00:00:00`), 'd MMM') : '—'}

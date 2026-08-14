@@ -107,6 +107,54 @@ export const STATUS_DISPOSITIONS = [
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
 
+/**
+ * The company runs on one clock. A target close date is a *calendar* date entered by a person
+ * sitting in this timezone, so "is it past?" has to be answered in that timezone and nowhere
+ * else — see `isPastTargetClose`. Migration 090 fixed the project-id month boundary to the same
+ * zone for the same reason.
+ */
+export const BUSINESS_TIME_ZONE = 'America/Chicago'
+
+// 'en-CA' formats as YYYY-MM-DD, which is both what Postgres hands back for a DATE column and
+// lexicographically sortable, so calendar dates can be compared as plain strings.
+const CALENDAR_DATE = new Intl.DateTimeFormat('en-CA', {
+  timeZone: BUSINESS_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+/** The calendar date at `instant`, as the business timezone sees it. Always `YYYY-MM-DD`. */
+export function businessDate(instant: Date): string {
+  return CALENDAR_DATE.format(instant)
+}
+
+/* ── Status lists ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * The statuses a person may *choose*, in board order.
+ *
+ * ⚠️ Every screen must still be given the FULL status list to look up with. Filtering archived
+ * statuses out of the query instead of out of the picker is the trap: an order sitting in an
+ * archived status then has no entry in the lookup map, and code that reads a missing status as
+ * "not terminal" silently reclassifies it as open. Archiving Won would have counted every won
+ * order as live pipeline. So: fetch all, resolve against all, and offer only these.
+ *
+ * `keepKey` is for a picker bound to a record's *current* status. An archived status still has
+ * to appear in that one list, or the control renders blank and the next save silently rewrites
+ * a value the user never touched. It is appended rather than sorted in, so retiring a status
+ * does not reshuffle the list for everyone else.
+ */
+export function activeStatuses(
+  statuses: readonly CrmStatus[],
+  keepKey?: string | null,
+): CrmStatus[] {
+  const active = [...statuses].filter(s => !s.is_archived).sort((a, b) => a.position - b.position)
+  if (!keepKey || active.some(s => s.key === keepKey)) return active
+  const current = statuses.find(s => s.key === keepKey)
+  return current ? [...active, current] : active
+}
+
 /* ── People and naming ─────────────────────────────────────────────────────────────── */
 
 export function contactName(contact: Pick<CrmContact, 'first_name' | 'last_name'>): string {
@@ -204,11 +252,20 @@ export function isPastSla(
   return intervalDuration(open, now) > status.sla_hours * HOUR
 }
 
-/** Past its target close date and still open. */
+/**
+ * Past its target close date and still open.
+ *
+ * ⚠️ Compared as calendar dates in the business timezone, never as instants. The previous
+ * version did `Date.parse(\`${date}T23:59:59\`)`, which has no zone designator and so is
+ * resolved against whatever timezone the *runtime* happens to be in — UTC on the server,
+ * America/Chicago in the browser. Those are five hours apart, so for a five-hour window every
+ * day the server rendered a row as late and the client re-rendered it as fine, which React 19
+ * reports as a hydration mismatch. Comparing YYYY-MM-DD strings is both deterministic across
+ * the two runtimes and closer to what the field means: a due *date* is not due at an instant.
+ */
 export function isPastTargetClose(order: CrmOrder, now: Date = new Date()): boolean {
   if (order.closed_at || !order.target_close_date) return false
-  const target = Date.parse(`${order.target_close_date}T23:59:59`)
-  return !Number.isNaN(target) && now.getTime() > target
+  return businessDate(now) > order.target_close_date
 }
 
 /** The interval an order is currently in, if any. */

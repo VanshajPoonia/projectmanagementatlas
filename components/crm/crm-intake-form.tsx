@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClient } from '@/lib/supabase/client'
-import { CLIENT_TYPES, LEAD_SOURCES, type CrmStatus } from '@/lib/crm'
+import { CLIENT_TYPES, LEAD_SOURCES, activeStatuses, type CrmStatus } from '@/lib/crm'
 
 interface Profile {
   id: string
@@ -59,6 +59,10 @@ export function CrmIntakeForm({
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
 
+  // An archived status must not be offered on a brand-new record, even though the full list is
+  // what gets passed in so lookups elsewhere resolve.
+  const selectable = useMemo(() => activeStatuses(statuses), [statuses])
+
   // useId gives a prefix that is stable across server and client; the counter keeps each
   // contact's fields uniquely addressable within this form.
   const formId = useId()
@@ -72,7 +76,7 @@ export function CrmIntakeForm({
   const [stateRegion, setStateRegion] = useState('')
   const [postalCode, setPostalCode] = useState('')
   const [leadSource, setLeadSource] = useState<string>(LEAD_SOURCES[0])
-  const [status, setStatus] = useState(statuses[0]?.key ?? 'new')
+  const [status, setStatus] = useState(activeStatuses(statuses)[0]?.key ?? 'new')
   const [salesRep, setSalesRep] = useState<string>(user.id)
   const [opsRep, setOpsRep] = useState<string>(UNASSIGNED)
   const [estimatedValue, setEstimatedValue] = useState('')
@@ -301,7 +305,7 @@ export function CrmIntakeForm({
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger id="crm-status" className="mt-1.5"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {statuses.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
+                  {selectable.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

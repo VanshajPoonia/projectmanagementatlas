@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useNow } from '@/lib/use-now'
 import {
   STATUS_DISPOSITIONS,
+  activeStatuses,
   clientDisplayName,
   formatDuration,
   formatMoney,
@@ -186,7 +187,7 @@ export function CrmStatusControl({
             <Select value={nextStatus} onValueChange={setNextStatus}>
               <SelectTrigger id="next-status" className="mt-1.5"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {statuses.filter(s => !s.is_archived).map(s => (
+                {activeStatuses(statuses, order.status).map(s => (
                   <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
                 ))}
               </SelectContent>

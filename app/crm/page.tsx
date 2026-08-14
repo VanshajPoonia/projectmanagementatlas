@@ -15,7 +15,11 @@ export default async function CrmPage() {
 
   const [{ data: statuses }, { data: orders }, { data: history }, { data: clients }] =
     await Promise.all([
-      supabase.from('crm_statuses').select('*').eq('is_archived', false).order('position'),
+      // Every status, archived included. An order can still be sitting in an archived one, and
+      // a status missing from the lookup map reads as "not terminal" — which would have counted
+      // every won order as live pipeline the day someone archived Won. Pickers filter, queries
+      // do not. See activeStatuses() in lib/crm.ts.
+      supabase.from('crm_statuses').select('*').order('position'),
       supabase.from('crm_orders').select('*').order('opened_at', { ascending: false }),
       // Only the open intervals are needed for aging and SLA; the closed ones are for
       // reporting, which is its own page and its own query.

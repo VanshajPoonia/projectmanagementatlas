@@ -13,7 +13,8 @@ export default async function CrmClientsPage() {
       .from('crm_clients')
       .select('*, crm_contacts(*)')
       .order('last_activity_at', { ascending: false }),
-    supabase.from('crm_statuses').select('*').eq('is_archived', false).order('position'),
+    // All statuses; the pickers filter. See lib/crm.ts activeStatuses().
+    supabase.from('crm_statuses').select('*').order('position'),
     supabase.from('profiles').select('id, full_name, email').order('full_name'),
   ])
 

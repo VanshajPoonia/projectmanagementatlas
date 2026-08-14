@@ -18,6 +18,7 @@ import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import {
   CLIENT_TYPES,
+  activeStatuses,
   clientDisplayName,
   formatMoney,
   primaryContact,
@@ -198,7 +199,7 @@ export function CrmClientsView({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {statuses.map(s => (
+                              {activeStatuses(statuses, client.status).map(s => (
                                 <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
                               ))}
                             </SelectContent>

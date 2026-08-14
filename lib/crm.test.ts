@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  activeStatuses,
   agingAlerts,
   clientDisplayName,
   cycleTime,
@@ -168,6 +169,81 @@ describe('isPastTargetClose', () => {
   })
   it('is false once closed, however late it was', () => {
     expect(isPastTargetClose(order({ target_close_date: '2026-01-01', closed_at: at('2026-08-01T00:00:00Z') }), NOW)).toBe(false)
+  })
+
+  // The regression this replaced: the old implementation did Date.parse(`${date}T23:59:59`),
+  // which carries no zone designator and so resolved against the *runtime's* timezone — UTC on
+  // the server, America/Chicago in the browser, five hours apart. For a five-hour window each
+  // day the two disagreed on the same order at the same instant, which is a hydration mismatch.
+  // These instants sit inside that window: 03:00Z on the 15th is still the 14th in Chicago.
+  it('answers identically whatever timezone the runtime is in', () => {
+    const straddling = new Date('2026-08-15T03:00:00Z')
+    const target = order({ target_close_date: '2026-08-14' })
+    const original = process.env.TZ
+
+    const answers = ['UTC', 'America/Chicago', 'Asia/Kolkata', 'Pacific/Auckland'].map(tz => {
+      process.env.TZ = tz
+      return isPastTargetClose(target, straddling)
+    })
+    process.env.TZ = original
+
+    expect(new Set(answers).size).toBe(1)
+    // ...and the single answer is the business timezone's, where it is still the 14th.
+    expect(answers[0]).toBe(false)
+  })
+
+  it('flags the order once the business day has actually rolled over', () => {
+    expect(isPastTargetClose(order({ target_close_date: '2026-08-14' }), new Date('2026-08-15T06:00:00Z'))).toBe(true)
+  })
+})
+
+describe('activeStatuses', () => {
+  const list: CrmStatus[] = [
+    { key: 'b', label: 'B', position: 2, color: '#000', is_terminal: false, is_won: false, requires_reason: false, sla_hours: null },
+    { key: 'a', label: 'A', position: 1, color: '#000', is_terminal: false, is_won: false, requires_reason: false, sla_hours: null },
+    { key: 'old', label: 'Retired', position: 3, color: '#000', is_terminal: false, is_won: false, requires_reason: false, sla_hours: null, is_archived: true },
+  ]
+
+  it('drops archived statuses and orders the rest by position', () => {
+    expect(activeStatuses(list).map(s => s.key)).toEqual(['a', 'b'])
+  })
+
+  it('keeps an archived status when it is the record\'s current value', () => {
+    // Otherwise a Select bound to that value renders blank and the next save silently
+    // rewrites a status the user never touched.
+    expect(activeStatuses(list, 'old').map(s => s.key)).toEqual(['a', 'b', 'old'])
+  })
+
+  it('does not duplicate a current status that is still active', () => {
+    expect(activeStatuses(list, 'a').map(s => s.key)).toEqual(['a', 'b'])
+  })
+
+  it('ignores a current status that no longer exists at all', () => {
+    expect(activeStatuses(list, 'ghost').map(s => s.key)).toEqual(['a', 'b'])
+  })
+})
+
+// The bug that made activeStatuses necessary: the pages filtered archived statuses out of the
+// QUERY, so an order sitting in one had no entry in the lookup map — and every consumer reads a
+// missing status as "not terminal". Archiving Won would have counted every won order as live
+// pipeline. These pin the behaviour once the full list is passed, as it now is.
+describe('archived statuses stay classified correctly', () => {
+  const archivedWon: CrmStatus = {
+    key: 'won', label: 'Won', position: 6, color: '#16a34a',
+    is_terminal: true, is_won: true, requires_reason: false, sla_hours: null, is_archived: true,
+  }
+
+  it('does not count a won order as open pipeline just because its status was retired', () => {
+    const orders = [order({ id: 'o1', status: 'won', estimated_value: 50_000 })]
+    const summary = dashboardSummary(orders, [archivedWon], [], NOW)
+    expect(summary.openOrders).toBe(0)
+    expect(summary.pipelineValue).toBe(0)
+    expect(summary.wonValue).toBe(50_000)
+  })
+
+  it('raises no aging alert for an order in a retired terminal status', () => {
+    const orders = [order({ id: 'o1', status: 'won', target_close_date: '2020-01-01' })]
+    expect(agingAlerts(orders, [archivedWon], [], NOW)).toEqual([])
   })
 })
 

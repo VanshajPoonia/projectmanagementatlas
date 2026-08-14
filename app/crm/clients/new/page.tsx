@@ -9,7 +9,10 @@ export default async function CrmIntakePage() {
   if (!access) redirect('/dashboard')
 
   const [{ data: statuses }, { data: profiles }] = await Promise.all([
-    supabase.from('crm_statuses').select('*').eq('is_archived', false).order('position'),
+    // All statuses; the form filters. Intake only ever offers a status rather than resolving
+    // one, so the filter would be harmless here — but keeping every query uniform means there
+    // is no exception to remember. See lib/crm.ts activeStatuses().
+    supabase.from('crm_statuses').select('*').order('position'),
     supabase.from('profiles').select('id, full_name, email').order('full_name'),
   ])
 

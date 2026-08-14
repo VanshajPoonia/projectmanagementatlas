@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClient } from '@/lib/supabase/client'
-import { ORDER_PRIORITIES, clientDisplayName, type CrmClientSummary, type CrmStatus } from '@/lib/crm'
+import { ORDER_PRIORITIES, activeStatuses, clientDisplayName, type CrmClientSummary, type CrmStatus } from '@/lib/crm'
 
 interface Profile {
   id: string
@@ -46,9 +46,13 @@ export function NewOrderDialog({
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
 
+  // A retired status must not be offered on a new order; the full list still arrives so
+  // lookups elsewhere resolve.
+  const selectable = useMemo(() => activeStatuses(statuses), [statuses])
+
   const [clientId, setClientId] = useState('')
   const [orderType, setOrderType] = useState('standard')
-  const [status, setStatus] = useState(statuses[0]?.key ?? 'new')
+  const [status, setStatus] = useState(activeStatuses(statuses)[0]?.key ?? 'new')
   const [owner, setOwner] = useState(UNASSIGNED)
   const [priority, setPriority] = useState('normal')
   const [targetClose, setTargetClose] = useState('')
@@ -137,7 +141,7 @@ export function NewOrderDialog({
             <Select value={status} onValueChange={setStatus}>
               <SelectTrigger id="order-status" className="mt-1.5"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {statuses.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
+                {selectable.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
