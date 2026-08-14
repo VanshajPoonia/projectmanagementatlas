@@ -121,6 +121,27 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   also repaired — it had two checks in direct tension and was guaranteed to fail the first
   time a real account was created after `094`. **Deliberately deferred: pinned views**, which
   need saved views (Prompt E) to exist; `user_favorites.entity_type` already accepts `'view'`.
+- **✅ Owner feedback batch shipped 2026-08-14 (five items, dev only, migration `102`).**
+  (1) **Dark/light on every page.** The toggle lives in `AppTopbar`, but board pages render
+  *outside* `AppShell` (kanban needs the full width) and `/admin/super-admin` builds its own
+  header — so both were dark-mode dead ends. `ThemeToggle` added to each; three hand-rolled
+  switch controls that hardcoded `bg-gray-300`/`bg-white` retokenized. (2) **Move a task to a
+  different board** — see the `102` note in CLAUDE.md; the task keeps its comments,
+  attachments, links, activity and subtasks, and the move is logged. (3) **The mic was dead
+  everywhere**, and it was one line of `next.config.mjs`: `Permissions-Policy:
+  microphone=()`. Chrome gates `SpeechRecognition.start()` on that feature, so every click of
+  the dictation button failed. Now `microphone=(self)`. Measured both ways in a real browser:
+  `document.featurePolicy.allowsFeature('microphone')` is `false` with `()` and `true` with
+  `(self)`. (4) **Project IDs**: the number auto-copies on grab, stays on screen in a "Just
+  grabbed" panel with its own copy button, every history row has a copy button, and the
+  12-tile "Ready to use" preview panel that took the left half of the page is gone.
+  (5) **A super admin can change their own password** in the Users tab — their own card used
+  to hide every action. Role stays locked on a self-edit (server-side too: `update-user`
+  refuses a self role change, since demoting yourself locks you out). ⚠️ Found in the browser:
+  **Supabase revokes every session when a password changes, including the one making the
+  change** — so the UI now signs you out and sends you to `/login` rather than claiming you
+  stay signed in. Gates: `pnpm check:task-move` (19/19), 23/23 real-browser checks, 503 unit
+  tests, and `board-roles`/`access-matrix`/`task-lifecycle`/`deactivation` all re-run green.
 - NEXT actual work is NOT decided — ASK THE OWNER. The pack's own order says **Prompt B**
   (finish single-org access control; its one honest gap is membership **audit events**) then
   **Prompt C** (canonical work-item + custom fields = FEATURES Phase 1). Also still open: the
@@ -173,10 +194,17 @@ future session, that's a regression — don't assume it's still pending.
   assertMigrationTarget({allowProd}) = the migration runner: dev always
   allowed, prod ONLY via an explicit --allow-prod flag + loud banner. Only
   additive/non-destructive migrations may ever use --allow-prod.
-- Migrations: numbered SQL in scripts/, next number is 098. Dev and production
-  are both at 093, with ONE deliberate gap: 087 has never been applied to prod
-  (nobody is affected by its absence — see CLAUDE.md). 088–093 went to prod
-  via `--only=… --allow-prod`, which is how you skip a held-back predecessor.
+- Migrations: numbered SQL in scripts/, next number is 104. Dev is at 103;
+  production is at 095 with 096–103 NOT applied, and 087 has never been applied
+  to prod either (nobody is affected by its absence — see CLAUDE.md). 088–093
+  and 097 went to prod via `--only=… --allow-prod`, which is how you skip a
+  held-back predecessor. ⚠️ **102 (cross-board task move) rewrites an RLS
+  policy, so it is not `--allow-prod` eligible, AND the "Move" button on a task
+  cannot ship without it** — apply it deliberately before merging that code.
+  103 (CRM) IS purely additive and `--allow-prod` eligible, and it seeds the
+  module `enabled = false`, so applying it changes nothing visible until a
+  super admin turns CRM on. Always confirm with `pnpm migrate:status` rather
+  than trusting these numbers.
   New tables need an explicit REVOKE ALL first — Supabase default-grants ALL on
   every new public table to anon and authenticated (see 090).
   Verify with `pnpm migrate:status`, never with a number written down anywhere.
@@ -196,7 +224,9 @@ future session, that's a regression — don't assume it's still pending.
   permanence), `check:task-lifecycle`, `check:appointments`,
   `check:appointment-booking`, `check:marketing-attachments`,
   `check:marketing-recurrence`, `check:task-attachments` (admin-only large
-  uploads), `check:chat-attachments` (DM attachments private + conversation-scoped).
+  uploads), `check:chat-attachments` (DM attachments private + conversation-scoped),
+  `check:task-move` (a task moves boards with its subtasks, and ONLY onto a board
+  the mover may write to — migration 102).
 - Before any destructive migration: take a fresh dev pg_dump snapshot
   (backups live in ~/Code/db-backups/; use
   /opt/homebrew/opt/libpq/bin/pg_dump if the Homebrew default errors on a

@@ -308,14 +308,57 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `102`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `104`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-13: **dev is at `099`, prod is at `095` applied / 2 pending** (`087` and `096`,
+  As of 2026-08-14: **dev is at `102`, prod is at `095` applied / 2 pending** (`087` and `096`,
   both deliberate). Prod has still never had `087` (deliberate, see below) — `088`–`093` and
   `097` were applied with `--only=… --allow-prod`, which is what the runner's `--only` flag
   exists for.
+- **`103` (CRM) is dev-only and purely additive** — seven new tables, one `app_modules` row,
+  no existing table, policy, grant or row touched. That makes it `--allow-prod` eligible on
+  this repo's own rule, unlike `098`–`102`. The module seeds **`enabled = false`**, so
+  applying it to prod changes nothing anyone can see until a super admin switches CRM on.
+  Gate: `pnpm check:crm` (26 checks). Rollback `scripts/rollback/103_revert.sql` **destroys
+  every CRM record including the status history**, which is the one thing that cannot be
+  reconstructed — dump it first if the intent is "roll back the code, keep the data".
+  - The design point worth keeping: **`crm_order_status_history` is written only by a trigger**
+    and `authenticated` holds `SELECT` on it and nothing else. An order's status cannot change
+    without closing the open interval and opening the next one in the same transaction, so the
+    table and `crm_orders.status` cannot disagree however the row was moved. Every cycle-time
+    and bottleneck number is built on that guarantee, and the harness asserts a member *and*
+    an admin are both refused when they try to forge, backdate or delete a row.
+  - **The disposition rides in the same UPDATE as the status**, via two write-only carrier
+    columns (`status_change_reason` / `status_change_note`) that the trigger copies onto the
+    new interval and then blanks. They are always NULL at rest. The alternative — a second
+    write afterwards — needs the history table to be application-writable, which is exactly
+    what the module refuses.
+  - ⚠️ **Three triggers, not one, because the timings differ.** `BEFORE INSERT` may still edit
+    `NEW` but the row does not exist yet, so writing history there fails the `order_id`
+    foreign key; `AFTER INSERT` can write it; `BEFORE UPDATE` does both in one pass. The
+    migration's own post-conditions caught this on the first run.
+- ⚠️ **`102` is dev-only and rewrites an RLS policy, so it is destructive by this repo's own
+  definition and must NOT use `--allow-prod`.** It is also a hard dependency of the
+  "Move to another board" button on a task — without it `move_task_to_board` does not exist
+  and every move fails — so it has to be applied to prod *before* that code merges.
+  It closes a real hole, verified by running the raw UPDATE before writing the fix: the tasks
+  UPDATE policy was `can_manage_task(id, …)` in both USING **and** WITH CHECK, and every gate
+  inside that function resolves the board by looking the task up **by id**, which in a WITH
+  CHECK still reads the pre-UPDATE row. So the policy only ever judged the board a task was
+  *leaving*. A user with a column id could move a task onto a private board they cannot even
+  SELECT — observed, not theorised. Fixed by ANDing 067's two column-keyed helpers
+  (`column_hidden_by_board_privacy` / `column_restricted_by_board_role`) into the WITH CHECK,
+  where `column_id` is the NEW value. Gate: `pnpm check:task-move` (19 checks); `board-roles`,
+  `access-matrix`, `task-lifecycle` and `deactivation` were all re-run green after it.
+  - Two things worth keeping. **`authenticated` has no USAGE on schema `private`** — RLS can
+    call `private.*` because policy expressions are evaluated as the *table owner*, but an
+    ordinary function body invoked by a signed-in user cannot. A first draft put the helper in
+    `private` and every call died with "permission denied for schema private"; it lives in
+    `public` now and gates itself on `can_manage_task`. **And the RPC is SECURITY INVOKER on
+    purpose** — RLS stays the authority; plpgsql is there only so `GET DIAGNOSTICS` can turn a
+    refusal into a raised exception instead of PostgREST's silent zero-row report, and so a
+    parent and its subtasks move in one transaction.
 - ⚠️ **`101` makes deactivation real, and it is the most important of the batch.**
   `profiles.is_active` had a prominent Activate/Deactivate toggle in Super Admin and was read
   by **nothing** — 0 policies, 0 helpers, 0 lines of app code. A "deactivated" person kept
@@ -395,6 +438,31 @@ deliberately left out.
   any browser test against `pnpm start`, move `.env.production.local` aside and rebuild, then
   restore it — and confirm which project you got with:
   `grep -rhoE '(icyfluwgyuimhwlddjyy|pxzpewaerhjwnwsbaklc)' .next/static/chunks/*.js | sort -u`
+- **Theming: the accent lives at the document root, and `.force-light-theme` is gone.**
+  The accent picker used to return a `style` object that `user-dashboard.tsx` spread onto one
+  wrapper `<div>`. Custom properties inherit down the DOM, so the colour reached that subtree
+  and nothing else: a board renders from its own route and every Radix dialog/popover/toast is
+  portaled to `document.body`, which is a *sibling* of that wrapper. `AccentProvider`
+  (mounted app-wide by `AccentBoot` in `app/layout.tsx`) now writes the properties to
+  `document.documentElement`, which is an ancestor of both.
+  - ⚠️ **`.force-light-theme` was the reason the picker "did nothing" on the marketing
+    calendar.** That class pinned the whole subtree to the light palette *including*
+    `--primary` and `--ring`, so it silently overrode whatever the picker had set. It is
+    deleted; the calendar's chrome is now `--brand-band` / `--brand-accent` / `--surface-note`
+    tokens that flip per theme, and the band is deliberately *lighter* in dark mode (`#171717`)
+    because the light-mode value sat darker than its own page and read as a recess.
+  - **Never redeclare `--primary` in a scoped class.** Any rule that does will break the accent
+    picker for everything inside it, and the failure is invisible in code review.
+  - Theme + accent are per-browser `localStorage`, per `097`'s stated rule that presentational
+    preferences do not earn a table. `ThemeControls` (light/dark/system + accent) is in every
+    shell, boards included.
+  - ⚠️ **Two hydration traps this uncovered, both of which React 19 reports as errors.**
+    `useSurface()` reads `resolvedTheme`, which is unknown during SSR — it is mount-gated, so
+    theme-derived colour must never be assumed correct on the first frame. And anything
+    rendering *elapsed time* must take the server's instant as a prop (`lib/use-now.ts`);
+    calling `new Date()` during render makes the server and client disagree on every row.
+    `crypto.randomUUID()` in a `useState` initializer has the same problem when the value
+    becomes a DOM `id`.
 - **CSP is production-only, so dev cannot catch an `img-src` bug.** `next.config.mjs` only sets
   Content-Security-Policy when `NODE_ENV === 'production'`. `img-src` must list `blob:` and
   `https://*.supabase.co` — verified in a real browser that without them the marketing
