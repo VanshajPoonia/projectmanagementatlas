@@ -218,9 +218,9 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
   }
 
   const getPriorityColor = (priority: number) => {
-    if (priority <= 2) return 'border-red-500 text-red-500 bg-red-50'
-    if (priority === 3) return 'border-orange-500 text-orange-500 bg-orange-50'
-    return 'border-blue-500 text-blue-500 bg-blue-50'
+    if (priority <= 2) return 'border-red-500 text-red-500 bg-red-50 dark:bg-red-950/40'
+    if (priority === 3) return 'border-orange-500 text-orange-500 bg-orange-50 dark:bg-orange-950/40'
+    return 'border-blue-500 text-blue-500 bg-blue-50 dark:bg-blue-950/40'
   }
 
   // Check if task is overdue
@@ -244,10 +244,10 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
   const subtasksDone = (subtasks ?? []).filter((s: any) => getNormalizedTaskStatus(s) === 'done').length
   const getCountdownColor = () => {
     if (daysRemaining === null) return ''
-    if (daysRemaining < 0) return 'text-red-600 bg-red-50 border-red-200'
-    if (daysRemaining === 0) return 'text-orange-600 bg-orange-50 border-orange-200'
-    if (daysRemaining <= 3) return 'text-yellow-600 bg-yellow-50 border-yellow-200'
-    return 'text-green-600 bg-green-50 border-green-200'
+    if (daysRemaining < 0) return 'text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950/40 dark:border-red-900'
+    if (daysRemaining === 0) return 'text-orange-600 bg-orange-50 border-orange-200 dark:text-orange-400 dark:bg-orange-950/40 dark:border-orange-900'
+    if (daysRemaining <= 3) return 'text-yellow-600 bg-yellow-50 border-yellow-200 dark:text-yellow-400 dark:bg-yellow-950/40 dark:border-yellow-900'
+    return 'text-green-600 bg-green-50 border-green-200 dark:text-green-400 dark:bg-green-950/40 dark:border-green-900'
   }
 
   return (
@@ -255,7 +255,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
       <Card
         className={`group min-w-0 cursor-grab overflow-hidden active:cursor-grabbing transition-colors hover:border-primary/40 hover:shadow-md ${densityCardClass(density)} ${
           isDragging ? 'shadow-xl opacity-80 cursor-grabbing' : ''
-        } ${isOverdue ? 'border-red-300 bg-red-50/30' : ''}`}
+        } ${isOverdue ? 'border-red-300 bg-red-50/30 dark:border-red-800 dark:bg-red-950/40' : ''}`}
         onClick={() => {
           setDetailInitialTab('comments')
           setDetailOpen(true)
@@ -435,7 +435,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
               )
             })()}
             {task.is_recurring && (
-              <Badge variant="outline" className="text-xs bg-purple-50 border-purple-200 text-purple-600 gap-1">
+              <Badge variant="outline" className="text-xs bg-purple-50 border-purple-200 text-purple-600 gap-1 dark:bg-purple-950/40 dark:border-purple-900 dark:text-purple-400">
                 <Repeat className="w-3 h-3" />
                 {task.recurrence_pattern}
               </Badge>

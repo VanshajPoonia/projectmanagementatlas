@@ -254,13 +254,13 @@ export function ShareLinkDialog({ resourceType, resourceId, trigger }: ShareLink
                     </span>
                   )}
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copy(link)} title="Copy link">
-                    {copiedId === link.id ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copiedId === link.id ? <Check className="h-3.5 w-3.5 text-green-600 dark:text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
                     <span className="sr-only">Copy link</span>
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 text-red-600"
+                    className="h-7 w-7 text-red-600 dark:text-red-400"
                     onClick={() => revoke(link.id)}
                     disabled={revokingId === link.id}
                     title="Revoke link"

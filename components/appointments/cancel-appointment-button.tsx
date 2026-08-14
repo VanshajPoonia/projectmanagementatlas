@@ -29,7 +29,7 @@ export default function CancelAppointmentButton({ token }: { token: string }) {
   if (state === 'done') {
     return (
       <div className="flex flex-col items-center gap-2 text-center">
-        <CheckCircle2 className="h-8 w-8 text-green-600" />
+        <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
         <p className="text-sm font-medium">This appointment has been cancelled.</p>
       </div>
     )

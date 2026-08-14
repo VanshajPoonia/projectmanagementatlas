@@ -28,8 +28,7 @@ import MarketingCalendar from '../marketing/marketing-calendar'
 import DashboardWindow from '../dashboard/dashboard-window'
 import WorkNext from '../dashboard/work-next'
 import AccountSettings from '../account/account-settings'
-import ThemeToggle from '../theme-toggle'
-import AccentThemePicker, { useAccentTheme } from '../theme/accent-theme-picker'
+import { ThemeControls } from '../theme/theme-controls'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
 import GlobalSearch from '../search/global-search'
 import { cn } from '@/lib/utils'
@@ -150,12 +149,10 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
       router.push(`${pathname}?${params.toString()}`)
     }
   }
-  // Deliberately kept as a standalone literal-email check, separate from marketing-calendar
-  // access above — this is a personal cosmetic default, not feature-gating, and out of scope for
-  // the access-control fix (migration 085).
-  const isKaylaAccentUser = String(user.email ?? '').trim().toLowerCase() === 'kayla@goatlasgo.us'
-  const defaultAccentColor = isKaylaAccentUser ? '#e91e8c' : '#111111'
-  const { color: accentColor, setColor: setAccentColor, reset: resetAccentColor, style: accentStyle } = useAccentTheme(user.id, defaultAccentColor)
+  // The accent used to be resolved here and spread onto this shell's wrapper as an inline
+  // style, which is why it never reached a board route or any portaled dialog. It now lives in
+  // AccentProvider at the document root (mounted by AccentBoot in app/layout.tsx), including
+  // the per-account default that used to be computed on this line.
   // The calendar plots deliverables by due date and lets them be rescheduled; subtasks
   // carry no due date of their own, so they'd only add noise. Mirrors the admin shell.
   const topLevelTasks = useMemo(() => tasks.filter((task: any) => !task.parent_task_id), [tasks])
@@ -233,15 +230,9 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
       breadcrumbs={[{ label: activeLabel }]}
       favorites={favoriteItems}
       commands={paletteCommands}
-      style={accentStyle}
       topbarActions={
         <>
-          {/* Same reasoning as the density toggle in AppShell: personalization is what gives
-              way first when the topbar has to fit a 320px viewport. */}
-          <span className="hidden sm:contents">
-            <AccentThemePicker color={accentColor} onChange={setAccentColor} onReset={resetAccentColor} />
-          </span>
-          <ThemeToggle />
+          <ThemeControls />
           <AccountSettings
             userId={user.id}
             currentName={user.full_name || ''}

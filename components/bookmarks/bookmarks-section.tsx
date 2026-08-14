@@ -74,7 +74,7 @@ function BookmarkTile({ bookmark, canManage, onEdit, onDelete }: any) {
               <Pencil className="w-4 h-4 mr-2" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onDelete(bookmark)} className="text-red-600">
+            <DropdownMenuItem onClick={() => onDelete(bookmark)} className="text-red-600 dark:text-red-400">
               <Trash className="w-4 h-4 mr-2" />
               Delete
             </DropdownMenuItem>

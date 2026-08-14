@@ -525,11 +525,11 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
                 type="button"
                 onClick={() => setIsRecurring(!isRecurring)}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  isRecurring ? 'bg-primary' : 'bg-gray-300'
+                  isRecurring ? 'bg-primary' : 'bg-muted-foreground/40'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
                     isRecurring ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />

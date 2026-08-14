@@ -96,7 +96,7 @@ export default function AppointmentList({ userId, timezone }: { userId: string; 
       </div>
       {cancellable && (
         <Button
-          size="sm" variant="outline" className="flex-shrink-0 gap-1.5 text-red-600"
+          size="sm" variant="outline" className="flex-shrink-0 gap-1.5 text-red-600 dark:text-red-400"
           onClick={() => cancel(row)} disabled={cancellingId === row.id}
         >
           {cancellingId === row.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}

@@ -130,11 +130,11 @@ export default function BookingLinkPanel({ userId }: { userId: string }) {
                   className="min-w-40 flex-1 bg-transparent text-xs outline-none"
                 />
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copy(link)} title="Copy link">
-                  {copiedId === link.id ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copiedId === link.id ? <Check className="h-3.5 w-3.5 text-green-600 dark:text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
                   <span className="sr-only">Copy link</span>
                 </Button>
                 <Button
-                  variant="ghost" size="icon" className="h-7 w-7 text-red-600"
+                  variant="ghost" size="icon" className="h-7 w-7 text-red-600 dark:text-red-400"
                   onClick={() => revoke(link.id)} disabled={revokingId === link.id} title="Revoke link"
                 >
                   {revokingId === link.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}

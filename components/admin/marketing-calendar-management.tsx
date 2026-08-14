@@ -209,7 +209,7 @@ export default function MarketingCalendarManagement({ open, onOpenChange, calend
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="force-light-theme max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
         {membersFor ? (
           <>
             <DialogHeader>

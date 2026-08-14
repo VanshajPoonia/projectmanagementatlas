@@ -36,7 +36,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { autoTextColor as autoText, withAlpha } from '@/lib/color'
+import { autoTextColor as autoText, compositeOver, readableInk, withAlpha } from '@/lib/color'
+import { useSurface } from '@/lib/use-surface'
 import {
   buildMarketingAssetPath,
   formatMarketingAssetSize,
@@ -298,8 +299,10 @@ function EventFormFields({
             return (
               <button key={c.id} type="button" onClick={() => onToggleCompany(c.id)}
                 className={cn('rounded border px-2.5 py-1 text-xs font-bold transition-colors',
-                  isOn ? 'text-white' : 'bg-background text-foreground hover:bg-accent')}
-                style={isOn ? { backgroundColor: c.color, borderColor: c.color } : {}}>
+                  !isOn && 'bg-background text-foreground hover:bg-accent')}
+                // Text colour is derived from the company colour rather than pinned to white:
+                // a light swatch (the yellow business unit) rendered white-on-yellow.
+                style={isOn ? { backgroundColor: c.color, borderColor: c.color, color: autoText(c.color) } : {}}>
                 {c.code}
               </button>
             )
@@ -358,7 +361,7 @@ function EventFormFields({
       <div className="flex items-center gap-3">
         <button type="button" onClick={onToggleHighlighted}
           className={cn('flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-medium transition-colors',
-            highlighted ? 'bg-amber-100 border-amber-400 text-amber-800' : 'bg-background hover:bg-accent')}>
+            highlighted ? 'bg-amber-100 border-amber-400 text-amber-800 dark:bg-amber-950/60 dark:border-amber-700 dark:text-amber-300' : 'bg-background hover:bg-accent')}>
           <Sparkles className="h-3.5 w-3.5" />
           {highlighted ? 'Campaign block' : 'Mark as campaign block'}
         </button>
@@ -394,6 +397,14 @@ function EventEntry({
   const missed = state === 'missed'
   const primaryColor = item.companies[0]?.color ?? '#64748b'
   const companyLabel = item.companies.length ? item.companies.map(c => c.code).join(' + ') : 'No company'
+  // A company picks its own brand hex, and it is rendered as 10px uppercase text — the
+  // strictest contrast case in the calendar. Lift it against whichever surface this card
+  // actually paints rather than trusting that a colour chosen on white survives dark mode.
+  const surface = useSurface()
+  const cardSurface = missed
+    ? compositeOver('#ef4444', surface.isDark ? 0.4 : 0.12, surface.card)
+    : surface.card
+  const labelInk = posted ? undefined : readableInk(missed ? '#dc2626' : primaryColor, cardSurface)
 
   return (
     <div
@@ -409,20 +420,20 @@ function EventEntry({
       title={editable ? 'Click to edit, drag to reschedule' : 'Click the circle to toggle posted'}
       className={cn(
         'cursor-pointer rounded-md border p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        posted ? 'border-transparent bg-[#f3f4f6] text-muted-foreground'
-               : missed ? 'border-red-300 bg-red-50 hover:bg-red-100'
-               : item.is_highlighted ? 'border-amber-300 bg-amber-100 hover:bg-amber-200'
-                                     : 'border-gray-300 bg-white shadow-xs hover:bg-accent',
+        posted ? 'border-transparent bg-muted text-muted-foreground'
+               : missed ? 'border-red-300 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40'
+               : item.is_highlighted ? 'border-amber-300 bg-amber-100 hover:bg-amber-200 dark:border-amber-800 dark:bg-amber-950/60'
+                                     : 'border-input bg-card shadow-xs hover:bg-accent',
         dragging && 'opacity-40',
       )}>
       <div className="flex items-center justify-between gap-1.5">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="flex flex-shrink-0 -space-x-0.5">
             {(item.companies.length ? item.companies : [{ id: 'none', color: '#9ca3af' }]).slice(0, 3).map((c, i) => (
-              <span key={c.id ?? i} className="h-2 w-2 rounded-full ring-1 ring-white" style={{ backgroundColor: posted ? '#9ca3af' : c.color }} />
+              <span key={c.id ?? i} className="h-2 w-2 rounded-full ring-1 ring-background" style={{ backgroundColor: posted ? '#9ca3af' : c.color }} />
             ))}
           </span>
-          <span className="truncate text-[10px] font-bold uppercase tracking-wide" style={{ color: posted ? undefined : missed ? '#dc2626' : primaryColor }}>
+          <span className="truncate text-[10px] font-bold uppercase tracking-wide" style={{ color: labelInk }}>
             {companyLabel}{showChannelLabel ? ` · ${channelLabel}` : ''}
           </span>
           {missed && (
@@ -439,7 +450,7 @@ function EventEntry({
             className={cn(
               'rounded p-0.5 transition-colors',
               item.attachment
-                ? 'bg-sky-100 text-sky-700 hover:bg-sky-200'
+                ? 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-950/60 dark:text-sky-300'
                 : 'text-muted-foreground/50 hover:bg-muted hover:text-foreground',
             )}>
             {item.attachment
@@ -452,7 +463,7 @@ function EventEntry({
             onClick={e => { e.stopPropagation(); onToggle() }}
             aria-label={posted ? 'Mark as not posted' : 'Mark as posted'}
             className={cn('rounded-full transition-colors',
-              posted ? 'text-green-600' : missed ? 'text-red-500 hover:text-green-600' : 'text-muted-foreground/60 hover:text-foreground')}>
+              posted ? 'text-green-600 dark:text-green-400' : missed ? 'text-red-500 hover:text-green-600' : 'text-muted-foreground/60 hover:text-foreground')}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" />
                   : posted ? <CheckCircle2 className="h-4 w-4" />
                   : missed ? <XCircle className="h-4 w-4" />
@@ -467,8 +478,8 @@ function EventEntry({
       {missed && (
         <button type="button"
           onClick={e => { e.stopPropagation(); onEditReason() }}
-          className={cn('mt-1.5 flex w-full items-start gap-1 rounded border border-red-200 bg-white/60 px-1.5 py-1 text-left text-[11px] transition-colors hover:bg-white',
-            note ? 'text-red-700' : 'text-red-500/80')}>
+          className={cn('mt-1.5 flex w-full items-start gap-1 rounded border border-red-200 bg-card/60 px-1.5 py-1 text-left text-[11px] transition-colors hover:bg-card dark:border-red-900',
+            note ? 'text-red-700 dark:text-red-300' : 'text-red-600 dark:text-red-300')}>
           <Pencil className="mt-0.5 h-3 w-3 flex-shrink-0" />
           <span className="break-words [overflow-wrap:anywhere]">{note ? note : 'Add reason'}</span>
         </button>
@@ -481,6 +492,9 @@ function EventEntry({
 
 export default function MarketingCalendar({ userId, userName, isAdmin = false, calendars, refetchCalendars }: MarketingCalendarProps) {
   const supabase = createClient()
+  // The opaque surfaces this view paints, so a company's brand hex can be contrast-checked
+  // against the chip it actually lands on rather than assumed readable.
+  const surface = useSurface()
   const [items,         setItems]         = useState<MarketingCalendarItem[]>([])
   // Every stored completion row (posted or missed), keyed by item id. Absence of a
   // row means pending — or, for a past item, auto-"missed" (computed in stateOf).
@@ -2055,7 +2069,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   /* ── loading ────────────────────────────────────────────────────── */
   if (loading) {
     return (
-      <section className="force-light-theme rounded-lg border bg-background">
+      <section className="rounded-lg border bg-background">
         <div className="flex items-center gap-3 p-6">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="text-sm font-medium">Loading marketing calendar…</span>
@@ -2067,9 +2081,9 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   /* ── no calendars available ────────────────────────────────────── */
   if (activeCalendars.length === 0) {
     return (
-      <section className="force-light-theme overflow-hidden rounded-lg border bg-background shadow-sm">
-        <div className="bg-[#070707] px-4 py-4 text-white sm:px-6">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-normal text-[#fff842]">
+      <section className="overflow-hidden rounded-lg border bg-background shadow-sm">
+        <div className="bg-brand-band px-4 py-4 text-brand-band-foreground sm:px-6">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-normal text-brand-accent">
             <CalendarDays className="h-4 w-4" />
             2026 Calendar
           </div>
@@ -2106,13 +2120,13 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   }
 
   return (
-    <section className="force-light-theme overflow-hidden rounded-lg border bg-background shadow-sm">
+    <section className="overflow-hidden rounded-lg border bg-background shadow-sm">
 
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="bg-[#070707] px-4 py-4 text-white sm:px-6">
+      <div className="bg-brand-band px-4 py-4 text-brand-band-foreground sm:px-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-normal text-[#fff842]">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-normal text-brand-accent">
               <CalendarDays className="h-4 w-4" />
               2026 Calendar
             </div>
@@ -2122,24 +2136,24 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
           </div>
 
           <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[360px]">
-            <div className="rounded-md border border-white/15 bg-white/10 p-3">
+            <div className="rounded-md border border-brand-band-foreground/15 bg-brand-band-foreground/10 p-3">
               <div className="text-xl font-semibold">{completionPercent}%</div>
-              <div className="text-xs text-white/70">Posted</div>
+              <div className="text-xs text-brand-band-muted">Posted</div>
             </div>
-            <div className="rounded-md border border-white/15 bg-white/10 p-3">
+            <div className="rounded-md border border-brand-band-foreground/15 bg-brand-band-foreground/10 p-3">
               <div className="text-xl font-semibold">{checkedPeriod}/{periodItems.length}</div>
-              <div className="text-xs text-white/70">{viewMode === 'month' ? 'This month' : 'This week'}</div>
+              <div className="text-xs text-brand-band-muted">{viewMode === 'month' ? 'This month' : 'This week'}</div>
             </div>
-            <div className="rounded-md border border-white/15 bg-white/10 p-3">
+            <div className="rounded-md border border-brand-band-foreground/15 bg-brand-band-foreground/10 p-3">
               <div className="text-xl font-semibold">{checkedVisible}/{totalVisible}</div>
-              <div className="text-xs text-white/70">All time</div>
+              <div className="text-xs text-brand-band-muted">All time</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* ── Controls ─────────────────────────────────────────────────── */}
-      <div className="border-b bg-[#fbfbfb] px-4 py-4 sm:px-6">
+      <div className="border-b bg-muted/40 px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             {activeCalendars.length > 1 && (
@@ -2228,7 +2242,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
 
         {attachmentsUnavailable && (
-          <p role="alert" className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <p role="alert" className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
             Event files can&apos;t be loaded right now, so attachments are hidden. Nothing you
             uploaded has been deleted. ({attachmentsUnavailable})
           </p>
@@ -2261,15 +2275,15 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                       onDrop={handleDayDrop(dateKey)}>
 
                       <div className={cn('sticky top-0 z-10 flex items-baseline justify-between border-b px-3 py-2',
-                        isToday ? 'bg-[#111] text-white' : 'bg-[#fbfbfb]')}>
+                        isToday ? 'bg-foreground text-background' : 'bg-muted/40')}>
                         <div className="flex items-baseline gap-1.5">
                           <span className="text-[11px] font-bold uppercase">
                             {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()]}
                           </span>
                           <span className="text-lg font-black leading-none">{date.getDate()}</span>
-                          {isToday && <span className="rounded-full bg-[#fff842] px-1.5 text-[10px] font-bold text-[#111]">Today</span>}
+                          {isToday && <span className="rounded-full bg-brand-accent px-1.5 text-[10px] font-bold text-brand-accent-foreground">Today</span>}
                         </div>
-                        <span className={cn('text-[11px] font-medium', isToday ? 'text-white/70' : 'text-muted-foreground')}>
+                        <span className={cn('text-[11px] font-medium', isToday ? 'text-brand-band-muted' : 'text-muted-foreground')}>
                           {dayItems.length ? `${dayDone}/${dayItems.length} posted` : '—'}
                         </span>
                       </div>
@@ -2302,7 +2316,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                         })}
                         {dayItems.length === 0 ? (
                           <button type="button" onClick={() => openCreateDialog({ date: dateKey })}
-                            className={cn('flex flex-1 items-center justify-center rounded-md border border-dashed bg-[#fafafa] text-[11px] text-muted-foreground/60 transition-colors hover:border-foreground/30 hover:text-foreground',
+                            className={cn('flex flex-1 items-center justify-center rounded-md border border-dashed bg-muted/50 text-[11px] text-muted-foreground/60 transition-colors hover:border-foreground/30 hover:text-foreground',
                             isDragOver && 'border-primary/50 bg-primary/5')}>
                             <Plus className="mr-1 h-3.5 w-3.5" /> Add post
                           </button>
@@ -2323,7 +2337,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
           {/* ── Month board ──────────────────────────────────────────── */}
           {viewMode === 'month' && (
             <div className="overflow-hidden">
-                <div className="grid grid-cols-7 border-b bg-[#111] text-white">
+                <div className="grid grid-cols-7 border-b bg-foreground text-background">
                   {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
                     <div key={day} className="border-r px-0.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide last:border-r-0 sm:px-2">
                       <span className="sm:hidden">{day[0]}</span>
@@ -2347,14 +2361,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                       <div key={dateKey} data-month-date={dateKey}
                         className={cn(
                           'group/month flex min-h-[92px] min-w-0 flex-col border-b border-r p-1 transition-colors sm:min-h-[132px] sm:p-1.5',
-                          inCurrentMonth ? 'bg-background' : 'bg-[#f5f5f5] text-muted-foreground',
-                          isWeekend && inCurrentMonth && 'bg-[#fafafa]',
-                          isToday && 'ring-2 ring-inset ring-[#111]',
+                          inCurrentMonth ? 'bg-background' : 'bg-muted text-muted-foreground',
+                          isWeekend && inCurrentMonth && 'bg-muted/50',
+                          isToday && 'ring-2 ring-inset ring-foreground',
                         )}>
                         <div className="mb-1 flex items-center justify-between gap-1">
                           <span className={cn(
                             'flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-bold',
-                            isToday && 'bg-[#111] text-[#fff842]',
+                            isToday && 'bg-foreground text-brand-accent',
                           )}>
                             {date.getDate()}
                           </span>
@@ -2375,7 +2389,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                                 className={cn(
                                   'flex min-w-0 items-center gap-1 rounded border bg-background px-1 py-1 text-left text-[11px] leading-tight transition-colors hover:border-foreground/30 sm:px-1.5',
                                   itemState === 'posted' && 'text-muted-foreground line-through',
-                                  itemState === 'missed' && 'border-red-200 bg-red-50 text-red-700',
+                                  itemState === 'missed' && 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300',
                                 )}>
                                 <button type="button"
                                   disabled={busyItemId === item.id}
@@ -2396,7 +2410,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                                   aria-label={item.attachment ? `Open file for ${item.content}` : `Attach file to ${item.content}`}
                                   className={cn(
                                     'flex-shrink-0 rounded p-0.5',
-                                    item.attachment ? 'text-sky-700' : 'text-muted-foreground/50 hover:text-foreground',
+                                    item.attachment ? 'text-sky-700 dark:text-sky-300' : 'text-muted-foreground/50 hover:text-foreground',
                                   )}>
                                   {item.attachment
                                     ? <FileText className="h-3 w-3" />
@@ -2436,7 +2450,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>
-                  <th className="sticky left-0 top-0 z-40 w-[142px] border-b border-r bg-[#111] px-3 py-2 text-left text-xs font-bold uppercase text-white">
+                  <th className="sticky left-0 top-0 z-40 w-[142px] border-b border-r bg-foreground px-3 py-2 text-left text-xs font-bold uppercase text-background">
                     Date
                   </th>
                   {/* Columns are rearrangeable: drag a header, or use the arrows
@@ -2451,7 +2465,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                       onDragEnd={handleChannelDragEnd}
                       aria-label={`${ch.label} column, position ${index + 1} of ${channels.length}`}
                       className={cn(
-                        'group/col sticky top-0 z-30 w-[150px] cursor-grab select-none border-b border-r bg-[#151515] px-1 py-2 text-center text-xs font-semibold text-white',
+                        'group/col sticky top-0 z-30 w-[150px] cursor-grab select-none border-b border-r bg-foreground/95 px-1 py-2 text-center text-xs font-semibold text-background',
                         draggingChannelId === ch.id && 'cursor-grabbing opacity-40',
                         channelDropIndex === index && draggingChannelId !== ch.id && 'ring-2 ring-inset ring-primary',
                       )}>
@@ -2460,7 +2474,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                           disabled={index === 0}
                           onClick={() => moveChannel(index, index - 1)}
                           aria-label={`Move ${ch.label} left`}
-                          className="rounded p-0.5 text-white/50 opacity-0 transition hover:bg-white/10 hover:text-white focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-0 group-hover/col:opacity-100">
+                          className="rounded p-0.5 text-background/50 opacity-0 transition hover:bg-background/10 hover:text-background focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-0 group-hover/col:opacity-100">
                           <ChevronLeft className="h-3.5 w-3.5" />
                         </button>
                         <span className="truncate">{ch.label}</span>
@@ -2468,7 +2482,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                           disabled={index === channels.length - 1}
                           onClick={() => moveChannel(index, index + 1)}
                           aria-label={`Move ${ch.label} right`}
-                          className="rounded p-0.5 text-white/50 opacity-0 transition hover:bg-white/10 hover:text-white focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-0 group-hover/col:opacity-100">
+                          className="rounded p-0.5 text-background/50 opacity-0 transition hover:bg-background/10 hover:text-background focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-0 group-hover/col:opacity-100">
                           <ChevronRight className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -2484,7 +2498,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                   const isToday  = dateKey === todayKey
 
                   return (
-                    <tr key={dateKey} className={cn('align-top', isToday && 'bg-[#fffef0]')}>
+                    <tr key={dateKey} className={cn('align-top', isToday && 'bg-surface-note')}>
                       <td className="sticky left-0 z-20 border-b border-r bg-background px-3 py-3">
                         <div className="flex items-start gap-2">
                           <div className={cn('mt-1 h-2.5 w-2.5 rounded-full', isToday ? 'bg-green-500' : 'bg-muted-foreground/30')} />
@@ -2532,7 +2546,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                               })}
                               <button type="button"
                                 onClick={() => openCreateDialog({ date: dateKey, channel: ch.channel })}
-                                className={cn('group flex min-h-[36px] flex-1 items-center justify-center rounded-md border border-dashed bg-[#fafafa] text-muted-foreground/40 transition-colors hover:border-foreground/30 hover:text-foreground')}>
+                                className={cn('group flex min-h-[36px] flex-1 items-center justify-center rounded-md border border-dashed bg-muted/50 text-muted-foreground/40 transition-colors hover:border-foreground/30 hover:text-foreground')}>
                                 <Plus className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
                               </button>
                             </div>
@@ -2548,7 +2562,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
           )}
 
           {/* ── Agenda panel ─────────────────────────────────────────── */}
-          <div className="border-t bg-[#f8f8f8] px-4 py-5 sm:px-6">
+          <div className="border-t bg-muted/60 px-4 py-5 sm:px-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 font-semibold">
                 <Megaphone className="h-4 w-4" />
@@ -2565,7 +2579,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                   {showPast ? 'Hide past' : 'Show past'}
                 </button>
                 {missedVisible > 0 && (
-                  <Badge variant="outline" className="gap-1 border-red-300 text-red-600">
+                  <Badge variant="outline" className="gap-1 border-red-300 text-red-600 dark:border-red-800 dark:text-red-400">
                     <XCircle className="h-3 w-3" />
                     {missedVisible} missed
                   </Badge>
@@ -2600,7 +2614,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                         </div>
                         <div>
                           <p className="text-sm font-semibold">{fullDateFormatter.format(date)}</p>
-                          <p className={cn('text-xs', allDone ? 'text-green-600 font-medium' : 'text-muted-foreground')}>
+                          <p className={cn('text-xs', allDone ? 'text-green-600 font-medium dark:text-green-400' : 'text-muted-foreground')}>
                             {allDone ? 'All posted ✓' : `${dayDone}/${dayItems.length} posted`}
                           </p>
                         </div>
@@ -2618,12 +2632,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
                           return (
                             <div key={item.id} className={cn('group flex items-center gap-3 px-3 py-2.5 transition-colors',
-                              posted ? 'bg-muted/40' : missed ? 'bg-red-50' : 'hover:bg-accent/40')}>
+                              posted ? 'bg-muted/40' : missed ? 'bg-red-50 dark:bg-red-950/40' : 'hover:bg-accent/40')}>
                               {/* Status toggle (marks posted) */}
                               <button type="button" disabled={busyItemId === item.id} onClick={() => toggleItem(item)}
                                 aria-label={posted ? 'Mark as not posted' : 'Mark as posted'}
                                 className={cn('flex-shrink-0 transition-colors',
-                                  posted ? 'text-green-600' : missed ? 'text-red-500 hover:text-green-600' : 'text-muted-foreground hover:text-foreground')}>
+                                  posted ? 'text-green-600 dark:text-green-400' : missed ? 'text-red-500 hover:text-green-600' : 'text-muted-foreground hover:text-foreground')}>
                                 {busyItemId === item.id ? <Loader2 className="h-4 w-4 animate-spin" />
                                   : posted ? <CheckCircle2 className="h-4 w-4" />
                                   : missed ? <XCircle className="h-4 w-4" />
@@ -2639,7 +2653,13 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
                               {/* Channel chip */}
                               <span className="flex-shrink-0 rounded border px-1.5 py-0.5 text-[11px] font-semibold"
-                                style={{ borderColor: withAlpha(primaryColor, 0.5), backgroundColor: withAlpha(primaryColor, 0.08), color: primaryColor }}>
+                                style={{
+                                  borderColor: withAlpha(primaryColor, 0.5),
+                                  backgroundColor: withAlpha(primaryColor, 0.08),
+                                  // The 8% tint lightens the ground, so measure against the
+                                  // composited chip, not the card underneath it.
+                                  color: readableInk(primaryColor, compositeOver(primaryColor, 0.08, surface.card)),
+                                }}>
                                 {item.channel}
                               </span>
 
@@ -2649,13 +2669,13 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                                   onClick={() => editable && openEditDialog(item)}
                                   className={cn('truncate text-sm', editable && 'cursor-pointer hover:underline',
                                     posted && 'text-muted-foreground line-through decoration-2',
-                                    missed && 'text-red-700')}>
+                                    missed && 'text-red-700 dark:text-red-300')}>
                                   {item.content}
                                 </span>
                                 {missed && (
                                   <button type="button" onClick={() => openReasonDialog(item)}
                                     className={cn('mt-0.5 flex items-center gap-1 text-left text-[11px] transition-colors hover:underline',
-                                      note ? 'text-red-700' : 'text-red-500/80')}>
+                                      note ? 'text-red-700 dark:text-red-300' : 'text-red-600 dark:text-red-300')}>
                                     <Pencil className="h-3 w-3 flex-shrink-0" />
                                     <span className="truncate">{note ? note : 'Add reason'}</span>
                                   </button>
@@ -2670,7 +2690,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                                   className={cn(
                                     'rounded p-1 transition-colors',
                                     item.attachment
-                                      ? 'bg-sky-100 text-sky-700 hover:bg-sky-200'
+                                      ? 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-950/60 dark:text-sky-300'
                                       : 'text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground group-hover:opacity-100',
                                   )}>
                                   {item.attachment
@@ -2711,7 +2731,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
       {/* ── Create Event Dialog ──────────────────────────────────────── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="force-light-theme max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="h-4 w-4" /> New Marketing Event
@@ -2744,7 +2764,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
               {newAttachmentFile ? (
                 <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
                   <span className="flex min-w-0 items-center gap-1.5 text-sm">
-                    <FileText className="h-3.5 w-3.5 flex-shrink-0 text-sky-700" />
+                    <FileText className="h-3.5 w-3.5 flex-shrink-0 text-sky-700 dark:text-sky-300" />
                     <span className="truncate font-medium">{newAttachmentFile.name}</span>
                     <span className="flex-shrink-0 text-xs text-muted-foreground">
                       {formatMarketingAssetSize(newAttachmentFile.size)}
@@ -2763,7 +2783,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                 </button>
               )}
               {newAttachmentError && (
-                <p role="alert" className="text-xs font-medium text-red-600">{newAttachmentError}</p>
+                <p role="alert" className="text-xs font-medium text-red-600 dark:text-red-400">{newAttachmentError}</p>
               )}
               {(newRecurrence !== 'none' || newChannels.length > 1) && newAttachmentFile && (
                 <p className="text-xs text-muted-foreground">
@@ -2815,15 +2835,15 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                 <Input type="date" value={newEndDate} min={newDate}
                   onChange={e => setNewEndDate(e.target.value)} required />
                 {newScheduleInvalid ? (
-                  <p role="alert" className="text-xs font-medium text-red-600">
+                  <p role="alert" className="text-xs font-medium text-red-600 dark:text-red-400">
                     {newScheduleInvalidReason}
                   </p>
                 ) : (
                   <div className={cn(
                     'rounded-md border px-3 py-2.5 text-xs',
                     newScheduleTooLarge
-                      ? 'border-red-200 bg-red-50 text-red-700'
-                      : 'border-sky-200 bg-sky-50/70 text-sky-950',
+                      ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
+                      : 'border-sky-200 bg-sky-50/70 text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200',
                   )}>
                     <p className="font-semibold">
                       {newScheduleDateLimitReached ? (
@@ -2895,11 +2915,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                   <div className="space-y-1">
                     {newAddedDates.map(date => (
                       <div key={date}
-                        className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
+                        className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
                         <span>{fullDateFormatter.format(parseDate(date))} · added</span>
                         <button type="button" onClick={() => removeNewAddedDate(date)}
                           aria-label={`Remove added date ${date}`}
-                          className="text-emerald-700 transition-colors hover:text-emerald-900">
+                          className="text-emerald-700 transition-colors hover:text-emerald-900 dark:text-emerald-300">
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -2936,7 +2956,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
       {/* ── Edit Event Dialog ───────────────────────────────────────── */}
       <Dialog open={!!editItem} onOpenChange={open => !open && setEditItem(null)}>
-        <DialogContent className="force-light-theme max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-4 w-4" /> Edit Marketing Event
@@ -2961,7 +2981,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                       className={cn(
                         'rounded-md border px-3 py-2.5 text-left transition-colors',
                         editScope === 'single'
-                          ? 'border-[#111] bg-[#f5f5f5] ring-1 ring-[#111]'
+                          ? 'border-foreground bg-muted ring-1 ring-foreground'
                           : 'bg-background hover:bg-accent',
                       )}>
                       <span className="flex items-center gap-1.5 text-sm font-semibold">
@@ -2976,7 +2996,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                       className={cn(
                         'rounded-md border px-3 py-2.5 text-left transition-colors',
                         editScope === 'series'
-                          ? 'border-[#111] bg-[#fffde7] ring-1 ring-[#111]'
+                          ? 'border-foreground bg-surface-note ring-1 ring-foreground'
                           : 'bg-background hover:bg-accent',
                       )}>
                       <span className="flex items-center gap-1.5 text-sm font-semibold">
@@ -2989,7 +3009,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                       </span>
                     </button>
                   </div>
-                  <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+                  <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
                     {editScope === 'series'
                       ? 'Changing the date shifts every repeat by the same amount, keeping the recurrence spacing intact.'
                       : 'The other repeats will keep their current dates and details.'}
@@ -3012,8 +3032,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                 <p className={cn(
                   'rounded-md border px-3 py-2 text-xs leading-relaxed',
                   editChannelIsRename
-                    ? 'border-sky-200 bg-sky-50 text-sky-900'
-                    : 'border-amber-200 bg-amber-50 text-amber-800',
+                    ? 'border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200'
+                    : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300',
                 )}>
                   {editChannelIsRename ? (
                     <>Moves {editScope === 'series' ? 'this series' : 'this event'} from{' '}
@@ -3051,7 +3071,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                 {editItem.attachment ? (
                   <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
                     <span className="flex min-w-0 items-center gap-1.5 text-sm">
-                      <FileText className="h-3.5 w-3.5 flex-shrink-0 text-sky-700" />
+                      <FileText className="h-3.5 w-3.5 flex-shrink-0 text-sky-700 dark:text-sky-300" />
                       <span className="truncate font-medium">{editItem.attachment.file_name}</span>
                       <span className="flex-shrink-0 text-xs text-muted-foreground">
                         {formatMarketingAssetSize(editItem.attachment.file_size)}
@@ -3082,7 +3102,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                   </button>
                 )}
                 {attachmentError && (
-                  <p role="alert" className="text-xs font-medium text-red-600">{attachmentError}</p>
+                  <p role="alert" className="text-xs font-medium text-red-600 dark:text-red-400">{attachmentError}</p>
                 )}
                 <p className="text-[11px] text-muted-foreground">
                   Files save straight away and belong to this one date, not the whole series.
@@ -3131,7 +3151,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                       })}
                     </div>
                     {editCustomWeekdays.length === 0 && (
-                      <p role="alert" className="text-xs font-medium text-red-600">
+                      <p role="alert" className="text-xs font-medium text-red-600 dark:text-red-400">
                         Select at least one weekday, or add specific dates below.
                       </p>
                     )}
@@ -3180,11 +3200,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                   <div className="space-y-1">
                     {editAddedDates.map(date => (
                       <div key={date}
-                        className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
+                        className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
                         <span>{fullDateFormatter.format(parseDate(date))} · added</span>
                         <button type="button" onClick={() => removeEditAddedDate(date)}
                           aria-label={`Remove added date ${date}`}
-                          className="text-emerald-700 transition-colors hover:text-emerald-900">
+                          className="text-emerald-700 transition-colors hover:text-emerald-900 dark:text-emerald-300">
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -3287,7 +3307,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
           }
         }}
       >
-        <DialogContent className="force-light-theme max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Paperclip className="h-4 w-4" /> Event file
@@ -3334,7 +3354,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                         />
                       ) : !isMarketingAssetPreviewable(attachmentItem.attachment.mime_type) ? (
                         <div className="flex flex-col items-center gap-2 px-6 py-10 text-center text-sm text-muted-foreground">
-                          <FileText className="h-10 w-10 text-sky-700" />
+                          <FileText className="h-10 w-10 text-sky-700 dark:text-sky-300" />
                           Preview is not available for this file type
                         </div>
                       ) : (
@@ -3344,7 +3364,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center justify-between gap-3 border-t bg-white/95 px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-3 border-t bg-background/95 px-3 py-2.5">
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium">
                           {attachmentItem.attachment.file_name}
@@ -3354,8 +3374,8 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                         </span>
                       </span>
                       {isMarketingAssetPreviewable(attachmentItem.attachment.mime_type)
-                        ? <ImageIcon className="h-4 w-4 flex-shrink-0 text-sky-700" />
-                        : <FileText className="h-4 w-4 flex-shrink-0 text-sky-700" />}
+                        ? <ImageIcon className="h-4 w-4 flex-shrink-0 text-sky-700 dark:text-sky-300" />
+                        : <FileText className="h-4 w-4 flex-shrink-0 text-sky-700 dark:text-sky-300" />}
                     </div>
                   </div>
 
@@ -3402,9 +3422,9 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                   type="button"
                   onClick={() => attachmentInputRef.current?.click()}
                   disabled={attachmentBusy !== null}
-                  className="group flex min-h-56 w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-sky-200 bg-sky-50/60 px-6 text-center transition-colors hover:border-sky-400 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="group flex min-h-56 w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-sky-200 bg-sky-50/60 px-6 text-center transition-colors hover:border-sky-400 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-900 dark:bg-sky-950/40"
                 >
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sky-700 shadow-sm ring-1 ring-sky-100 transition-transform group-hover:-translate-y-0.5">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-card text-sky-600 shadow-sm ring-1 ring-sky-500/20 dark:text-sky-400 transition-transform group-hover:-translate-y-0.5">
                     {attachmentBusy === 'upload'
                       ? <Loader2 className="h-5 w-5 animate-spin" />
                       : <Paperclip className="h-5 w-5" />}
@@ -3421,7 +3441,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
               )}
 
               {attachmentError && (
-                <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
                   {attachmentError}
                 </p>
               )}
@@ -3432,10 +3452,10 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
       {/* ── Missed Reason Dialog ─────────────────────────────────────── */}
       <Dialog open={!!reasonItem} onOpenChange={open => !open && setReasonItem(null)}>
-        <DialogContent className="force-light-theme max-w-md">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <XCircle className="h-4 w-4 text-red-600" /> Why was this missed?
+              <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" /> Why was this missed?
             </DialogTitle>
           </DialogHeader>
           {reasonItem && (

@@ -26,7 +26,7 @@ import AiChatWidget from '../ai-chat/ai-chat-widget'
 import DashboardWindow from '../dashboard/dashboard-window'
 import WorkNext from '../dashboard/work-next'
 import AccountSettings from '../account/account-settings'
-import ThemeToggle from '../theme-toggle'
+import { ThemeControls } from '../theme/theme-controls'
 import ChatUnreadBadge from '../chat/chat-unread-badge'
 import GlobalSearch from '../search/global-search'
 import { gsap } from 'gsap'
@@ -209,7 +209,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
       favorites={favoriteItems}
       topbarActions={
         <>
-          <ThemeToggle />
+          <ThemeControls />
           <AccountSettings
             userId={user.id}
             currentName={user.full_name || ''}

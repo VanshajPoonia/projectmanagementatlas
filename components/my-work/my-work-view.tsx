@@ -12,7 +12,7 @@ import type { SidebarNavGroup } from '@/components/shell/app-sidebar'
 import type { Command } from '@/components/shell/commands'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import ThemeToggle from '@/components/theme-toggle'
+import { ThemeControls } from '@/components/theme/theme-controls'
 import { useAppModules } from '@/lib/modules'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
 import { useFavorites } from '@/lib/use-favorites'
@@ -108,7 +108,7 @@ export default function MyWorkView({ user, tasks }: MyWorkViewProps) {
       breadcrumbs={[{ label: 'My Work' }]}
       favorites={favoriteItems}
       commands={commands}
-      topbarActions={<ThemeToggle />}
+      topbarActions={<ThemeControls />}
     >
       <div className="mx-auto w-full max-w-5xl space-y-6 p-4 md:p-6">
         <header className="space-y-1">
@@ -151,7 +151,7 @@ export default function MyWorkView({ user, tasks }: MyWorkViewProps) {
                       className={cn(
                         'hover:border-primary/30 flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent',
                         index === 0 && 'border-primary/40 bg-primary/5',
-                        isOverdue && 'border-red-300 bg-red-50/40',
+                        isOverdue && 'border-red-300 bg-red-50/40 dark:border-red-800 dark:bg-red-950/40',
                       )}
                     >
                       <span
@@ -199,7 +199,7 @@ export default function MyWorkView({ user, tasks }: MyWorkViewProps) {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   {section.id === 'overdue' ? (
-                    <AlertTriangle className="size-4 text-red-600" aria-hidden="true" />
+                    <AlertTriangle className="size-4 text-red-600 dark:text-red-400" aria-hidden="true" />
                   ) : (
                     <CircleDot className="size-4" aria-hidden="true" />
                   )}
@@ -228,7 +228,7 @@ export default function MyWorkView({ user, tasks }: MyWorkViewProps) {
                               {task.board_title && <span className="truncate">{task.board_title}</span>}
                               <span>{getTaskStatusLabel(task)}</span>
                               {due && (
-                                <span className={due.overdue ? 'font-medium text-red-600' : undefined}>
+                                <span className={due.overdue ? 'font-medium text-red-600 dark:text-red-400' : undefined}>
                                   {due.text}
                                 </span>
                               )}
@@ -268,7 +268,7 @@ function Stat({ label, value, tone = 'plain' }: { label: string; value: number; 
   return (
     <div className="rounded-lg border p-3">
       <dt className="text-muted-foreground text-xs font-medium">{label}</dt>
-      <dd className={cn('mt-1 text-2xl font-semibold tabular-nums', tone === 'danger' && 'text-red-600')}>
+      <dd className={cn('mt-1 text-2xl font-semibold tabular-nums', tone === 'danger' && 'text-red-600 dark:text-red-400')}>
         {value}
       </dd>
     </div>

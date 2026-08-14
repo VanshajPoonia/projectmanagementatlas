@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import ThemeToggle from '@/components/theme-toggle'
+import { ThemeControls } from '@/components/theme/theme-controls'
 import { Breadcrumbs, type Crumb } from './breadcrumbs'
 import { HelpDialog } from './help-dialog'
 
@@ -70,7 +70,7 @@ export function AppTopbar({ user, breadcrumbs, onOpenCommand, actions }: AppTopb
 
       {actions ?? (
         <>
-          <ThemeToggle />
+          <ThemeControls />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="focus-visible:ring-ring rounded-full outline-none focus-visible:ring-2" aria-label="Account menu">

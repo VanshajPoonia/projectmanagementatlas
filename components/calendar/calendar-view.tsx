@@ -308,10 +308,10 @@ export default function CalendarView({ tasks, users, isAdmin = false }: Calendar
                                   variant="outline"
                                   className={`text-xs ${
                                     task.priority <= 2
-                                      ? 'border-red-500 text-red-500 bg-red-50'
+                                      ? 'border-red-500 text-red-500 bg-red-50 dark:bg-red-950/40'
                                       : task.priority === 3
-                                      ? 'border-orange-500 text-orange-500 bg-orange-50'
-                                      : 'border-blue-500 text-blue-500 bg-blue-50'
+                                      ? 'border-orange-500 text-orange-500 bg-orange-50 dark:bg-orange-950/40'
+                                      : 'border-blue-500 text-blue-500 bg-blue-50 dark:bg-blue-950/40'
                                   }`}
                                 >
                                   Priority: {task.priority}

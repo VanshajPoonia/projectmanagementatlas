@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ArrowLeft, ShieldCheck, Users, Building2, SlidersHorizontal, UsersRound } from 'lucide-react'
+import { ThemeControls } from '@/components/theme/theme-controls'
 import EnhancedUserManagement from './enhanced-user-management'
 import CompanyManagement from './company-management'
 import StatusManagement from './status-management'
@@ -40,6 +41,11 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
                 <h1 className="text-lg font-bold tracking-tight sm:text-xl">Super Admin</h1>
                 <p className="text-sm text-muted-foreground">Manage users and company entities</p>
               </div>
+            </div>
+            {/* This page builds its own header rather than using AppShell's topbar, so the
+                theme control has to be repeated here or the page is a dark-mode dead end. */}
+            <div className="ml-auto shrink-0">
+              <ThemeControls />
             </div>
           </div>
         </div>

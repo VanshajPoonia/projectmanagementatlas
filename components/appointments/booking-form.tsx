@@ -87,7 +87,7 @@ export default function BookingForm({ token, hostName, settings, restrictions, e
     return (
       <Card>
         <CardContent className="space-y-3 pt-6 text-center">
-          <CheckCircle2 className="mx-auto h-10 w-10 text-green-600" />
+          <CheckCircle2 className="mx-auto h-10 w-10 text-green-600 dark:text-green-400" />
           <h1 className="text-lg font-semibold">Appointment confirmed</h1>
           <p className="text-sm text-muted-foreground">{fmt.format(new Date(confirmed.startsAt))}</p>
           <p className="text-xs text-muted-foreground">A confirmation email is on its way to {guestEmail}.</p>
@@ -134,7 +134,7 @@ export default function BookingForm({ token, hostName, settings, restrictions, e
           </div>
 
           {preview && (
-            <p role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <p role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
               {preview}
             </p>
           )}

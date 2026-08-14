@@ -26,9 +26,9 @@ function adminDb() {
 }
 
 function priorityClass(priority: number) {
-  if (priority <= 2) return 'border-red-500 text-red-600'
-  if (priority === 3) return 'border-orange-500 text-orange-600'
-  return 'border-blue-500 text-blue-600'
+  if (priority <= 2) return 'border-red-500 text-red-600 dark:text-red-400'
+  if (priority === 3) return 'border-orange-500 text-orange-600 dark:text-orange-400'
+  return 'border-blue-500 text-blue-600 dark:text-blue-400'
 }
 
 function InvalidLink() {
