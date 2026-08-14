@@ -57,6 +57,9 @@ export function buildWorkspaceNav({
   if (on('appointments')) {
     items.push({ id: 'appointments', label: 'Appointments', icon: 'appointments', href: '/dashboard?tab=appointments', status: 'live' })
   }
+  if (on('crm')) {
+    items.push({ id: 'crm', label: 'CRM', icon: 'crm', href: '/crm', status: 'live' })
+  }
   if (on('project_ids')) {
     items.push({ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: '/dashboard?tab=project-ids', status: 'live' })
   }

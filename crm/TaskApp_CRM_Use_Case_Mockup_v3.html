@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskApp CRM Mockup</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: Inter, Arial, Helvetica, sans-serif;
+        background: #f4f6f8;
+        color: #17202a;
+    }
+    .app { display: flex; min-height: 100vh; }
+    .sidebar {
+        width: 245px;
+        background: #17212b;
+        color: white;
+        padding: 22px 16px;
+        position: fixed;
+        top: 0; bottom: 0; left: 0;
+    }
+    .brand {
+        font-size: 22px;
+        font-weight: 800;
+        margin-bottom: 4px;
+    }
+    .brand-sub {
+        color: #aeb8c2;
+        font-size: 12px;
+        margin-bottom: 28px;
+    }
+    .nav-item {
+        display: block;
+        padding: 12px 14px;
+        border-radius: 8px;
+        color: #d8e0e7;
+        text-decoration: none;
+        margin-bottom: 6px;
+        cursor: pointer;
+    }
+    .nav-item:hover, .nav-item.active {
+        background: #263647;
+        color: white;
+    }
+    .nav-section {
+        font-size: 11px;
+        color: #7f8b96;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 22px 10px 8px;
+    }
+    .main {
+        margin-left: 245px;
+        width: calc(100% - 245px);
+    }
+    .topbar {
+        background: white;
+        border-bottom: 1px solid #e4e7eb;
+        padding: 17px 26px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .topbar h1 {
+        font-size: 20px;
+        margin: 0;
+    }
+    .user-badge {
+        background: #eef2f5;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 13px;
+    }
+    .content { padding: 25px; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    .grid-4 {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-bottom: 22px;
+    }
+    .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+    }
+    .card {
+        background: white;
+        border: 1px solid #e3e7eb;
+        border-radius: 12px;
+        padding: 18px;
+        box-shadow: 0 1px 2px rgba(0,0,0,.03);
+    }
+    .metric-label {
+        color: #6a7480;
+        font-size: 13px;
+    }
+    .metric-value {
+        font-size: 28px;
+        font-weight: 800;
+        margin-top: 6px;
+    }
+    .metric-sub {
+        font-size: 12px;
+        margin-top: 6px;
+        color: #7f8b96;
+    }
+    .positive { color: #16794b; }
+    .warning { color: #b06a00; }
+    .danger { color: #b32d2e; }
+
+    .section-title {
+        margin: 5px 0 14px;
+        font-size: 18px;
+    }
+    .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+    }
+    button, select, input, textarea {
+        font: inherit;
+    }
+    .btn {
+        border: none;
+        background: #1e6fd9;
+        color: white;
+        padding: 9px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    .btn.secondary {
+        background: #eef2f5;
+        color: #26323f;
+        border: 1px solid #d8dde3;
+    }
+    .btn.dark { background: #263647; }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    th, td {
+        padding: 11px 10px;
+        border-bottom: 1px solid #edf0f3;
+        text-align: left;
+        vertical-align: middle;
+    }
+    th {
+        color: #5f6b76;
+        font-weight: 700;
+        background: #fafbfc;
+    }
+    .status {
+        display: inline-block;
+        padding: 5px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    .s-new { background: #e7f0ff; color: #1e5aa8; }
+    .s-review { background: #fff4da; color: #8b6410; }
+    .s-progress { background: #e8f7ef; color: #16794b; }
+    .s-hold { background: #fce9e9; color: #9e2f2f; }
+    .s-closed { background: #eceef1; color: #4e5964; }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+    }
+    .field label {
+        display: block;
+        font-size: 12px;
+        color: #5f6b76;
+        margin-bottom: 5px;
+        font-weight: 700;
+    }
+    .field input, .field select, .field textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #d8dde3;
+        border-radius: 7px;
+        background: white;
+    }
+    .field.full { grid-column: 1 / -1; }
+    .pipeline {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 8px;
+        margin-top: 10px;
+    }
+    .stage {
+        background: #f8fafb;
+        border: 1px solid #dfe4e8;
+        padding: 12px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 12px;
+    }
+    .stage strong {
+        display: block;
+        font-size: 18px;
+        margin-top: 4px;
+    }
+    .bar-row {
+        display: grid;
+        grid-template-columns: 170px 1fr 60px;
+        gap: 12px;
+        align-items: center;
+        margin: 12px 0;
+        font-size: 13px;
+    }
+    .bar {
+        height: 12px;
+        background: #e9edf1;
+        border-radius: 999px;
+        overflow: hidden;
+    }
+    .bar > span {
+        display: block;
+        height: 100%;
+        background: #1e6fd9;
+        border-radius: 999px;
+    }
+    .callout {
+        border-left: 4px solid #1e6fd9;
+        background: #eef5ff;
+        padding: 14px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        margin-bottom: 18px;
+    }
+    .filters {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(140px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .filters select, .filters input {
+        padding: 9px;
+        border: 1px solid #d8dde3;
+        border-radius: 7px;
+        background: white;
+        width: 100%;
+    }
+    .mini-list {
+        margin: 0;
+        padding-left: 18px;
+        color: #59636e;
+        font-size: 13px;
+        line-height: 1.7;
+    }
+    .usecase {
+        display: grid;
+        grid-template-columns: 160px 1fr;
+        border-bottom: 1px solid #edf0f3;
+        padding: 11px 0;
+        font-size: 13px;
+    }
+    .usecase:last-child { border-bottom: none; }
+    .usecase b { color: #4d5966; }
+
+    .editable-table td[contenteditable="true"] { cursor:text; background:#fbfdff; }
+    .editable-table td[contenteditable="true"]:hover { outline:2px solid #cfe1fa; outline-offset:-2px; }
+    .editable-table td[contenteditable="true"]:focus { outline:2px solid #1e6fd9; outline-offset:-2px; background:white; }
+    .editable-table select { border:1px solid transparent; background:transparent; padding:6px; border-radius:6px; }
+    .editable-table select:hover, .editable-table select:focus { border-color:#1e6fd9; background:white; }
+
+    
+    .segmented { display:flex; gap:6px; align-items:center; }
+    .segmented button { padding:7px 10px; border:1px solid #d8dde3; background:white; border-radius:6px; cursor:pointer; }
+    .segmented button.active { background:#17212b; color:white; }
+    .compare-row { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:16px; }
+    .trend-chart { position:relative; height:210px; margin-top:12px; border-left:1px solid #dfe4e8; border-bottom:1px solid #dfe4e8; background:
+        linear-gradient(to bottom, transparent 24%, #eef1f4 25%, transparent 26%, transparent 49%, #eef1f4 50%, transparent 51%, transparent 74%, #eef1f4 75%, transparent 76%); }
+    .trend-svg { width:100%; height:100%; }
+    .funnel-row { display:grid; grid-template-columns:170px 1fr 100px; gap:12px; align-items:center; margin:12px 0; font-size:13px; }
+    .funnel-bar { height:14px; background:#edf0f3; border-radius:999px; overflow:hidden; }
+    .funnel-bar span { display:block; height:100%; background:#1e6fd9; border-radius:999px; }
+    .insight-note { background:#fffaf0; border:1px solid #f1dfb8; border-radius:8px; padding:12px 14px; font-size:13px; color:#6a5521; }
+    .toggle { display:inline-flex; align-items:center; gap:8px; font-size:12px; color:#5f6b76; }
+
+    @media (max-width: 1100px) {
+        .grid-4, .grid-3 { grid-template-columns: repeat(2,1fr); }
+        .pipeline { grid-template-columns: repeat(3,1fr); }
+        .filters { grid-template-columns: repeat(2,1fr); }
+    }
+</style>
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand">TaskApp CRM</div>
+        <div class="brand-sub">Entry-Level CRM + Reporting Prototype</div>
+
+        <div class="nav-section">Operations</div>
+        <a class="nav-item active" onclick="showPage('dashboard', this)">Dashboard</a>
+        <a class="nav-item" onclick="showPage('clients', this)">Clients</a>
+        <a class="nav-item" onclick="showPage('newclient', this)">New Client Intake</a>
+        <a class="nav-item" onclick="showPage('orders', this)">Orders</a>
+                <a class="nav-item" onclick="showPage('status', this)">Status Control</a>
+
+        <div class="nav-section">Administration</div>
+        <a class="nav-item" onclick="showPage('admindashboard', this)">Admin Team Dashboard</a>
+        <a class="nav-item" onclick="showPage('reporting', this)">Lead Insights</a>
+        <a class="nav-item" onclick="showPage('cycle', this)">Cycle-Time Reporting</a>
+        <a class="nav-item" onclick="showPage('usecases', this)">Use Case Design</a>
+    </aside>
+
+    <main class="main">
+        <div class="topbar">
+            <h1 id="page-title">Dashboard</h1>
+            <div class="user-badge">Administrator ▾</div>
+        </div>
+
+        <div class="content">
+
+            <section id="dashboard" class="page active">
+                <div class="callout">
+                    <strong>Prototype objective:</strong> one simple operational system for entering clients and orders, controlling workflow status, and producing management-level reporting without requiring users to understand a complex enterprise CRM.
+                </div>
+
+                <div class="grid-4">
+                    <div class="card"><div class="metric-label">Open Orders</div><div class="metric-value">128</div><div class="metric-sub">Across all active statuses</div></div>
+                    <div class="card"><div class="metric-label">New This Week</div><div class="metric-value">34</div><div class="metric-sub positive">▲ 12% vs. last week</div></div>
+                    <div class="card"><div class="metric-label">Avg. Days to Close</div><div class="metric-value">8.6</div><div class="metric-sub positive">▼ 1.2 days vs. prior month</div></div>
+                    <div class="card"><div class="metric-label">Orders Past SLA</div><div class="metric-value danger">11</div><div class="metric-sub">Needs management attention</div></div>
+                </div>
+
+                <div class="card">
+                    <h2 class="section-title">Current Pipeline</h2>
+                    <div class="pipeline" style="grid-template-columns:repeat(4,1fr);">
+                        <div class="stage">New<strong>28</strong></div>
+                        <div class="stage">In Progress<strong>41</strong></div>
+                        <div class="stage">Pending Operations<strong>23</strong></div>
+                        <div class="stage">Hold<strong>8</strong></div>
+                        <div class="stage">Ready for Estimate<strong>17</strong></div>
+                        <div class="stage">Won<strong>12</strong></div>
+                        <div class="stage">Closed<strong>9</strong></div>
+                        <div class="stage">Cancel<strong>4</strong></div>
+                    </div>
+                </div>
+                </div>
+
+                <div class="grid-3" style="margin-top:16px;">
+                    <div class="card">
+                        <h2 class="section-title">Aging Alerts</h2>
+                        <ul class="mini-list">
+                            <li>5 orders in “Pending Operations” over 48 hours</li>
+                            <li>3 orders unassigned over 24 hours</li>
+                            <li>11 open orders beyond target close date</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h2 class="section-title">Today</h2>
+                        <ul class="mini-list">
+                            <li>12 orders closed</li>
+                            <li>9 client follow-ups due</li>
+                            <li>7 documents awaiting review</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h2 class="section-title">Quick Actions</h2>
+                        <button class="btn" onclick="showPage('newclient')">+ New Client</button>
+                        <button class="btn secondary" onclick="showPage('newclient')" style="margin-left:6px;">+ New Client</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="clients" class="page">
+                <div class="toolbar">
+                    <button class="btn" onclick="showPage('newclient')">+ New Client</button>
+                    <input placeholder="Search client name, email, mobile phone..." style="padding:9px;border:1px solid #d8dde3;border-radius:7px;min-width:290px;">
+                    <span style="font-size:12px;color:#6a7480;">Click any highlighted field to edit or copy it immediately.</span>
+                </div>
+                <div class="card">
+                    <table class="editable-table">
+                        <thead><tr><th>Client ID</th><th>Name</th><th>Company</th><th>Email</th><th>Mobile Phone</th><th>Status</th><th>Sales Rep</th><th>Last Activity</th></tr></thead>
+                        <tbody>
+                            <tr><td>C-10482</td><td contenteditable="true">Jennifer Martin</td><td contenteditable="true">Martin Holdings</td><td contenteditable="true">jmartin@example.com</td><td contenteditable="true">314-555-0199</td><td><select><option>New</option><option selected>In Progress</option><option>Pending Operations</option><option>Hold</option><option>Ready for Estimate</option><option>Won</option><option>Closed</option><option>Cancel</option></select></td><td>A. Carter</td><td>Today</td></tr>
+                            <tr><td>C-10481</td><td contenteditable="true">David Wilson</td><td contenteditable="true">—</td><td contenteditable="true">dwilson@example.com</td><td contenteditable="true">636-555-0134</td><td><select><option selected>New</option><option>In Progress</option><option>Pending Operations</option><option>Hold</option><option>Ready for Estimate</option><option>Won</option><option>Closed</option><option>Cancel</option></select></td><td>M. Lee</td><td>Yesterday</td></tr>
+                            <tr><td>C-10479</td><td contenteditable="true">Sarah Patel</td><td contenteditable="true">Patel Group</td><td contenteditable="true">spatel@example.com</td><td contenteditable="true">314-555-0112</td><td><select><option>New</option><option>In Progress</option><option selected>Pending Operations</option><option>Hold</option><option>Ready for Estimate</option><option>Won</option><option>Closed</option><option>Cancel</option></select></td><td>A. Carter</td><td>2 days ago</td></tr>
+                        </tbody>
+                    </table>
+                    <div style="font-size:11px;color:#7f8b96;margin-top:10px;">Prototype behavior: click into Name, Company, Email, or Mobile Phone to edit/copy in place. Status changes from the dropdown without opening the client record.</div>
+                </div>
+
+                <div class="card" style="margin-top:16px;">
+                    <h2 class="section-title">Client Workspace — Jennifer Martin</h2>
+                    <div class="grid-3">
+                        <div>
+                            <h3 style="font-size:14px;">Files & Documents</h3>
+                            <div style="border:2px dashed #d8dde3;border-radius:9px;padding:22px;text-align:center;color:#6a7480;font-size:13px;">
+                                Drop pictures, PDFs, estimates, contracts, or documents here<br><br>
+                                <button class="btn secondary">Upload Files</button>
+                            </div>
+                            <ul class="mini-list" style="margin-top:10px;">
+                                <li>property-photo-01.jpg</li>
+                                <li>trust-documents.pdf</li>
+                                <li>site-notes.pdf</li>
+                            </ul>
+                        </div>
+                        <div style="grid-column:span 2;">
+                            <h3 style="font-size:14px;">Sales Activity & Team Notes</h3>
+                            <textarea rows="4" style="width:100%;padding:10px;border:1px solid #d8dde3;border-radius:7px;" placeholder="Add a prospecting note, call result, client update, handoff note, or sales-process comment..."></textarea>
+                            <button class="btn" style="margin-top:8px;">Add Note</button>
+                            <div style="margin-top:14px;font-size:13px;">
+                                <p><strong>A. Carter · Today 5:42 PM</strong><br>Spoke with Jennifer. Family is reviewing scope and asked for estimate by Friday.</p>
+                                <p><strong>M. Lee · Yesterday 2:18 PM</strong><br>Trust documents received and uploaded. Operations can begin review.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="newclient" class="page">
+                <div class="card">
+                    <h2 class="section-title">New Client Intake</h2>
+                    <div class="callout">
+                        A client record can contain multiple individual contacts. Use <strong>+ Add Customer</strong> for trusts, families, partnerships, or other opportunities with multiple decision-makers.
+                    </div>
+
+                    <div id="contactRows">
+                        <div class="contact-row card" style="background:#fafbfc;margin-bottom:12px;">
+                            <div class="form-grid">
+                                <div class="field"><label>First Name *</label><input placeholder="First name"></div>
+                                <div class="field"><label>Last Name *</label><input placeholder="Last name"></div>
+                                <div class="field"><label>Email *</label><input placeholder="name@example.com"></div>
+                                <div class="field"><label>Mobile Phone *</label><input placeholder="(000) 000-0000"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="btn secondary" type="button" onclick="addCustomer()">+ Add Customer</button>
+
+                    <hr style="border:none;border-top:1px solid #edf0f3;margin:22px 0;">
+                    <div class="form-grid">
+                        <div class="field"><label>Company / Trust / Organization</label><input placeholder="Optional"></div>
+                        <div class="field"><label>Client Type</label><select><option>Individual</option><option>Family / Trust</option><option>Business</option><option>Partner</option></select></div>
+                        <div class="field"><label>Address</label><input placeholder="Street"></div>
+                        <div class="field"><label>City / State / ZIP</label><input></div>
+                        <div class="field"><label>Lead Source</label><select><option>Referral</option><option>Website</option><option>Advertising</option><option>Existing Client</option><option>Other</option></select></div>
+                        <div class="field"><label>Status</label><select><option>New</option><option>In Progress</option><option>Pending Operations</option><option>Hold</option><option>Ready for Estimate</option><option>Won</option><option>Closed</option><option>Cancel</option></select></div>
+                        <div class="field"><label>Sales Rep</label><select><option>A. Carter</option><option>M. Lee</option><option>J. Smith</option></select></div>
+                        <div class="field"><label>Operations Rep</label><select><option>Unassigned</option><option>A. Carter</option><option>M. Lee</option><option>J. Smith</option></select></div>
+                        <div class="field"><label>Estimated Value / Revenue</label><input placeholder="$0.00"></div>
+                        <div class="field full"><label>Client Notes</label><textarea rows="4" placeholder="General intake notes, special instructions, relationship information, etc."></textarea></div>
+                        <div class="field full">
+                            <button class="btn">Save Client</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="orders" class="page">
+                <div class="toolbar">
+                    <button class="btn" onclick="showPage('newclient')">+ New Client</button>
+                    <input placeholder="Search order # or client..." style="padding:9px;border:1px solid #d8dde3;border-radius:7px;min-width:250px;">
+                    <select style="padding:9px;border:1px solid #d8dde3;border-radius:7px;"><option>All Statuses</option><option>New</option><option>In Progress</option><option>Pending Operations</option><option>In Progress</option><option>Hold</option><option>Ready for Estimate</option><option>Won</option><option>Closed</option><option>Cancel</option></select>
+                    <select style="padding:9px;border:1px solid #d8dde3;border-radius:7px;"><option>All Owners</option><option>A. Carter</option><option>M. Lee</option><option>J. Smith</option></select>
+                </div>
+                <div class="card">
+                    <table>
+                        <thead><tr><th>Order #</th><th>Client</th><th>Order Type</th><th>Status</th><th>In Progress To</th><th>Age</th><th>Target Close</th><th>Priority</th></tr></thead>
+                        <tbody>
+                            <tr><td>ORD-260813-1187</td><td>Jennifer Martin</td><td>Standard Service</td><td><span class="status s-progress">In Progress</span></td><td>A. Carter</td><td>3.4 days</td><td>Aug 15</td><td>Normal</td></tr>
+                            <tr><td>ORD-260813-1186</td><td>David Wilson</td><td>Rush Service</td><td><span class="status s-review">Pending Operations</span></td><td>M. Lee</td><td>1.2 days</td><td>Aug 14</td><td>High</td></tr>
+                            <tr><td>ORD-260812-1172</td><td>Sarah Patel</td><td>Standard Service</td><td><span class="status s-hold">Hold</span></td><td>J. Smith</td><td>5.8 days</td><td>Aug 16</td><td>Normal</td></tr>
+                            <tr><td>ORD-260811-1158</td><td>Thomas Reed</td><td>Standard Service</td><td><span class="status s-closed">Closed</span></td><td>A. Carter</td><td>7.1 days</td><td>Aug 12</td><td>Normal</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+
+            <section id="status" class="page">
+                <div class="callout">
+                    Every status change creates a timestamped history record. That status history becomes the foundation for all administrative cycle-time and bottleneck reporting.
+                </div>
+                <div class="card">
+                    <h2 class="section-title">Order ORD-260813-1187 — Status Control</h2>
+                    <div class="form-grid">
+                        <div class="field"><label>Current Status</label><input value="In Progress" readonly></div>
+                        <div class="field"><label>Change Status To</label><select onchange="toggleCancelReason(this)"><option>In Progress</option><option>Hold</option><option>Ready for Estimate</option><option>Won</option><option>Closed</option><option>Cancel</option></select></div>
+                        <div class="field"><label>Status Effective Date / Time</label><input value="08/13/2026 6:10 AM"></div>
+                        <div class="field"><label>Reason / Disposition</label><select><option>Work proceeding normally</option><option>Waiting on customer</option><option>Waiting on internal review</option><option>Waiting on documentation</option><option>Completed</option><option>Other</option></select></div>
+                        
+                        <div id="cancelReason" class="field full" style="display:none;background:#fff4f4;border:1px solid #efcaca;padding:14px;border-radius:8px;">
+                            <label>Lost Deal / Cancellation Reason * REQUIRED</label>
+                            <textarea rows="4" placeholder="Required: explain why this opportunity was lost or cancelled."></textarea>
+                            <div style="font-size:11px;color:#9e2f2f;margin-top:5px;">The status cannot be saved as Cancel until a reason is entered.</div>
+                        </div>
+                        <div class="field full"><label>Status Notes</label><textarea rows="3" placeholder="Optional note explaining the transition."></textarea></div>
+                        <div class="field full"><button class="btn">Update Status</button></div>
+                    </div>
+                </div>
+                <div class="card" style="margin-top:16px;">
+                    <h2 class="section-title">Status History</h2>
+                    <table>
+                        <thead><tr><th>Status</th><th>Entered</th><th>Exited</th><th>Elapsed Time</th><th>Changed By</th></tr></thead>
+                        <tbody>
+                            <tr><td>New</td><td>Aug 10, 9:14 AM</td><td>Aug 10, 10:02 AM</td><td>48 min</td><td>System / Intake</td></tr>
+                            <tr><td>In Progress</td><td>Aug 10, 10:02 AM</td><td>Aug 10, 1:22 PM</td><td>3 hr 20 min</td><td>M. Lee</td></tr>
+                            <tr><td>Pending Operations</td><td>Aug 10, 1:22 PM</td><td>Aug 11, 8:10 AM</td><td>18 hr 48 min</td><td>A. Carter</td></tr>
+                            <tr><td>In Progress</td><td>Aug 11, 8:10 AM</td><td>Current</td><td>1.9 days</td><td>A. Carter</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            
+            <section id="admindashboard" class="page">
+                <div class="callout"><strong>Admin-only view:</strong> the manager sees the same operating picture rolled up across every sales rep, with the ability to filter down to an individual rep.</div>
+                <div class="toolbar">
+                    <select style="padding:9px;border:1px solid #d8dde3;border-radius:7px;"><option>All Sales Reps</option><option>A. Carter</option><option>M. Lee</option><option>J. Smith</option></select>
+                    <select style="padding:9px;border:1px solid #d8dde3;border-radius:7px;"><option>This Month</option><option>This Week</option><option>Quarter</option><option>Year to Date</option></select>
+                </div>
+                <div class="grid-4">
+                    <div class="card"><div class="metric-label">Active Prospects</div><div class="metric-value">284</div><div class="metric-sub">Across 10 sales reps</div></div>
+                    <div class="card"><div class="metric-label">Pipeline Value</div><div class="metric-value">$3.84M</div><div class="metric-sub">Estimated revenue</div></div>
+                    <div class="card"><div class="metric-label">Won</div><div class="metric-value positive">47</div><div class="metric-sub">$812K estimated value</div></div>
+                    <div class="card"><div class="metric-label">Cancelled / Lost</div><div class="metric-value danger">18</div><div class="metric-sub">Loss reason required</div></div>
+                </div>
+                <div class="card">
+                    <h2 class="section-title">Sales Rep Rollup</h2>
+                    <table>
+                        <thead><tr><th>Sales Rep</th><th>New</th><th>In Progress</th><th>Pending Ops</th><th>Hold</th><th>Ready for Estimate</th><th>Won</th><th>Cancelled</th><th>Pipeline Value</th></tr></thead>
+                        <tbody>
+                            <tr><td>A. Carter</td><td>12</td><td>19</td><td>6</td><td>3</td><td>7</td><td>8</td><td>2</td><td>$684,000</td></tr>
+                            <tr><td>M. Lee</td><td>9</td><td>15</td><td>8</td><td>4</td><td>5</td><td>6</td><td>3</td><td>$521,000</td></tr>
+                            <tr><td>J. Smith</td><td>14</td><td>21</td><td>5</td><td>2</td><td>9</td><td>10</td><td>1</td><td>$798,000</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="reporting" class="page">
+                <div class="compare-row">
+                    <div>
+                        <h2 class="section-title" style="margin-bottom:4px;">Lead Insights</h2>
+                        <div style="font-size:13px;color:#6a7480;">Management reporting inspired by the Houzz lead-insights workflow.</div>
+                    </div>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <div class="segmented">
+                            <button>1m</button><button>3m</button><button class="active">6m</button><button>1y</button>
+                        </div>
+                        <span style="font-size:12px;color:#6a7480;">Compared to</span>
+                        <select style="padding:8px;border:1px solid #d8dde3;border-radius:7px;"><option>Previous Period</option><option>Previous Year</option><option>No Comparison</option></select>
+                    </div>
+                </div>
+
+                <div class="grid-4">
+                    <div class="card"><div class="metric-label">Total Leads</div><div class="metric-value">179</div><div class="metric-sub positive">▲ 588.0% vs. previous period</div></div>
+                    <div class="card"><div class="metric-label">Leads Won</div><div class="metric-value">33</div><div class="metric-sub positive">▲ 94.0% vs. previous period</div></div>
+                    <div class="card"><div class="metric-label">Estimated Revenue</div><div class="metric-value">$83K</div><div class="metric-sub">Selected period</div></div>
+                    <div class="card"><div class="metric-label">Estimated Profit</div><div class="metric-value">$8.6K</div><div class="metric-sub">Selected period</div></div>
+                </div>
+
+                <div class="card">
+                    <h2 class="section-title">Total Leads</h2>
+                    <div style="display:flex;gap:28px;font-size:13px;color:#59636e;">
+                        <span><strong style="font-size:20px;color:#17202a;">179</strong> <span class="positive">↑ +588.0%</span></span>
+                        <span>Previous Period <strong style="color:#17202a;">26</strong></span>
+                    </div>
+                    <div class="trend-chart">
+                        <svg class="trend-svg" viewBox="0 0 800 210" preserveAspectRatio="none">
+                            <polyline fill="none" stroke="#1e6fd9" stroke-width="3" points="0,185 30,165 60,183 90,176 120,177 150,160 180,180 210,158 240,182 270,184 300,192 330,190 360,178 390,172 420,190 450,188 480,180 510,164 540,128 560,55 580,30 600,112 630,100 660,82 690,70 720,96 750,112 770,170 800,184"/>
+                            <polyline fill="none" stroke="#a8a29a" stroke-width="2" points="0,190 50,190 100,188 150,190 200,188 250,190 300,188 350,190 400,184 450,190 500,187 550,180 600,189 650,178 700,186 750,190 800,180"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top:16px;">
+                    <h2 class="section-title">Top 10 Lead Sources</h2>
+                    <table>
+                        <thead><tr><th>Lead Source</th><th>Leads — Current Period</th><th>Previous Period</th><th>% Change</th></tr></thead>
+                        <tbody>
+                            <tr><td>META</td><td>75</td><td>0</td><td class="positive">+100.0%</td></tr>
+                            <tr><td>Facebook</td><td>20</td><td>0</td><td class="positive">+100.0%</td></tr>
+                            <tr><td>Manually Created Lead</td><td>19</td><td>11</td><td class="positive">+73.0%</td></tr>
+                            <tr><td>Container META</td><td>12</td><td>0</td><td class="positive">+100.0%</td></tr>
+                            <tr><td>Shanks Realty Group</td><td>9</td><td>5</td><td class="positive">+80.0%</td></tr>
+                            <tr><td>Web Form</td><td>9</td><td>0</td><td class="positive">+100.0%</td></tr>
+                            <tr><td>Client Referral</td><td>8</td><td>2</td><td class="positive">+300.0%</td></tr>
+                            <tr><td>Houzz Project Match</td><td>7</td><td>1</td><td class="positive">+600.0%</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card" style="margin-top:16px;">
+                    <h2 class="section-title">Lead Time to First Response</h2>
+                    <div class="grid-3">
+                        <div><div class="metric-label">Average Time to First Response</div><div class="metric-value">19.53 hrs</div></div>
+                        <div><div class="metric-label">Leads Over 4-Hour Response Time</div><div class="metric-value">44.1%</div></div>
+                        <div><div class="metric-label">Leads Over 24-Hour Response Time</div><div class="metric-value">26.5%</div></div>
+                    </div>
+                    <div class="insight-note" style="margin-top:16px;">Fast response should be treated as a key sales-management metric. This mockup surfaces slow-response percentages directly for coaching and accountability.</div>
+                </div>
+
+                <div class="card" style="margin-top:16px;">
+                    <h2 class="section-title">Leads Won</h2>
+                    <div style="display:flex;gap:28px;font-size:13px;color:#59636e;margin-bottom:14px;">
+                        <span><strong style="font-size:20px;color:#17202a;">33</strong> <span class="positive">↑ +94.0%</span></span>
+                        <span>Previous Period <strong style="color:#17202a;">17</strong></span>
+                    </div>
+                    <div class="bar-row"><span>Current Period</span><div class="bar"><span style="width:92%"></span></div><b>33</b></div>
+                    <div class="bar-row"><span>Previous Period</span><div class="bar"><span style="width:47%;background:#aaa49b;"></span></div><b>17</b></div>
+                </div>
+
+                <div class="card" style="margin-top:16px;">
+                    <h2 class="section-title">Leads Won by Source</h2>
+                    <table>
+                        <thead><tr><th>Lead Source</th><th>Won — Current Period</th><th>Won — Previous Period</th><th>% Change</th></tr></thead>
+                        <tbody>
+                            <tr><td>Manually Created Lead</td><td>13</td><td>7</td><td class="positive">+86.0%</td></tr>
+                            <tr><td>Client Referral</td><td>7</td><td>1</td><td class="positive">+600.0%</td></tr>
+                            <tr><td>Direct Sales</td><td>4</td><td>0</td><td class="positive">+100.0%</td></tr>
+                            <tr><td>Referral</td><td>2</td><td>1</td><td class="positive">+100.0%</td></tr>
+                            <tr><td>Shanks Realty Group</td><td>2</td><td>3</td><td class="danger">-33.0%</td></tr>
+                            <tr><td>Facebook</td><td>1</td><td>0</td><td class="positive">+100.0%</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card" style="margin-top:16px;">
+                    <div class="compare-row">
+                        <h2 class="section-title" style="margin:0;">Conversion Funnel by Lead Stage</h2>
+                        <label class="toggle"><input type="checkbox"> Show Previous Period</label>
+                    </div>
+                    <div class="funnel-row"><span>New</span><div class="funnel-bar"><span style="width:100%"></span></div><b>179 · 100%</b></div>
+                    <div class="funnel-row"><span>In Progress</span><div class="funnel-bar"><span style="width:92.2%"></span></div><b>165 · 92.2%</b></div>
+                    <div class="funnel-row"><span>Pending Operations</span><div class="funnel-bar"><span style="width:52.5%"></span></div><b>94 · 52.5%</b></div>
+                    <div class="funnel-row"><span>Ready for Estimate</span><div class="funnel-bar"><span style="width:34.6%"></span></div><b>62 · 34.6%</b></div>
+                    <div class="funnel-row"><span>Won</span><div class="funnel-bar"><span style="width:18.4%"></span></div><b>33 · 18.4%</b></div>
+                    <table style="margin-top:18px;">
+                        <thead><tr><th>Lead Stage</th><th># Leads</th><th>Conversion Rate</th><th>Time to Convert</th></tr></thead>
+                        <tbody>
+                            <tr><td>New</td><td>179</td><td>—</td><td>—</td></tr>
+                            <tr><td>In Progress</td><td>165</td><td>92.2%</td><td>26 hrs</td></tr>
+                            <tr><td>Pending Operations</td><td>94</td><td>52.5%</td><td>70 hrs</td></tr>
+                            <tr><td>Ready for Estimate</td><td>62</td><td>34.6%</td><td>174 hrs</td></tr>
+                            <tr><td>Won</td><td>33</td><td>18.4%</td><td>249 hrs</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card" style="margin-top:16px;">
+                    <div class="compare-row">
+                        <h2 class="section-title" style="margin:0;">Conversion Funnel by Lead Source</h2>
+                        <div style="display:flex;gap:8px;">
+                            <select style="padding:8px;border:1px solid #d8dde3;border-radius:7px;"><option>Conversion Metric: In Progress</option><option>Won</option><option>Ready for Estimate</option></select>
+                            <select style="padding:8px;border:1px solid #d8dde3;border-radius:7px;"><option>Baseline Metric: New</option></select>
+                        </div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Lead Source</th><th># Converted</th><th># New</th><th>Conversion Rate</th><th>Time to Convert</th></tr></thead>
+                        <tbody>
+                            <tr><td>META</td><td>71</td><td>75</td><td>94.7%</td><td>25 hrs</td></tr>
+                            <tr><td>Facebook</td><td>19</td><td>20</td><td>95.0%</td><td>19 hrs</td></tr>
+                            <tr><td>Manually Created Lead</td><td>19</td><td>19</td><td>100.0%</td><td>174 hrs</td></tr>
+                            <tr><td>Container META</td><td>11</td><td>12</td><td>91.7%</td><td>38 hrs</td></tr>
+                            <tr><td>Shanks Realty Group</td><td>9</td><td>9</td><td>100.0%</td><td>24 hrs</td></tr>
+                            <tr><td>Web Form</td><td>4</td><td>9</td><td>44.4%</td><td>4 hrs</td></tr>
+                            <tr><td>Client Referral</td><td>8</td><td>8</td><td>100.0%</td><td>23 hrs</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card" style="margin-top:16px;">
+                    <div class="compare-row">
+                        <h2 class="section-title" style="margin:0;">Conversion Funnel by Team Member</h2>
+                        <div style="display:flex;gap:8px;">
+                            <select style="padding:8px;border:1px solid #d8dde3;border-radius:7px;"><option>Conversion Metric: In Progress</option><option>Won</option></select>
+                            <select style="padding:8px;border:1px solid #d8dde3;border-radius:7px;"><option>Baseline Metric: New</option></select>
+                        </div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Sales Rep</th><th># Converted</th><th># New</th><th>Conversion Rate</th><th>Time to Convert</th></tr></thead>
+                        <tbody>
+                            <tr><td>A. Carter</td><td>42</td><td>46</td><td>91.3%</td><td>31 hrs</td></tr>
+                            <tr><td>M. Lee</td><td>38</td><td>42</td><td>90.5%</td><td>28 hrs</td></tr>
+                            <tr><td>J. Smith</td><td>51</td><td>54</td><td>94.4%</td><td>22 hrs</td></tr>
+                            <tr><td>K. Viehland</td><td>34</td><td>37</td><td>91.9%</td><td>27 hrs</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="cycle" class="page">
+                <div class="callout">
+                    This page answers the management question: <strong>“How long does it take an order to move from any selected starting status to any selected ending status?”</strong>
+                </div>
+                <div class="card">
+                    <h2 class="section-title">Custom Status-to-Status Cycle Time</h2>
+                    <div class="form-grid">
+                        <div class="field"><label>Starting Status</label><select><option>New</option><option>In Progress</option><option>Pending Operations</option><option>In Progress</option><option>Ready for Estimate</option></select></div>
+                        <div class="field"><label>Ending Status</label><select><option>Closed</option><option>Ready for Estimate</option><option>In Progress</option><option>Pending Operations</option></select></div>
+                        <div class="field"><label>Date Range</label><select><option>Last 30 Days</option><option>This Month</option><option>Last Quarter</option><option>Year to Date</option></select></div>
+                        <div class="field"><label>Group Results By</label><select><option>Overall</option><option>Employee</option><option>Department</option><option>Order Type</option><option>Client Source</option></select></div>
+                        <div class="field full"><button class="btn">Run Report</button><button class="btn secondary" style="margin-left:6px;">Export CSV</button></div>
+                    </div>
+                </div>
+
+                <div class="grid-4" style="margin-top:16px;">
+                    <div class="card"><div class="metric-label">Average</div><div class="metric-value">8.6d</div></div>
+                    <div class="card"><div class="metric-label">Median</div><div class="metric-value">7.2d</div></div>
+                    <div class="card"><div class="metric-label">Fastest</div><div class="metric-value positive">2.1d</div></div>
+                    <div class="card"><div class="metric-label">Slowest</div><div class="metric-value danger">26.4d</div></div>
+                </div>
+
+                <div class="card" style="margin-top:16px;">
+                    <h2 class="section-title">Sample Detailed Results — New → Closed</h2>
+                    <table>
+                        <thead><tr><th>Order #</th><th>Client</th><th>Entered</th><th>Closed</th><th>Total Cycle Time</th><th>Delay Flag</th></tr></thead>
+                        <tbody>
+                            <tr><td>ORD-260801-1021</td><td>Martin Holdings</td><td>Aug 1, 9:02 AM</td><td>Aug 6, 4:11 PM</td><td>5.3 days</td><td>—</td></tr>
+                            <tr><td>ORD-260802-1027</td><td>David Wilson</td><td>Aug 2, 1:33 PM</td><td>Aug 13, 10:15 AM</td><td>10.9 days</td><td><span class="status s-review">Watch</span></td></tr>
+                            <tr><td>ORD-260803-1040</td><td>Sarah Patel</td><td>Aug 3, 8:10 AM</td><td>Aug 12, 1:45 PM</td><td>9.2 days</td><td>—</td></tr>
+                            <tr><td>ORD-260804-1055</td><td>Thomas Reed</td><td>Aug 4, 3:05 PM</td><td>Aug 12, 5:44 PM</td><td>8.1 days</td><td>—</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="usecases" class="page">
+                <div class="grid-3">
+                    <div class="card">
+                        <h2 class="section-title">Primary Users</h2>
+                        <ul class="mini-list">
+                            <li><strong>Intake User:</strong> creates clients and orders.</li>
+                            <li><strong>Operations User:</strong> manages assignments and statuses.</li>
+                            <li><strong>Manager:</strong> monitors aging, workload, bottlenecks and exceptions.</li>
+                            <li><strong>Administrator:</strong> runs organization-wide reporting and manages configuration.</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h2 class="section-title">Core Data Objects</h2>
+                        <ul class="mini-list">
+                            <li>Client / Account</li>
+                            <li>Contact</li>
+                            <li>Order / Case / Job</li>
+                            <li>Status History</li>
+                            <li>In Progress User / Department</li>
+                            <li>Notes / Activities</li>
+                            <li>Documents / Attachments</li>
+                            <li>Closure / Disposition</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h2 class="section-title">Reporting Principle</h2>
+                        <p style="font-size:13px;line-height:1.7;color:#59636e;">
+                            Do not merely store the current status. Store every status transition with an entered timestamp, exited timestamp, user, and reason. That turns routine workflow activity into measurable operational data.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top:16px;">
+                    <h2 class="section-title">Operational Use Cases</h2>
+                    <div class="usecase"><b>UC-01</b><span>Create a new client record with contact information, source, owner, and notes.</span></div>
+                    <div class="usecase"><b>UC-02</b><span>Create an order and associate it to an existing or newly created client.</span></div>
+                    <div class="usecase"><b>UC-03</b><span>Assign an order to an employee, team, or department.</span></div>
+                    <div class="usecase"><b>UC-04</b><span>Advance, hold, reopen, or close an order using controlled status values.</span></div>
+                    <div class="usecase"><b>UC-05</b><span>Capture notes, documents, tasks, and contact activity throughout the lifecycle.</span></div>
+                    <div class="usecase"><b>UC-06</b><span>Search and filter clients and orders by status, owner, date, priority, source, or order type.</span></div>
+                    <div class="usecase"><b>UC-07</b><span>Alert users and managers when orders exceed a status-time or completion-time target.</span></div>
+                </div>
+
+                <div class="card" style="margin-top:16px;">
+                    <h2 class="section-title">Administrative Reporting Use Cases</h2>
+                    <div class="usecase"><b>RPT-01</b><span>Measure New → Closed total cycle time.</span></div>
+                    <div class="usecase"><b>RPT-02</b><span>Measure any Status A → Status B elapsed time.</span></div>
+                    <div class="usecase"><b>RPT-03</b><span>Measure average, median, minimum, maximum, and percentile cycle times.</span></div>
+                    <div class="usecase"><b>RPT-04</b><span>Measure average time spent inside each individual status.</span></div>
+                    <div class="usecase"><b>RPT-05</b><span>Compare cycle times by employee, team, department, order type, source, or client segment.</span></div>
+                    <div class="usecase"><b>RPT-06</b><span>Identify aging orders currently stuck in a status beyond a defined threshold.</span></div>
+                    <div class="usecase"><b>RPT-07</b><span>Measure order-entry volume, closure volume, backlog growth, and closure rate.</span></div>
+                    <div class="usecase"><b>RPT-08</b><span>Measure SLA / target completion compliance and reasons for missed targets.</span></div>
+                    <div class="usecase"><b>RPT-09</b><span>Identify workflow bottlenecks by longest stage duration and most frequent delay reason.</span></div>
+                    <div class="usecase"><b>RPT-10</b><span>Export filtered reporting data for CSV, spreadsheet, or external BI use.</span></div>
+                </div>
+            
+                <div class="card" style="margin-top:16px;">
+                    <h2 class="section-title">Super Admin Configuration</h2>
+                    <p style="font-size:13px;color:#59636e;">Super Admin can maintain dropdown values without changing the application.</p>
+                    <div class="grid-3">
+                        <div><strong>Lead Sources</strong><ul class="mini-list"><li>Referral</li><li>Website</li><li>Advertising</li><li>Existing Client</li><li>+ Add Lead Source</li></ul></div>
+                        <div><strong>Sales Reps</strong><ul class="mini-list"><li>A. Carter</li><li>M. Lee</li><li>J. Smith</li><li>+ Add Sales Rep</li></ul></div>
+                        <div><strong>Operations Reps</strong><ul class="mini-list"><li>Operations Team A</li><li>Operations Team B</li><li>+ Add Operations Rep</li></ul></div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+</div>
+
+<script>
+function showPage(id, el) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    if (el) el.classList.add('active');
+
+    const titles = {
+        dashboard: 'Dashboard',
+        clients: 'Clients',
+        newclient: 'New Client Intake',
+        orders: 'Orders',
+                status: 'Status Control',
+        admindashboard: 'Admin Team Dashboard',
+        reporting: 'Lead Insights',
+        cycle: 'Cycle-Time Reporting',
+        usecases: 'CRM Use Case Design'
+    };
+    document.getElementById('page-title').innerText = titles[id] || 'TaskApp CRM';
+    window.scrollTo(0,0);
+}
+
+function addCustomer() {
+    const wrapper = document.getElementById('contactRows');
+    const row = document.createElement('div');
+    row.className = 'contact-row card';
+    row.style.cssText = 'background:#fafbfc;margin-bottom:12px;';
+    row.innerHTML = `<div class="form-grid">
+        <div class="field"><label>First Name *</label><input placeholder="First name"></div>
+        <div class="field"><label>Last Name *</label><input placeholder="Last name"></div>
+        <div class="field"><label>Email *</label><input placeholder="name@example.com"></div>
+        <div class="field"><label>Mobile Phone *</label><input placeholder="(000) 000-0000"></div>
+        <div class="field full"><button class="btn secondary" type="button" onclick="this.closest('.contact-row').remove()">Remove Customer</button></div>
+    </div>`;
+    wrapper.appendChild(row);
+}
+function toggleCancelReason(select) {
+    const box = document.getElementById('cancelReason');
+    if (!box) return;
+    box.style.display = select.value === 'Cancel' ? 'block' : 'none';
+}
+</script>
+</body>
+</html>

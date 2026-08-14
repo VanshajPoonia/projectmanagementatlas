@@ -8,14 +8,23 @@ describe('isModuleEnabled', () => {
     }
   })
 
-  // 'appointments' is the single deliberate exception to the every-module-available
-  // fallback (migration 080 seeds it disabled, and the fallback must not reveal a
-  // module nobody switched on). Pinning the exact set means adding a second
-  // off-by-default module, or flipping an existing one, fails here and has to be a
-  // conscious decision rather than a silent regression.
-  it('defaults only the appointments module to off', () => {
+  // 'appointments' (migration 080) and 'crm' (migration 103) are the deliberate exceptions to
+  // the every-module-available fallback: both are seeded disabled, and the fallback must not
+  // reveal a module nobody has switched on. Pinning the exact set means adding a third
+  // off-by-default module, or flipping an existing one, fails here and has to be a conscious
+  // decision rather than a silent regression.
+  it('defaults exactly appointments and crm to off', () => {
     const disabled = DEFAULT_MODULES.filter(m => !m.enabled).map(m => m.module_key)
-    expect(disabled).toEqual(['appointments'])
+    expect(disabled.sort()).toEqual(['appointments', 'crm'])
+  })
+
+  // The other half of the same guarantee: every remaining module stays available, so a
+  // failure to load app_modules never silently hides working features.
+  it('leaves every other module available in the fallback', () => {
+    const enabled = DEFAULT_MODULES.filter(m => m.enabled).map(m => m.module_key)
+    expect(enabled).toContain('boards')
+    expect(enabled).toContain('marketing_calendar')
+    expect(enabled).not.toContain('crm')
   })
 
   it('respects an explicit disabled row', () => {

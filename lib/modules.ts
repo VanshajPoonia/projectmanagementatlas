@@ -12,6 +12,7 @@ export type ModuleKey =
   | 'ai_assistant'
   | 'appointments'
   | 'project_ids'
+  | 'crm'
 
 export interface AppModule {
   module_key: ModuleKey
@@ -35,6 +36,9 @@ export const DEFAULT_MODULES: AppModule[] = [
   // fallback too: if app_modules can't be read we must not reveal a module a super admin has
   // never switched on, which is the opposite of the every-module-stays-available rule above.
   { module_key: 'appointments', enabled: false },
+  // Same reasoning as appointments: 103 seeds it disabled, and the fallback must not reveal
+  // a module a super admin has never switched on.
+  { module_key: 'crm', enabled: false },
 ]
 
 export function useAppModules() {

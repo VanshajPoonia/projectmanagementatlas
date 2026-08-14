@@ -30,7 +30,9 @@
     "check:marketing-channels": "node --env-file=.env.local scripts/check-marketing-channels.mjs",
     "check:appointments": "node --env-file=.env.local scripts/check-appointments.mjs",
     "check:appointment-booking": "node --env-file=.env.local scripts/check-appointment-booking.mjs",
-    "check:project-ids": "node --env-file=.env.local scripts/check-project-ids.mjs"
+    "check:project-ids": "node --env-file=.env.local scripts/check-project-ids.mjs",
+    "check:task-move": "node --env-file=.env.local scripts/check-task-move.mjs",
+    "check:crm": "node --env-file=.env.local scripts/check-crm.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",
