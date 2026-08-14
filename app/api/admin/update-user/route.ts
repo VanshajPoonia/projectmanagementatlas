@@ -28,6 +28,18 @@ export async function PUT(request: Request) {
 
   const { userId, fullName, role, password } = await request.json()
 
+  // A super admin editing their own row is expected — it is how they rotate their own
+  // password without leaving the page where they manage everyone else's. Changing their
+  // OWN role is not: demoting yourself out of super_admin costs you this route on the very
+  // next request, and if you were the last super admin nobody can put it back. Everything
+  // else about the self-edit is allowed.
+  if (userId === user.id && role && role !== profile?.role) {
+    return NextResponse.json(
+      { error: 'You cannot change your own role. Ask the other super admin to change it for you.' },
+      { status: 400 }
+    )
+  }
+
   // Create admin client
   const supabaseAdmin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

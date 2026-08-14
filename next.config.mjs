@@ -15,7 +15,15 @@ const nextConfig = {
       { key: 'X-Frame-Options', value: 'DENY' },
       { key: 'X-Content-Type-Options', value: 'nosniff' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+      // `microphone=(self)`, NOT `microphone=()`. The dictation button
+      // (components/ui/voice-input-button.tsx) drives the Web Speech API, and Chrome gates
+      // SpeechRecognition.start() on exactly this policy feature — so `microphone=()` made the
+      // mic button fail on every page, which is what got reported as "the mic doesn't work".
+      // Measured in a real browser against this dev server: with `()`,
+      // document.featurePolicy.allowsFeature('microphone') is FALSE; with `(self)` it is TRUE.
+      // `(self)` still locks out every other origin, including anything framed in. Camera and
+      // geolocation stay fully disabled — nothing in this app asks for either.
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
     ]
 
     if (process.env.NODE_ENV === 'production') {

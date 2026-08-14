@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { UserPlus, Mail, Calendar, Users, Trash2, Eye, EyeOff, Edit, Shield, ToggleLeft, ToggleRight } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
@@ -34,6 +35,7 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const supabase = createClient()
+  const router = useRouter()
 
   const refreshUsers = async () => {
     const { data } = await supabase
@@ -147,10 +149,16 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
     }
   }
 
+  /** True while the edit dialog is pointed at the signed-in super admin's own account. */
+  const editingSelf = selectedUser?.id === currentUserId
+
   const handleEditUser = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
+
+    const self = selectedUser.id === currentUserId
+    const changedPassword = Boolean(password)
 
     try {
       const response = await fetch('/api/admin/update-user', {
@@ -164,12 +172,35 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
         }),
       })
 
+      // The route refuses a self role change by name; surfacing its message beats
+      // "Failed to update user", which made a deliberate refusal look like an outage.
+      const body = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error('Failed to update user')
+        throw new Error(body?.error || 'Failed to update user')
       }
 
-      setSuccess('User updated successfully')
+      setPassword('')
       setEditOpen(false)
+
+      // Supabase revokes every session for an account whose password changes — including the
+      // one that just made the change. Verified in a browser: the very next navigation bounced
+      // to /login. Refreshing the user list here would fire a query with a dead token and leave
+      // the operator on a page where nothing works, so sign out cleanly and send them to the
+      // sign-in page instead of pretending the session survived.
+      if (self && changedPassword) {
+        setSuccess('Your password has been changed. Signing you out so you can use it…')
+        await supabase.auth.signOut().catch(() => {})
+        router.push('/login')
+        return
+      }
+
+      setSuccess(
+        self
+          ? 'Your details have been updated.'
+          : changedPassword
+            ? `${selectedUser.full_name || selectedUser.email} was updated and their password reset.`
+            : 'User updated successfully'
+      )
       await refreshUsers()
     } catch (err: any) {
       setError(err.message || 'Failed to update user')
@@ -186,7 +217,7 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
         </Alert>
       )}
       {success && (
-        <Alert className="bg-green-50 text-green-900 border-green-200">
+        <Alert className="border-green-200 bg-green-50 text-green-900 dark:border-green-900 dark:bg-green-950 dark:text-green-100">
           <AlertDescription>{success}</AlertDescription>
         </Alert>
       )}
@@ -308,7 +339,28 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
                 </Badge>
               </div>
               
-              {user.id !== currentUserId && (
+              {/* Your own card gets Edit and nothing else. Changing your own password was
+                  previously impossible from here — the whole action block was hidden — which
+                  meant the one person who administers every other account had no way to rotate
+                  their own credentials in the place they manage credentials. Delete and Switch
+                  off access stay hidden for yourself: both are refused server-side anyway
+                  (a super admin cannot delete themselves), and a button that always errors is
+                  worse than no button. */}
+              {user.id === currentUserId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2 bg-transparent"
+                  onClick={() => {
+                    setSelectedUser(user)
+                    setPassword('')
+                    setEditOpen(true)
+                  }}
+                >
+                  <Edit className="w-3 h-3" />
+                  Edit my details
+                </Button>
+              ) : (
                 <div className="space-y-2">
                   <div className="flex gap-2">
                     <Button
@@ -358,9 +410,11 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
+            <DialogTitle>{editingSelf ? 'Edit my details' : 'Edit User'}</DialogTitle>
             <DialogDescription>
-              Update user details and reset password
+              {editingSelf
+                ? 'Change your own name or password. Your role is fixed here.'
+                : 'Update user details and reset password'}
             </DialogDescription>
           </DialogHeader>
           {selectedUser && (
@@ -402,11 +456,27 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </Button>
                 </div>
+                {editingSelf && (
+                  <p className="text-xs text-muted-foreground">
+                    Changing your own password signs you out everywhere, including here. You will
+                    be sent to the sign-in page to use the new one.
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="editRole">Role</Label>
-                <Select value={selectedUser.role} onValueChange={(val) => setSelectedUser({ ...selectedUser, role: val })}>
-                  <SelectTrigger>
+                {/* Demoting yourself out of super_admin locks you out of this page — and if
+                    you were the last one, out of the org's only super-admin surface entirely.
+                    The server refuses a self role change too; this just stops the control
+                    from looking usable. */}
+                <Select
+                  value={selectedUser.role}
+                  onValueChange={(val) => setSelectedUser({ ...selectedUser, role: val })}
+                  disabled={editingSelf}
+                >
+                  {/* The Label above has always pointed at "editRole"; nothing carried that id,
+                      so the label named no control for a screen reader. */}
+                  <SelectTrigger id="editRole">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -415,9 +485,14 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
                     <SelectItem value="super_admin">Super Admin</SelectItem>
                   </SelectContent>
                 </Select>
+                {editingSelf && (
+                  <p className="text-xs text-muted-foreground">
+                    You cannot change your own role. Ask the other super admin to change it for you.
+                  </p>
+                )}
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Updating...' : 'Update User'}
+                {loading ? 'Updating...' : editingSelf ? 'Save my details' : 'Update User'}
               </Button>
             </form>
           )}
