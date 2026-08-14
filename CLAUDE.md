@@ -504,6 +504,23 @@ deliberately left out.
     calling `new Date()` during render makes the server and client disagree on every row.
     `crypto.randomUUID()` in a `useState` initializer has the same problem when the value
     becomes a DOM `id`.
+  - ⚠️ **A third one, found in the CRM review (2026-08-15) and not specific to theming:
+    `Date.parse('2026-08-14T23:59:59')` has no zone designator, so it resolves against
+    whatever timezone the *runtime* is in** — UTC on the server, `America/Chicago` in the
+    browser. Those are five hours apart, so `isPastTargetClose` rendered a row as late on the
+    server and fine on the client for a five-hour window every day. Measured, not assumed: the
+    old expression returns `true` under UTC and `false` under Chicago for the same instant.
+    Anything comparing a **date-only** column (`DATE` in Postgres, `YYYY-MM-DD` over
+    PostgREST) must compare calendar dates in an explicit zone — `lib/crm.ts` exports
+    `BUSINESS_TIME_ZONE` and `businessDate()` for this — never parse it into an instant. A due
+    date is not due at an instant.
+  - **The related non-hydration trap in the same review: filtering a lookup table in the
+    query.** Every CRM page fetched statuses with `.eq('is_archived', false)`, so an order in
+    an archived status had no entry in the lookup map, and every consumer reads a missing
+    status as "not terminal" — archiving Won would have counted every won order as live
+    pipeline. The rule, now uniform: **queries fetch every row, lookups resolve against every
+    row, and only pickers filter** (`activeStatuses()` in `lib/crm.ts`, which also keeps a
+    record's own archived status in its picker so the control never renders blank).
 - **CSP is production-only, so dev cannot catch an `img-src` bug.** `next.config.mjs` only sets
   Content-Security-Policy when `NODE_ENV === 'production'`. `img-src` must list `blob:` and
   `https://*.supabase.co` — verified in a real browser that without them the marketing
