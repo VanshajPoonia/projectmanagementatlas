@@ -521,6 +521,50 @@ deliberately left out.
     pipeline. The rule, now uniform: **queries fetch every row, lookups resolve against every
     row, and only pickers filter** (`activeStatuses()` in `lib/crm.ts`, which also keeps a
     record's own archived status in its picker so the control never renders blank).
+- ⚠️ **The nav is `components/shell/workspace-nav.ts` and nothing else. `/admin` used to keep
+  a hand-written copy** (2026-08-15). It was written before `appointments` (080) and `crm`
+  (103) existed and was never updated, so switching either on in Super Admin → Modules
+  changed `/dashboard`, `/my-work` and `/crm` but left `/admin` — the screen an admin
+  actually lands on, since `app/dashboard/page.tsx` redirects them there — with no way to
+  reach the module at all. `/admin` also had no Appointments tab to link to. This is the
+  guest/client lesson a third time: **the database and the toggle were right, and no human
+  could get there.** All four surfaces now call `buildWorkspaceNav`, and both dashboards
+  derive `allowedTabs` from `addressableTabs(sidebarGroups)` rather than restating the list,
+  so a reachable tab and a visible nav item cannot disagree.
+  - **The nav builder picks its host from the role**, because `/dashboard?tab=boards`
+    redirects an admin to `/admin` **and drops the query string**, landing them on whatever
+    tab they had open last. Every `?tab=` link is `/admin?tab=…` for an admin and
+    `/dashboard?tab=…` for everyone else; `/my-work` and `/crm` are real routes and are left
+    alone. Pinned by `components/shell/workspace-nav.test.ts` ("never leaves a /dashboard
+    link in an admin's nav").
+  - `reports` and `access-log` are admin-hosted only — the user dashboard has no such tab, so
+    offering either to a member is a dead link, not a permission error. The old `admin-home`
+    item is gone: for an admin, Home *is* `/admin`, and the two entries pointed at one screen.
+  - ⚠️ **`app_modules` is fetched client-side**, so the first paint of any nav uses
+    `lib/modules.ts`'s fallback, where `appointments` and `crm` are off. A browser check that
+    reads the sidebar immediately will report both missing. Wait for the fetch (or seed it
+    from the server) before concluding the nav is wrong; `scripts/audit-mobile.mjs` does.
+- ⚠️ **`app/globals.css` used to shrink the whole interface on a phone.** Its "Mobile
+  optimizations" block opened with `html { font-size: 14px }` below 768px (and 15px for
+  tablets). Every size in this app is rem-based through Tailwind, so that scaled the entire
+  UI **down** 12.5% on exactly the devices that need it larger: `text-sm` landed at 12.25px
+  and an `h-10` control measured 35. Removed 2026-08-15 — mobile is not a small desktop.
+  - The same block set `min-height: 44px; min-width: 44px` on `button, a, [role="button"]`,
+    which was wrong in both directions: it stretched inline links inside sentences into 44px
+    blocks and forced width onto icon buttons that then pushed out of their own cards, while
+    never matching `input`, `select` or `textarea` — the controls a finger most needs. It is
+    now `@media (pointer: coarse)`, height only, on real controls, with checkbox and radio
+    explicitly exempt. **Key on the pointer, not the viewport**: a touchscreen laptop needs
+    the bigger target and a 500px-wide desktop window does not.
+  - And it clamped `[role="dialog"]` to `max-height: 90vh !important` while saying nothing
+    about overflow, so a dialog taller than the screen was cut off with its submit button
+    unreachable and no way to opt out. That now lives on `components/ui/dialog.tsx` as
+    `max-h-[calc(100dvh-2rem)] overflow-y-auto` — `dvh`, because on iOS Safari `vh` is the
+    height with the URL bar hidden.
+  - Gates: `node --env-file=.env.local scripts/audit-mobile.mjs` sweeps every main route at
+    320/390/1440 and reports horizontal overflow **naming the offending elements**, plus
+    touch targets and console errors; `scripts/audit-mobile-deep.mjs` covers the board, a
+    real dialog and dark mode. Both create and tear down their own super-admin fixture.
 - **CSP is production-only, so dev cannot catch an `img-src` bug.** `next.config.mjs` only sets
   Content-Security-Policy when `NODE_ENV === 'production'`. `img-src` must list `blob:` and
   `https://*.supabase.co` — verified in a real browser that without them the marketing
