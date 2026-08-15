@@ -2,9 +2,14 @@
 //
 // This used to be built inline inside user-dashboard.tsx, which meant any new
 // destination had to be added there *and* kept consistent with nav-model.ts's north-star
-// map. Now both the dashboard and the standalone routes (/my-work) call this, so a
-// module a super_admin switches off disappears everywhere at once — sidebar, mobile bar,
-// and ⌘K palette included.
+// map. Now the user dashboard, the admin dashboard, and the standalone routes (/my-work,
+// /crm) all call this, so a module a super_admin switches on or off appears and
+// disappears everywhere at once — sidebar, mobile bar, and ⌘K palette included.
+//
+// ⚠️ admin-dashboard.tsx used to keep its own hand-written copy of this list, and it was
+// never updated when `appointments` (080) or `crm` (103) were added. Switching either on
+// in Super Admin → Modules changed /dashboard, /my-work and /crm but left /admin — the
+// screen an admin actually lands on — with no way to reach the module at all.
 //
 // Pure data (no React, no icons) so it stays unit-testable; hosts attach badges.
 
@@ -19,10 +24,20 @@ export interface WorkspaceNavOptions {
    * rather than derived here because it needs a query the caller already ran.
    */
   canUseMarketingCalendar: boolean
+  /**
+   * `audit.view` (migration 098) — admin + super_admin. Passed in for the same reason as
+   * marketing: the caller already resolved it against lib/capabilities.ts. Not a module,
+   * deliberately: a log you can switch off is not a log.
+   */
+  canViewAudit?: boolean
 }
 
+/** Tab ids differ per host because each dashboard names its own landing tab. */
+const USER_HOME_TAB = 'tasks'
+const ADMIN_HOME_TAB = 'overview'
+
 /**
- * Build the Workspace group.
+ * Build the sidebar groups for a viewer.
  *
  * Home and My Work are core: they are not registered modules and cannot be switched off,
  * because a workspace with no way to see your own work isn't a workspace.
@@ -31,58 +46,87 @@ export function buildWorkspaceNav({
   role,
   modules,
   canUseMarketingCalendar,
+  canViewAudit = false,
 }: WorkspaceNavOptions): NavGroup[] {
   const on = (key: Parameters<typeof isModuleEnabled>[1]) => isModuleEnabled(modules, key)
 
+  // An admin's dashboard tabs are hosted at /admin, not /dashboard. app/dashboard/page.tsx
+  // redirects admins to /admin and drops the query string on the way, so a link built as
+  // '/dashboard?tab=boards' for an admin silently lands them on whatever tab they had open
+  // last. Same nav, two hosts; the host is a function of role, never of the current URL.
+  const isAdmin = role === 'admin' || role === 'super_admin'
+  const host = isAdmin ? '/admin' : '/dashboard'
+  const tab = (name: string) => `${host}?tab=${name}`
+  const homeTab = isAdmin ? ADMIN_HOME_TAB : USER_HOME_TAB
+
   const items: NavItem[] = [
-    { id: 'tasks', label: 'Home', icon: 'home', href: '/dashboard?tab=tasks', status: 'live' },
+    { id: homeTab, label: 'Home', icon: 'home', href: tab(homeTab), status: 'live' },
     { id: 'my-work', label: 'My Work', icon: 'inbox-check', href: '/my-work', status: 'live' },
   ]
 
   if (on('personal_tasks')) {
-    items.push({ id: 'personal', label: 'Personal', icon: 'lock', href: '/dashboard?tab=personal', status: 'live' })
+    items.push({ id: 'personal', label: 'Personal', icon: 'lock', href: tab('personal'), status: 'live' })
   }
   if (on('calendar')) {
-    items.push({ id: 'calendar', label: 'Calendar', icon: 'calendar', href: '/dashboard?tab=calendar', status: 'live' })
+    items.push({ id: 'calendar', label: 'Calendar', icon: 'calendar', href: tab('calendar'), status: 'live' })
   }
   if (canUseMarketingCalendar && on('marketing_calendar')) {
-    items.push({ id: 'marketing', label: 'Marketing', icon: 'megaphone', href: '/dashboard?tab=marketing', status: 'live' })
+    items.push({ id: 'marketing', label: 'Marketing', icon: 'megaphone', href: tab('marketing'), status: 'live' })
+  }
+  // Reports is admin-hosted only: the user dashboard has no reports tab to link to, so
+  // offering it to a plain member would be a dead link rather than a permission error.
+  if (isAdmin && on('reports')) {
+    items.push({ id: 'reports', label: 'Reports', icon: 'reports', href: tab('reports'), status: 'live' })
   }
   if (on('boards')) {
-    items.push({ id: 'boards', label: 'Boards', icon: 'kanban', href: '/dashboard?tab=boards', status: 'live' })
+    items.push({ id: 'boards', label: 'Boards', icon: 'kanban', href: tab('boards'), status: 'live' })
   }
   if (on('chat')) {
-    items.push({ id: 'chat', label: 'Chat', icon: 'message', href: '/dashboard?tab=chat', status: 'live' })
+    items.push({ id: 'chat', label: 'Chat', icon: 'message', href: tab('chat'), status: 'live' })
   }
   if (on('appointments')) {
-    items.push({ id: 'appointments', label: 'Appointments', icon: 'appointments', href: '/dashboard?tab=appointments', status: 'live' })
+    items.push({ id: 'appointments', label: 'Appointments', icon: 'appointments', href: tab('appointments'), status: 'live' })
   }
   if (on('crm')) {
     items.push({ id: 'crm', label: 'CRM', icon: 'crm', href: '/crm', status: 'live' })
   }
   if (on('project_ids')) {
-    items.push({ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: '/dashboard?tab=project-ids', status: 'live' })
+    items.push({ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: tab('project-ids'), status: 'live' })
+  }
+  // Same host rule as reports — the access log only renders inside the admin dashboard.
+  if (isAdmin && canViewAudit) {
+    items.push({ id: 'access-log', label: 'Access log', icon: 'history', href: tab('access-log'), status: 'live' })
   }
 
   const groups: NavGroup[] = [{ id: 'sections', label: 'Workspace', items }]
 
-  if (role === 'admin' || role === 'super_admin') {
-    const adminItems: NavItem[] = [
-      { id: 'admin-home', label: 'Admin', icon: 'shield', href: '/admin', status: 'live', roles: ['admin', 'super_admin'] },
-    ]
-    if (role === 'super_admin') {
-      adminItems.push({ id: 'super-admin', label: 'Super Admin', icon: 'crown', href: '/admin/super-admin', status: 'live', roles: ['super_admin'] })
-    }
-    groups.push({ id: 'admin', label: 'Admin', items: adminItems })
+  // No 'admin-home' item: for an admin, Home *is* /admin. It used to sit here pointing at
+  // '/admin' next to a Home pointing at '/dashboard?tab=tasks' that redirected to the same
+  // screen — two entries, one destination.
+  if (role === 'super_admin') {
+    groups.push({
+      id: 'admin',
+      label: 'Admin',
+      items: [
+        { id: 'super-admin', label: 'Super Admin', icon: 'crown', href: '/admin/super-admin', status: 'live', roles: ['super_admin'] },
+      ],
+    })
   }
 
   return groups
 }
 
-/** Which tabs `?tab=` may address — the dashboard-hosted items only. */
+/**
+ * Which tabs `?tab=` may address on this viewer's dashboard — the tab-hosted items only,
+ * dropping standalone routes like /my-work and /crm.
+ *
+ * Hosts feed this straight to resolveActiveTab so the set of reachable tabs and the set of
+ * visible nav items cannot disagree: a tab with no nav item is unreachable, and a nav item
+ * with no tab lands on the fallback.
+ */
 export function addressableTabs(groups: NavGroup[]): string[] {
   return groups
     .flatMap((g) => g.items)
-    .filter((item) => item.href.startsWith('/dashboard?tab='))
+    .filter((item) => /^\/(dashboard|admin)\?tab=/.test(item.href))
     .map((item) => item.id)
 }

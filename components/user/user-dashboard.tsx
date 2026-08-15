@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveTab } from '../shell/tab-url'
 import { AppShell } from '../shell/app-shell'
-import { buildWorkspaceNav } from '../shell/workspace-nav'
+import { addressableTabs, buildWorkspaceNav } from '../shell/workspace-nav'
 import type { Command } from '../shell/commands'
 import type { SidebarNavGroup } from '../shell/app-sidebar'
 import Link from 'next/link'
@@ -115,20 +115,33 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const showAiAssistant = isModuleEnabled(modules, 'ai_assistant')
   const showBookmarks = isModuleEnabled(modules, 'bookmarks')
 
-  // Tabs are the visible sections; only these are addressable via ?tab=.
-  const allowedTabs = useMemo(
-    () => [
-      'tasks',
-      ...(showPersonal ? ['personal'] : []),
-      ...(showCalendar ? ['calendar'] : []),
-      ...(showMarketing ? ['marketing'] : []),
-      ...(showBoards ? ['boards'] : []),
-      ...(showChat ? ['chat'] : []),
-      ...(showAppointments ? ['appointments'] : []),
-      ...(showProjectIds ? ['project-ids'] : []),
-    ],
-    [showPersonal, showCalendar, showMarketing, showBoards, showChat, showAppointments, showProjectIds],
+  // Built from the shared workspace nav so this sidebar, the /my-work route, /crm and the
+  // ⌘K palette can't drift apart — a module switched on or off appears and disappears from
+  // all of them at once. The chat unread badge is attached here because it is JSX, which
+  // the pure builder deliberately doesn't deal in.
+  const sidebarGroups: SidebarNavGroup[] = useMemo(
+    () =>
+      buildWorkspaceNav({ role: user.role, modules, canUseMarketingCalendar }).map((group) => ({
+        ...group,
+        items: group.items.map((item) =>
+          item.id === 'chat'
+            ? {
+                ...item,
+                badge: (
+                  <span className="absolute -top-1 -right-2">
+                    <ChatUnreadBadge userId={user.id} />
+                  </span>
+                ),
+              }
+            : item,
+        ),
+      })),
+    [user.role, user.id, modules, canUseMarketingCalendar],
   )
+
+  // Tabs are the visible sections; only these are addressable via ?tab=. Derived from the
+  // nav rather than restated, so a tab can never be reachable without a way to get to it.
+  const allowedTabs = useMemo(() => addressableTabs(sidebarGroups), [sidebarGroups])
 
   // Keep the active tab in sync with the URL so sections are deep-linkable and the
   // browser Back/Forward buttons move between them. Falls back to the last session
@@ -169,29 +182,6 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   const doneTasks = myTasks.filter(t => getNormalizedTaskStatus(t) === 'done')
   const activeTasks = myTasks.filter(t => getNormalizedTaskStatus(t) !== 'done')
 
-  // Built from the shared workspace nav so this sidebar, the /my-work route, and the ⌘K
-  // palette can't drift apart — a module switched off disappears from all three at once.
-  // The chat unread badge is attached here because it is JSX, which the pure builder
-  // deliberately doesn't deal in.
-  const sidebarGroups: SidebarNavGroup[] = useMemo(
-    () =>
-      buildWorkspaceNav({ role: user.role, modules, canUseMarketingCalendar }).map((group) => ({
-        ...group,
-        items: group.items.map((item) =>
-          item.id === 'chat'
-            ? {
-                ...item,
-                badge: (
-                  <span className="absolute -top-1 -right-2">
-                    <ChatUnreadBadge userId={user.id} />
-                  </span>
-                ),
-              }
-            : item,
-        ),
-      })),
-    [user.role, user.id, modules, canUseMarketingCalendar],
-  )
   const activeLabel = sidebarGroups[0].items.find((i) => i.id === activeTab)?.label ?? 'Home'
 
   // ⌘K "Create" entries. Both are navigations to where the create affordance already
@@ -478,9 +468,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
             <PersonalTasks userId={user.id} />
           </TabsContent>
 
-          <TabsContent value="calendar">
-            <CalendarView tasks={topLevelTasks} users={users} isAdmin={isAdmin} />
-          </TabsContent>
+          {showCalendar && (
+            <TabsContent value="calendar">
+              <CalendarView tasks={topLevelTasks} users={users} isAdmin={isAdmin} />
+            </TabsContent>
+          )}
 
           {showMarketing && (
             <TabsContent value="marketing">
@@ -608,9 +600,11 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
             </Card>
           </TabsContent>
 
-          <TabsContent value="chat">
-            <ChatPanel currentUserId={user.id} isAdmin={false} />
-          </TabsContent>
+          {showChat && (
+            <TabsContent value="chat">
+              <ChatPanel currentUserId={user.id} isAdmin={false} />
+            </TabsContent>
+          )}
 
           {showAppointments && (
             <TabsContent value="appointments">

@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveTab } from '../shell/tab-url'
 import { AppShell } from '../shell/app-shell'
+import { addressableTabs, buildWorkspaceNav } from '../shell/workspace-nav'
 import type { SidebarNavGroup } from '../shell/app-sidebar'
 import BoardManagement from './board-management'
 import AccessLog from './access-log'
@@ -19,6 +20,7 @@ import ReportsView from '../reports/reports-view'
 import MetricsView from '../reports/metrics-view'
 import PersonalTasks from '../personal/personal-tasks'
 import ProjectIdsView from '../project-ids/project-ids-view'
+import AppointmentsView from '../appointments/appointments-view'
 import BookmarksSection from '../bookmarks/bookmarks-section'
 import MarketingCalendar from '../marketing/marketing-calendar'
 import TaskNotificationToasts from '../notifications/task-notification-toasts'
@@ -89,6 +91,10 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   const showChat = isModuleEnabled(modules, 'chat')
   const showPersonal = isModuleEnabled(modules, 'personal_tasks')
   const showProjectIds = isModuleEnabled(modules, 'project_ids')
+  // Seeded enabled=false (migration 080), so this stays hidden until a super_admin switches
+  // it on. It had a tab on the user dashboard and none here, which meant an admin who
+  // switched Appointments on could see the module everywhere except their own home screen.
+  const showAppointments = isModuleEnabled(modules, 'appointments')
   // These two render outside the tab list, so they were seeded into app_modules by 066 but
   // never consumed — switching either off in Super Admin changed nothing. Gated here so the
   // toggle means what it says.
@@ -101,29 +107,55 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   // matches the table's own RLS policy.
   const canViewAudit = allows({ userId: user.id, platformRole: user.role }, 'audit.view')
 
-  // Sections addressable via ?tab= — matches the TabsTrigger values below.
-  const allowedTabs = [
-    'overview',
-    ...(showCalendar ? ['calendar'] : []),
-    ...(showMarketing ? ['marketing'] : []),
-    ...(showReports ? ['reports'] : []),
-    ...(showBoards ? ['boards'] : []),
-    ...(showChat ? ['chat'] : []),
-    ...(showPersonal ? ['personal'] : []),
-    ...(showProjectIds ? ['project-ids'] : []),
-    ...(canViewAudit ? ['access-log'] : []),
-  ]
+  // Built from the shared workspace nav, exactly as the user dashboard, /my-work and /crm
+  // do. This screen used to hand-write its own list, which is why Appointments and CRM
+  // never appeared here however they were toggled in Super Admin → Modules. The chat unread
+  // badge is attached here because it is JSX, which the pure builder deliberately avoids.
+  const sidebarGroups: SidebarNavGroup[] = useMemo(
+    () =>
+      buildWorkspaceNav({
+        role: user.role,
+        modules,
+        // This route is admin-only (app/admin/page.tsx redirects everyone else), and the
+        // rule from migration 085 is "admin, or a member of at least one calendar" — so
+        // the membership half can't change the answer here.
+        canUseMarketingCalendar: true,
+        canViewAudit,
+      }).map((group) => ({
+        ...group,
+        items: group.items.map((item) =>
+          item.id === 'chat'
+            ? {
+                ...item,
+                badge: (
+                  <span className="absolute -top-1 -right-2">
+                    <ChatUnreadBadge userId={user.id} />
+                  </span>
+                ),
+              }
+            : item,
+        ),
+      })),
+    [user.role, user.id, modules, canViewAudit],
+  )
+
+  // Sections addressable via ?tab=, derived from the nav rather than restated. A tab with
+  // no nav item would be unreachable; a nav item with no tab would fall back to Home.
+  const allowedTabs = useMemo(() => addressableTabs(sidebarGroups), [sidebarGroups])
 
   // Keep the active tab in sync with the URL so sections are deep-linkable and the
   // browser Back/Forward buttons move between them; falls back to the last session
   // tab (e.g. after returning from a board), then Overview. Setting the same value
   // is a no-op, so there's no feedback loop with the push below.
+  //
+  // allowedTabs is a dependency because app_modules loads asynchronously: on the first
+  // render the fallback list has appointments and crm off, so a deep link to a module that
+  // is switched on would resolve to Overview and stay there once the real list arrived.
   useEffect(() => {
     setActiveTabState(
       resolveActiveTab(searchParams.get('tab'), sessionStorage.getItem('admin-active-tab'), allowedTabs, 'overview'),
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [searchParams, allowedTabs])
 
   const setActiveTab = (tab: string) => {
     setActiveTabState(tab)
@@ -150,55 +182,7 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
     router.push('/login')
   }
 
-  const adminSections: SidebarNavGroup['items'] = [
-    { id: 'overview', label: 'Home', icon: 'home', href: '/admin?tab=overview', status: 'live' },
-    ...(showCalendar
-      ? [{ id: 'calendar', label: 'Calendar', icon: 'calendar', href: '/admin?tab=calendar', status: 'live' as const }]
-      : []),
-    ...(showMarketing
-      ? [{ id: 'marketing', label: 'Marketing', icon: 'megaphone', href: '/admin?tab=marketing', status: 'live' as const }]
-      : []),
-    ...(showReports
-      ? [{ id: 'reports', label: 'Reports', icon: 'reports', href: '/admin?tab=reports', status: 'live' as const }]
-      : []),
-    ...(showBoards
-      ? [{ id: 'boards', label: 'Boards', icon: 'kanban', href: '/admin?tab=boards', status: 'live' as const }]
-      : []),
-    ...(showChat
-      ? [{
-          id: 'chat',
-          label: 'Chat',
-          icon: 'message',
-          href: '/admin?tab=chat',
-          status: 'live' as const,
-          badge: (
-            <span className="absolute -top-1 -right-2">
-              <ChatUnreadBadge userId={user.id} />
-            </span>
-          ),
-        }]
-      : []),
-    ...(showPersonal
-      ? [{ id: 'personal', label: 'Personal', icon: 'lock', href: '/admin?tab=personal', status: 'live' as const }]
-      : []),
-    ...(showProjectIds
-      ? [{ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: '/admin?tab=project-ids', status: 'live' as const }]
-      : []),
-    ...(canViewAudit
-      ? [{ id: 'access-log', label: 'Access log', icon: 'history', href: '/admin?tab=access-log', status: 'live' as const }]
-      : []),
-  ]
-  const sidebarGroups: SidebarNavGroup[] = [
-    { id: 'sections', label: 'Workspace', items: adminSections },
-    ...(isSuperAdmin
-      ? [{
-          id: 'admin',
-          label: 'Admin',
-          items: [{ id: 'super-admin', label: 'Super Admin', icon: 'crown', href: '/admin/super-admin', status: 'live' as const }],
-        }]
-      : []),
-  ]
-  const activeLabel = adminSections.find((i) => i.id === activeTab)?.label ?? 'Home'
+  const activeLabel = sidebarGroups[0].items.find((i) => i.id === activeTab)?.label ?? 'Home'
 
   return (
     <AppShell
@@ -277,9 +261,11 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
               </DashboardWindow>
             </TabsContent>
 
-            <TabsContent value="calendar">
-              <CalendarView tasks={topLevelTasks} users={users} isAdmin />
-            </TabsContent>
+            {showCalendar && (
+              <TabsContent value="calendar">
+                <CalendarView tasks={topLevelTasks} users={users} isAdmin />
+              </TabsContent>
+            )}
 
             {showMarketing && (
               <TabsContent value="marketing">
@@ -293,32 +279,46 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
               </TabsContent>
             )}
 
-            <TabsContent value="reports">
-              <Tabs defaultValue="table" className="space-y-4">
-                <TabsList>
-                  <TabsTrigger value="table">Report</TabsTrigger>
-                  <TabsTrigger value="metrics">Metrics</TabsTrigger>
-                </TabsList>
-                <TabsContent value="table">
-                  <ReportsView tasks={topLevelTasks} users={users} boards={boards} />
-                </TabsContent>
-                <TabsContent value="metrics">
-                  <MetricsView tasks={topLevelTasks} users={users} boards={boards} />
-                </TabsContent>
-              </Tabs>
-            </TabsContent>
+            {showReports && (
+              <TabsContent value="reports">
+                <Tabs defaultValue="table" className="space-y-4">
+                  <TabsList>
+                    <TabsTrigger value="table">Report</TabsTrigger>
+                    <TabsTrigger value="metrics">Metrics</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="table">
+                    <ReportsView tasks={topLevelTasks} users={users} boards={boards} />
+                  </TabsContent>
+                  <TabsContent value="metrics">
+                    <MetricsView tasks={topLevelTasks} users={users} boards={boards} />
+                  </TabsContent>
+                </Tabs>
+              </TabsContent>
+            )}
 
-            <TabsContent value="boards">
-              <BoardManagement boards={boards} isSuperAdmin={isSuperAdmin} currentUserId={user.id} />
-            </TabsContent>
+            {showBoards && (
+              <TabsContent value="boards">
+                <BoardManagement boards={boards} isSuperAdmin={isSuperAdmin} currentUserId={user.id} />
+              </TabsContent>
+            )}
 
-            <TabsContent value="chat">
-              <ChatPanel currentUserId={user.id} isAdmin={true} />
-            </TabsContent>
+            {showChat && (
+              <TabsContent value="chat">
+                <ChatPanel currentUserId={user.id} isAdmin={true} />
+              </TabsContent>
+            )}
 
-            <TabsContent value="personal">
-              <PersonalTasks userId={user.id} />
-            </TabsContent>
+            {showPersonal && (
+              <TabsContent value="personal">
+                <PersonalTasks userId={user.id} />
+              </TabsContent>
+            )}
+
+            {showAppointments && (
+              <TabsContent value="appointments">
+                <AppointmentsView userId={user.id} />
+              </TabsContent>
+            )}
 
             {showProjectIds && (
               <TabsContent value="project-ids">
