@@ -156,34 +156,60 @@
     @apply bg-background text-foreground;
   }
 
-  /* Mobile optimizations */
-  @media (max-width: 768px) {
-    html {
-      font-size: 14px;
-    }
-    
-    /* Improve touch targets */
-    button, a, [role="button"] {
+  /*
+    Touch ergonomics.
+
+    ⚠️ This block used to open with `html { font-size: 14px }` below 768px, plus 15px for
+    tablets. Every Tailwind size in this app is rem-based, so that scaled the entire
+    interface DOWN by 12.5% on exactly the devices that need it larger: `text-sm` landed at
+    12.25px, an `h-10` control measured 35px, and every gap and padding shrank with them.
+    Mobile is not a small desktop. Sizes are now identical on every screen; what changes
+    here is the hit area, nothing else.
+
+    Keyed on the pointer rather than the viewport, because the question is what is doing the
+    pointing: a laptop with a touchscreen needs the larger target and a 500px-wide desktop
+    window does not.
+  */
+  @media (pointer: coarse) {
+    /*
+      The old rule was `button, a, [role="button"] { min-height: 44px; min-width: 44px }`,
+      which was wrong in both directions. It hit every `<a>`, so an inline link inside a
+      sentence became a 44px-tall block and broke the line it sat in, and it forced 44px of
+      width onto icon buttons that then pushed out of their own cards. Meanwhile it never
+      matched `input`, `select` or `textarea` — the controls a finger most needs to hit.
+
+      So: height only, on real controls. Width comes from the control's own padding.
+    */
+    button,
+    [role='button'],
+    [role='tab'],
+    [role='menuitem'],
+    [role='option'],
+    a[data-slot='button'],
+    select,
+    textarea,
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='hidden']) {
       min-height: 44px;
-      min-width: 44px;
     }
-    
-    /* Better mobile scrolling */
-    body {
-      -webkit-overflow-scrolling: touch;
-    }
-    
-    /* Optimize modal and dialog sizes */
-    [role="dialog"] {
-      max-width: 95vw !important;
-      max-height: 90vh !important;
+
+    /* A checkbox or radio keeps its drawn size; the label next to it is the real target. */
+    [role='checkbox'],
+    [role='radio'],
+    input[type='checkbox'],
+    input[type='radio'] {
+      min-height: 0;
     }
   }
-  
-  /* Tablet optimizations */
-  @media (min-width: 768px) and (max-width: 1024px) {
-    html {
-      font-size: 15px;
+
+  /*
+    Dialog sizing used to be clamped here with `max-height: 90vh !important` and nothing said
+    about overflow, so any dialog taller than the viewport was simply cut off — submit button
+    included — and the `!important` meant no dialog could opt out. It lives on the primitive
+    now (components/ui/dialog.tsx), where it can also scroll.
+  */
+  @media (max-width: 768px) {
+    body {
+      -webkit-overflow-scrolling: touch;
     }
   }
 }
