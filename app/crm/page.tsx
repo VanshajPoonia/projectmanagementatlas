@@ -30,6 +30,7 @@ export default async function CrmPage() {
   return (
     <CrmDashboard
       user={access.profile}
+      shell={access.shell}
       statuses={statuses ?? []}
       orders={orders ?? []}
       openIntervals={history ?? []}

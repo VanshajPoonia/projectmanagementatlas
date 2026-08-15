@@ -21,6 +21,7 @@ export default async function CrmClientsPage() {
   return (
     <CrmClientsView
       user={access.profile}
+      shell={access.shell}
       clients={clients ?? []}
       statuses={statuses ?? []}
       profiles={profiles ?? []}

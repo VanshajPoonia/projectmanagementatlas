@@ -6,6 +6,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { CrmShell, type CrmUser } from './crm-shell'
+import type { ShellData } from '@/lib/shell-data'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -49,10 +50,13 @@ function makeBlankContact(seq: number): ContactDraft {
  */
 export function CrmIntakeForm({
   user,
+  shell,
   statuses,
   profiles,
 }: {
   user: CrmUser
+  /** Server-loaded modules + calendars, handed straight to CrmShell. See lib/shell-data.ts. */
+  shell?: ShellData
   statuses: CrmStatus[]
   profiles: Profile[]
 }) {
@@ -183,6 +187,7 @@ export function CrmIntakeForm({
   return (
     <CrmShell
       user={user}
+      shell={shell}
       breadcrumbs={[{ label: 'CRM', href: '/crm' }, { label: 'Clients', href: '/crm/clients' }, { label: 'New' }]}
     >
       <header>

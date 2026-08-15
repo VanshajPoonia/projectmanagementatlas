@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import AdminDashboard from '@/components/admin/admin-dashboard'
+import { loadShellData } from '@/lib/shell-data'
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -26,12 +27,16 @@ export default async function AdminPage() {
     { data: users },
     { data: boards },
     { data: tasks },
+    shell,
   ] = await Promise.all([
     supabase.from('profiles').select('*').order('created_at', { ascending: false }),
     supabase.from('boards').select('*, creator:profiles!boards_created_by_fkey(full_name, email), editor:profiles!boards_updated_by_fkey(full_name, email)').is('archived_at', null).order('created_at', { ascending: false }),
     // Subtasks included so an admin's own assigned subtasks reach their dashboard;
     // AdminDashboard splits them back out for the aggregate views (see topLevelTasks).
     supabase.from('tasks').select('*, column:columns(board_id, status_key), task_assignees(user_id), task_tags(tag:tags(*))').is('deleted_at', null).order('created_at', { ascending: false }),
+    // Enabled modules + marketing calendars, so the sidebar is right on the first frame
+    // rather than rendering the fallback and correcting itself. See lib/shell-data.ts.
+    loadShellData(supabase),
   ])
 
   // Resolved locally rather than via a PostgREST embed — parent_task_id is a
@@ -51,5 +56,5 @@ export default async function AdminPage() {
         : null,
     }))
 
-  return <AdminDashboard user={profile} users={users || []} boards={boards || []} tasks={tasksWithBoardId} />
+  return <AdminDashboard user={profile} users={users || []} boards={boards || []} tasks={tasksWithBoardId} shell={shell} />
 }

@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { loadShellData, type ShellData } from '@/lib/shell-data'
+
 /**
  * The one gate every CRM route calls.
  *
@@ -10,9 +12,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  *
  * Returns null when access is refused so the caller can choose where to redirect.
  */
-export async function requireCrmAccess(
-  supabase: SupabaseClient,
-): Promise<{ profile: { id: string; role: 'user' | 'admin' | 'super_admin'; full_name: string | null; email: string | null } } | null> {
+export async function requireCrmAccess(supabase: SupabaseClient): Promise<{
+  profile: { id: string; role: 'user' | 'admin' | 'super_admin'; full_name: string | null; email: string | null }
+  /** Passed straight to CrmShell so its sidebar is right on the first frame. */
+  shell: ShellData
+} | null> {
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -30,17 +34,17 @@ export async function requireCrmAccess(
   // refused.
   if (!profile || profile.is_active === false) return null
 
-  const { data: module } = await supabase
-    .from('app_modules')
-    .select('enabled')
-    .eq('module_key', 'crm')
-    .maybeSingle()
+  // The whole module list, not just the CRM row: CrmShell needs it to build the sidebar, and
+  // narrowing this query only meant the shell re-fetched the same table from the browser a
+  // moment later and rendered the fallback nav until it arrived.
+  const shell = await loadShellData(supabase)
+  const module = shell.modules.find(m => m.module_key === 'crm')
 
-  // Absent row means the module was never seeded — treated as off here, which is deliberately
-  // STRICTER than lib/modules.ts's generic fallback (an unknown key there stays available, so
-  // a failure to read app_modules never hides working features). CRM is listed explicitly in
-  // DEFAULT_MODULES as enabled:false, so the nav agrees; this is the backstop for the case
-  // where the row is missing entirely rather than merely unreadable.
+  // No row, or an unreadable table, is treated as off — deliberately STRICTER than
+  // lib/modules.ts's generic fallback, where an unknown key stays available so a failure to
+  // read app_modules never hides working features. Both paths land on refused: a missing row
+  // makes `find` undefined, and an unreadable table makes loadShellData return
+  // DEFAULT_MODULES, which lists crm as enabled:false. The nav agrees either way.
   if (!module?.enabled) return null
 
   return {
@@ -50,5 +54,6 @@ export async function requireCrmAccess(
       full_name: profile.full_name,
       email: profile.email,
     },
+    shell,
   }
 }

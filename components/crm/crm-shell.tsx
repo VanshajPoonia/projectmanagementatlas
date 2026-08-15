@@ -16,6 +16,7 @@ import { AppShell } from '@/components/shell/app-shell'
 import { buildWorkspaceNav } from '@/components/shell/workspace-nav'
 import { ThemeControls } from '@/components/theme/theme-controls'
 import { useAppModules } from '@/lib/modules'
+import type { ShellData } from '@/lib/shell-data'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
 import { useFavorites } from '@/lib/use-favorites'
 import { cn } from '@/lib/utils'
@@ -49,18 +50,26 @@ const ADMINISTRATION: CrmNavEntry[] = [
 export function CrmShell({
   user,
   breadcrumbs,
+  shell,
   children,
 }: {
   user: CrmUser
   breadcrumbs: Crumb[]
+  /**
+   * Modules + marketing calendars from requireCrmAccess, which already had to read
+   * app_modules to decide whether to let you in at all. Without it this shell painted the
+   * fallback nav — CRM itself missing from its own sidebar — until the browser re-fetched
+   * the same table. See lib/shell-data.ts.
+   */
+  shell?: ShellData
   children: React.ReactNode
 }) {
   const pathname = usePathname()
   const isAdmin = user.role === 'admin' || user.role === 'super_admin'
   const basePath = isAdmin ? '/admin' : '/dashboard'
 
-  const modules = useAppModules()
-  const { calendars } = useMarketingCalendars()
+  const modules = useAppModules(shell?.modules)
+  const { calendars } = useMarketingCalendars(shell?.calendars)
   const favoriteBoardHref = useCallback((id: string) => `${basePath}/board/${id}`, [basePath])
   const { resolved: favoriteItems } = useFavorites(user.id, { boardHref: favoriteBoardHref })
 

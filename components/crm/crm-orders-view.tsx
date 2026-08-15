@@ -6,6 +6,7 @@ import { format } from 'date-fns'
 import { Plus, Search } from 'lucide-react'
 
 import { CrmShell, type CrmUser } from './crm-shell'
+import type { ShellData } from '@/lib/shell-data'
 import { StatusPill } from './crm-primitives'
 import { NewOrderDialog } from './new-order-dialog'
 import { EmptyState } from '@/components/shell/states'
@@ -46,6 +47,7 @@ const PRIORITY_CLASS: Record<string, string> = {
 
 export function CrmOrdersView({
   user,
+  shell,
   orders,
   statuses,
   clients,
@@ -55,6 +57,8 @@ export function CrmOrdersView({
   serverNow,
 }: {
   user: CrmUser
+  /** Server-loaded modules + calendars, handed straight to CrmShell. See lib/shell-data.ts. */
+  shell?: ShellData
   orders: CrmOrder[]
   statuses: CrmStatus[]
   clients: CrmClientSummary[]
@@ -89,7 +93,7 @@ export function CrmOrdersView({
   }, [orders, query, statusFilter, ownerFilter, clientById])
 
   return (
-    <CrmShell user={user} breadcrumbs={[{ label: 'CRM', href: '/crm' }, { label: 'Orders' }]}>
+    <CrmShell user={user} shell={shell} breadcrumbs={[{ label: 'CRM', href: '/crm' }, { label: 'Orders' }]}>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Orders</h1>

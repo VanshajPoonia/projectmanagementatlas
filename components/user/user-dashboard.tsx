@@ -36,6 +36,7 @@ import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
 import { isTaskOwnedBy } from '@/lib/assignees'
 import { useAppModules, isModuleEnabled } from '@/lib/modules'
+import type { ShellData } from '@/lib/shell-data'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
 import { useFavorites } from '@/lib/use-favorites'
 import { withFavoritesFirst } from '@/lib/favorites'
@@ -47,9 +48,15 @@ interface UserDashboardProps {
   tasks: any[]
   boards: any[]
   users: any[]
+  /**
+   * Modules + marketing calendars, fetched on the server so the sidebar is correct on the
+   * first frame. Optional: without it both hooks fall back to fetching on mount, which is
+   * what every screen used to do. See lib/shell-data.ts.
+   */
+  shell?: ShellData
 }
 
-export default function UserDashboard({ user, tasks, boards, users }: UserDashboardProps) {
+export default function UserDashboard({ user, tasks, boards, users, shell }: UserDashboardProps) {
   const [activeTab, setActiveTabState] = useState('tasks')
   const [boardsViewMode, setBoardsViewMode] = useState<'tile' | 'list'>('tile')
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -70,7 +77,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   // Marketing calendars are now admin-creatable, named instances with their own member lists
   // (migration 085) rather than one calendar hardcoded to a single owner — access is "admin, or
   // a member of at least one calendar," not an email compare. See use-marketing-calendars.ts.
-  const { calendars: marketingCalendars, refetch: refetchMarketingCalendars } = useMarketingCalendars()
+  const { calendars: marketingCalendars, refetch: refetchMarketingCalendars } = useMarketingCalendars(shell?.calendars)
   const canUseMarketingCalendar = isAdmin || marketingCalendars.length > 0
 
   // Starred boards (migration 097). The hook resolves each star against boards this viewer
@@ -99,7 +106,7 @@ export default function UserDashboard({ user, tasks, boards, users }: UserDashbo
   // Module activation (PROMPT 3 "1-C"): app_modules is a singleton config table (one org, no
   // org_id) — everything defaults enabled=true, so this is a no-op until a super_admin flips a
   // module off in Super Admin. 'tasks' (Home) is core and always on, not a registered module.
-  const modules = useAppModules()
+  const modules = useAppModules(shell?.modules)
   const showPersonal = isModuleEnabled(modules, 'personal_tasks')
   const showCalendar = isModuleEnabled(modules, 'calendar')
   const showMarketing = canUseMarketingCalendar && isModuleEnabled(modules, 'marketing_calendar')

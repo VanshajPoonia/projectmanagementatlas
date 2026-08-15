@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import MyWorkView from '@/components/my-work/my-work-view'
+import { loadShellData } from '@/lib/shell-data'
 
 /**
  * My Work — the personal cockpit the shell has advertised as "soon" since the nav model
@@ -37,5 +38,9 @@ export default async function MyWorkPage() {
       board_title: task.column?.board?.title ?? null,
     }))
 
-  return <MyWorkView user={profile} tasks={tasks} />
+  // Enabled modules + marketing calendars, so the sidebar is right on the first frame
+  // rather than rendering the fallback and correcting itself. See lib/shell-data.ts.
+  const shell = await loadShellData(supabase)
+
+  return <MyWorkView user={profile} tasks={tasks} shell={shell} />
 }

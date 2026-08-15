@@ -30,6 +30,7 @@ export default async function CrmOrderPage({ params }: { params: Promise<{ id: s
   return (
     <CrmStatusControl
       user={access.profile}
+      shell={access.shell}
       order={order}
       client={client ?? null}
       statuses={statuses ?? []}

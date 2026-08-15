@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ThemeControls } from '@/components/theme/theme-controls'
 import { useAppModules } from '@/lib/modules'
+import type { ShellData } from '@/lib/shell-data'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
 import { useFavorites } from '@/lib/use-favorites'
 import { isTaskOwnedBy } from '@/lib/assignees'
@@ -24,6 +25,12 @@ import { cn } from '@/lib/utils'
 interface MyWorkViewProps {
   user: any
   tasks: any[]
+  /**
+   * Modules + marketing calendars, fetched on the server so the sidebar is correct on the
+   * first frame. Optional: without it both hooks fall back to fetching on mount, which is
+   * what every screen used to do. See lib/shell-data.ts.
+   */
+  shell?: ShellData
 }
 
 function dueLabel(due: unknown): { text: string; overdue: boolean } | null {
@@ -44,7 +51,7 @@ function dueLabel(due: unknown): { text: string; overdue: boolean } | null {
  * an unexplained ordering is a black box, and people stop trusting it the first time it
  * disagrees with them.
  */
-export default function MyWorkView({ user, tasks }: MyWorkViewProps) {
+export default function MyWorkView({ user, tasks, shell }: MyWorkViewProps) {
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
   const basePath = isAdmin ? '/admin' : '/dashboard'
 
@@ -56,8 +63,8 @@ export default function MyWorkView({ user, tasks }: MyWorkViewProps) {
   )
   const { resolved: favoriteItems } = useFavorites(user?.id, { boardHref: favoriteBoardHref })
 
-  const modules = useAppModules()
-  const { calendars } = useMarketingCalendars()
+  const modules = useAppModules(shell?.modules)
+  const { calendars } = useMarketingCalendars(shell?.calendars)
 
   const mine = useMemo(() => tasks.filter((task) => isTaskOwnedBy(task, user?.id)), [tasks, user?.id])
   const { sections, next } = useMemo(

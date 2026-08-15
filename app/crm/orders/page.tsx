@@ -27,6 +27,7 @@ export default async function CrmOrdersPage({
   return (
     <CrmOrdersView
       user={access.profile}
+      shell={access.shell}
       orders={orders ?? []}
       statuses={statuses ?? []}
       clients={clients ?? []}

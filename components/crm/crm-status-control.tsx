@@ -7,6 +7,7 @@ import { format } from 'date-fns'
 import { toast } from 'sonner'
 
 import { CrmShell, type CrmUser } from './crm-shell'
+import type { ShellData } from '@/lib/shell-data'
 import { Field, StatTile, StatusPill } from './crm-primitives'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -45,6 +46,7 @@ interface Profile {
  */
 export function CrmStatusControl({
   user,
+  shell,
   order: initialOrder,
   client,
   statuses,
@@ -53,6 +55,8 @@ export function CrmStatusControl({
   serverNow,
 }: {
   user: CrmUser
+  /** Server-loaded modules + calendars, handed straight to CrmShell. See lib/shell-data.ts. */
+  shell?: ShellData
   order: CrmOrder
   client: CrmClient | null
   statuses: CrmStatus[]
@@ -135,6 +139,7 @@ export function CrmStatusControl({
   return (
     <CrmShell
       user={user}
+      shell={shell}
       breadcrumbs={[
         { label: 'CRM', href: '/crm' },
         { label: 'Orders', href: '/crm/orders' },

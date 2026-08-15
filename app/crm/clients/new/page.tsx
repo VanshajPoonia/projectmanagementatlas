@@ -17,6 +17,7 @@ export default async function CrmIntakePage() {
   ])
 
   return (
-    <CrmIntakeForm user={access.profile} statuses={statuses ?? []} profiles={profiles ?? []} />
+    <CrmIntakeForm user={access.profile}
+      shell={access.shell} statuses={statuses ?? []} profiles={profiles ?? []} />
   )
 }

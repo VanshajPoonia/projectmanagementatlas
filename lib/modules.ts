@@ -1,50 +1,37 @@
+'use client'
+
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { DEFAULT_MODULES, type AppModule } from './module-registry'
 
-export type ModuleKey =
-  | 'boards'
-  | 'personal_tasks'
-  | 'chat'
-  | 'calendar'
-  | 'bookmarks'
-  | 'marketing_calendar'
-  | 'reports'
-  | 'ai_assistant'
-  | 'appointments'
-  | 'project_ids'
-  | 'crm'
+// The registry itself lives in ./module-registry (no React), so the server can import it too.
+// Re-exported here so every existing `from '@/lib/modules'` import keeps working and client
+// code never has to care which of the two files a symbol came from.
+export {
+  DEFAULT_MODULES,
+  isModuleEnabled,
+  type AppModule,
+  type ModuleKey,
+} from './module-registry'
 
-export interface AppModule {
-  module_key: ModuleKey
-  enabled: boolean
-  config?: Record<string, unknown>
-}
-
-// Fallback whenever app_modules can't be loaded (or a key isn't seeded yet), so every module
-// stays available — matches pre-migration-066 behavior, where nothing was ever gated.
-export const DEFAULT_MODULES: AppModule[] = [
-  { module_key: 'boards', enabled: true },
-  { module_key: 'personal_tasks', enabled: true },
-  { module_key: 'chat', enabled: true },
-  { module_key: 'calendar', enabled: true },
-  { module_key: 'bookmarks', enabled: true },
-  { module_key: 'marketing_calendar', enabled: true },
-  { module_key: 'reports', enabled: true },
-  { module_key: 'ai_assistant', enabled: true },
-  { module_key: 'project_ids', enabled: true },
-  // The one module that defaults OFF (migration 080 seeds enabled=false). It stays off in the
-  // fallback too: if app_modules can't be read we must not reveal a module a super admin has
-  // never switched on, which is the opposite of the every-module-stays-available rule above.
-  { module_key: 'appointments', enabled: false },
-  // Same reasoning as appointments: 103 seeds it disabled, and the fallback must not reveal
-  // a module a super admin has never switched on.
-  { module_key: 'crm', enabled: false },
-]
-
-export function useAppModules() {
-  const [modules, setModules] = useState<AppModule[]>(DEFAULT_MODULES)
+/**
+ * The enabled-module list for this viewer.
+ *
+ * Pass `initial` (from `loadShellData` on the server) wherever the host can. Without it the
+ * first frame renders DEFAULT_MODULES — where `crm` and `appointments` are off — and
+ * corrects itself once the fetch lands, so a module that is switched on visibly pops into
+ * the sidebar a moment after the page appears.
+ *
+ * When seeded, the client fetch is skipped: every host that seeds is a dynamic server page,
+ * so the prop is re-read on every navigation, including a soft one. Fetching again would
+ * re-request rows the server just sent.
+ */
+export function useAppModules(initial?: AppModule[] | null) {
+  const seeded = Boolean(initial?.length)
+  const [fetched, setFetched] = useState<AppModule[] | null>(null)
 
   useEffect(() => {
+    if (seeded) return
     let active = true
     const supabase = createClient()
     supabase
@@ -52,17 +39,16 @@ export function useAppModules() {
       .select('module_key, enabled, config')
       .then(({ data }: { data: AppModule[] | null }) => {
         if (!active || !data || data.length === 0) return
-        setModules(data)
+        setFetched(data)
       })
     return () => {
       active = false
     }
-  }, [])
+  }, [seeded])
 
-  return modules
-}
-
-export function isModuleEnabled(modules: AppModule[], key: ModuleKey): boolean {
-  const found = modules.find((m) => m.module_key === key)
-  return found ? found.enabled : true
+  // The seed is read on every render rather than copied into state once. A `useState`
+  // initializer runs only on mount, so a soft navigation carrying a newly-toggled list would
+  // have been ignored for the lifetime of the component — and syncing it back with an effect
+  // risks a render loop whenever the host passes a fresh array identity.
+  return seeded ? initial! : (fetched ?? DEFAULT_MODULES)
 }

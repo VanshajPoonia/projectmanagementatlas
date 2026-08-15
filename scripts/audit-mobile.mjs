@@ -132,8 +132,6 @@ try {
   await page.setViewportSize(DESKTOP)
   await page.goto('http://localhost:3000/admin?tab=overview')
   await page.waitForSelector('nav[aria-label="Primary"] a', { timeout: 60000 })
-  // app_modules is fetched client-side, so the first paint shows lib/modules.ts's fallback
-  // (crm and appointments off) and the real list lands a beat later.
   await page.waitForTimeout(2500)
   const navLinks = await page.$$eval('nav[aria-label="Primary"]:not(.md\\:hidden) a', as =>
     as.map(a => ({ label: a.textContent.trim(), href: a.getAttribute('href') })))
@@ -149,6 +147,29 @@ try {
   console.log(`${labels.includes('My Work') ? '  ok  ' : ' FAIL '} My Work is reachable from /admin`)
   const strayDashboard = navLinks.filter(l => (l.href || '').startsWith('/dashboard'))
   console.log(`${strayDashboard.length === 0 ? '  ok  ' : ' FAIL '} no /dashboard links in an admin's nav${strayDashboard.length ? ` — ${strayDashboard.map(l => l.href).join(', ')}` : ''}`)
+
+  // ── First paint, proved with JavaScript switched off ───────────────────────────────
+  //
+  // The nav above is read after everything has settled, so it cannot tell a server-rendered
+  // sidebar from one the browser corrected a moment later. With scripts disabled only the SSR
+  // HTML renders, so a module that only reaches the nav via a client fetch simply is not
+  // there. This is the check that lib/shell-data.ts exists for.
+  console.log('\n=== FIRST PAINT (JavaScript disabled) ===')
+  const noJs = await browser.newContext({
+    viewport: DESKTOP,
+    javaScriptEnabled: false,
+    storageState: await ctx.storageState(),
+  })
+  const flat = await noJs.newPage()
+  for (const [label, path] of [['/admin', '/admin?tab=overview'], ['/my-work', '/my-work'], ['/crm', '/crm']]) {
+    await flat.goto(`http://localhost:3000${path}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
+    const links = await flat.$$eval('nav[aria-label="Primary"] a', as => as.map(a => a.textContent.trim()))
+    const has = l => links.includes(l)
+    const wanted = enabled.includes('crm') ? ['CRM', 'My Work'] : ['My Work']
+    const missing = wanted.filter(l => !has(l))
+    console.log(`${missing.length === 0 ? '  ok  ' : ' FAIL '} ${label} renders ${wanted.join(' + ')} server-side${missing.length ? ` — missing ${missing.join(', ')}` : ''}`)
+  }
+  await noJs.close()
 
   // ── Per-route mobile measurement ──────────────────────────────────────────────────
   await page.setViewportSize(PHONE)

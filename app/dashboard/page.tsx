@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import UserDashboard from '@/components/user/user-dashboard'
+import { loadShellData } from '@/lib/shell-data'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -43,6 +44,10 @@ export default async function DashboardPage() {
     .from('profiles')
     .select('id, full_name, email')
 
+  // Enabled modules + marketing calendars, so the sidebar is right on the first frame rather
+  // than rendering the fallback and correcting itself. See lib/shell-data.ts.
+  const shell = await loadShellData(supabase)
+
   // Parent titles are resolved here rather than with a PostgREST embed: parent_task_id
   // is a self-referencing foreign key, where the `!hint` syntax is ambiguous between
   // the parent (to-one) and children (to-many) directions. Getting that wrong yields an
@@ -62,5 +67,5 @@ export default async function DashboardPage() {
         : null,
     }))
 
-  return <UserDashboard user={profile} tasks={tasksWithBoardId} boards={boards || []} users={users || []} />
+  return <UserDashboard user={profile} tasks={tasksWithBoardId} boards={boards || []} users={users || []} shell={shell} />
 }

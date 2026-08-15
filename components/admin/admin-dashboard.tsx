@@ -35,6 +35,7 @@ import { gsap } from 'gsap'
 import { cn } from '@/lib/utils'
 import { isTaskOwnedBy } from '@/lib/assignees'
 import { useAppModules, isModuleEnabled } from '@/lib/modules'
+import type { ShellData } from '@/lib/shell-data'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
 import { useFavorites } from '@/lib/use-favorites'
 
@@ -43,9 +44,15 @@ interface AdminDashboardProps {
   users: any[]
   boards: any[]
   tasks: any[]
+  /**
+   * Modules + marketing calendars, fetched on the server so the sidebar is correct on the
+   * first frame. Optional: without it both hooks fall back to fetching on mount, which is
+   * what every screen used to do. See lib/shell-data.ts.
+   */
+  shell?: ShellData
 }
 
-export default function AdminDashboard({ user, users, boards, tasks }: AdminDashboardProps) {
+export default function AdminDashboard({ user, users, boards, tasks, shell }: AdminDashboardProps) {
   const isSuperAdmin = user.role === 'super_admin'
 
   // Starred boards for the sidebar and ⌘K. Admin board links go through /admin/board/:id,
@@ -82,10 +89,10 @@ export default function AdminDashboard({ user, users, boards, tasks }: AdminDash
   // module off in Super Admin. 'overview' is a core admin function, not a registered module,
   // so it's always on. Statuses management moved to the Super Admin page (069) — status
   // creation/editing is now super_admin-only, so it no longer belongs in the shared admin tabs.
-  const modules = useAppModules()
+  const modules = useAppModules(shell?.modules)
   const showCalendar = isModuleEnabled(modules, 'calendar')
   const showMarketing = isModuleEnabled(modules, 'marketing_calendar')
-  const { calendars: marketingCalendars, refetch: refetchMarketingCalendars } = useMarketingCalendars()
+  const { calendars: marketingCalendars, refetch: refetchMarketingCalendars } = useMarketingCalendars(shell?.calendars)
   const showReports = isModuleEnabled(modules, 'reports')
   const showBoards = isModuleEnabled(modules, 'boards')
   const showChat = isModuleEnabled(modules, 'chat')

@@ -540,10 +540,28 @@ deliberately left out.
   - `reports` and `access-log` are admin-hosted only — the user dashboard has no such tab, so
     offering either to a member is a dead link, not a permission error. The old `admin-home`
     item is gone: for an admin, Home *is* `/admin`, and the two entries pointed at one screen.
-  - ⚠️ **`app_modules` is fetched client-side**, so the first paint of any nav uses
-    `lib/modules.ts`'s fallback, where `appointments` and `crm` are off. A browser check that
-    reads the sidebar immediately will report both missing. Wait for the fetch (or seed it
-    from the server) before concluding the nav is wrong; `scripts/audit-mobile.mjs` does.
+  - **The nav is server-rendered. `lib/shell-data.ts`'s `loadShellData(supabase)` reads
+    `app_modules` + `marketing_calendars` on the server**, and every shell takes them as a
+    `shell` prop and passes them to `useAppModules(shell?.modules)` /
+    `useMarketingCalendars(shell?.calendars)`. Both hooks skip their own fetch when seeded and
+    fall back to fetching on mount when not, so the prop is optional everywhere. For CRM the
+    seed rides on `requireCrmAccess`, which already had to read `app_modules` to decide
+    whether to let you in. Before this, every screen painted `DEFAULT_MODULES` — where
+    `appointments` and `crm` are off — and corrected itself a beat later, so a module a super
+    admin had just switched on visibly appeared after the page did.
+    - ⚠️ **`useAppModules` reads the seed on every render rather than copying it into
+      `useState`.** An initializer runs once, so a soft navigation carrying a newly-toggled
+      list would be ignored for the component's lifetime; syncing it back with an effect
+      instead risks a render loop whenever the host passes a fresh array identity.
+    - ⚠️ **`lib/module-registry.ts` exists because a Server Component may not import a module
+      that reaches `useEffect`.** `lib/modules.ts` imports `useState` and the browser Supabase
+      client, so `loadShellData` wanting `DEFAULT_MODULES` broke the build the moment it was
+      written. The registry holds the pure data and `lib/modules.ts` re-exports all of it, so
+      no existing import changed. Turbopack caught this, `tsc` did not.
+    - Gate: `scripts/audit-mobile.mjs` loads `/admin`, `/my-work` and `/crm` in a context with
+      **JavaScript disabled** and asserts CRM and My Work are in the HTML. That is the only
+      check that can tell a server-rendered sidebar from one the browser corrected; reading
+      the DOM after the page settles cannot.
 - ⚠️ **`app/globals.css` used to shrink the whole interface on a phone.** Its "Mobile
   optimizations" block opened with `html { font-size: 14px }` below 768px (and 15px for
   tablets). Every size in this app is rem-based through Tailwind, so that scaled the entire

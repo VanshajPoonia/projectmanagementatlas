@@ -7,6 +7,7 @@ import { Search, Send } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { CrmShell, type CrmUser } from './crm-shell'
+import type { ShellData } from '@/lib/shell-data'
 import { Field, StatusPill } from './crm-primitives'
 import { EmptyState } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
@@ -41,11 +42,14 @@ interface Note {
 
 export function CrmClientsView({
   user,
+  shell,
   clients: initialClients,
   statuses,
   profiles,
 }: {
   user: CrmUser
+  /** Server-loaded modules + calendars, handed straight to CrmShell. See lib/shell-data.ts. */
+  shell?: ShellData
   clients: CrmClient[]
   statuses: CrmStatus[]
   profiles: Profile[]
@@ -107,7 +111,7 @@ export function CrmClientsView({
   )
 
   return (
-    <CrmShell user={user} breadcrumbs={[{ label: 'CRM', href: '/crm' }, { label: 'Clients' }]}>
+    <CrmShell user={user} shell={shell} breadcrumbs={[{ label: 'CRM', href: '/crm' }, { label: 'Clients' }]}>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Clients</h1>

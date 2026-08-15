@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { AlertTriangle, ArrowRight, Clock, UserX } from 'lucide-react'
 
 import { CrmShell, type CrmUser } from './crm-shell'
+import type { ShellData } from '@/lib/shell-data'
 import { StatTile, StatusPill } from './crm-primitives'
 import { EmptyState } from '@/components/shell/states'
 import { useNow } from '@/lib/use-now'
@@ -35,6 +36,7 @@ const ALERT_LABEL = {
 
 export function CrmDashboard({
   user,
+  shell,
   statuses,
   orders,
   openIntervals,
@@ -42,6 +44,8 @@ export function CrmDashboard({
   serverNow,
 }: {
   user: CrmUser
+  /** Server-loaded modules + calendars, handed straight to CrmShell. See lib/shell-data.ts. */
+  shell?: ShellData
   statuses: CrmStatus[]
   orders: CrmOrder[]
   openIntervals: CrmStatusInterval[]
@@ -64,7 +68,7 @@ export function CrmDashboard({
   const clientById = useMemo(() => new Map(clients.map(c => [c.id, c])), [clients])
 
   return (
-    <CrmShell user={user} breadcrumbs={[{ label: 'CRM' }]}>
+    <CrmShell user={user} shell={shell} breadcrumbs={[{ label: 'CRM' }]}>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
