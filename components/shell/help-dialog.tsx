@@ -73,12 +73,16 @@ export function HelpDialog() {
 
   return (
     <>
+      {/* Hidden below `sm`. It is opened with `?`, it lists keyboard shortcuts, and on a
+          390px topbar it was the fifth icon squeezing the breadcrumb — the one control here
+          that a phone has no use for. Still reachable by keyboard on any device that has one. */}
       <Button
         variant="outline"
         size="icon"
         onClick={() => setOpen(true)}
         aria-label="Help: features and keyboard shortcuts"
         title="Help (press ?)"
+        className="hidden sm:inline-flex"
       >
         <CircleHelp className="size-4" />
       </Button>

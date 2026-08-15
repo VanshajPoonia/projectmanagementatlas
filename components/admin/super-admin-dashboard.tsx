@@ -54,24 +54,28 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
 
       <main className="container mx-auto px-3 py-5 sm:px-4 sm:py-8">
         <Tabs defaultValue="companies" className="space-y-6">
-          <TabsList className="grid h-auto w-full max-w-3xl grid-cols-5 rounded-lg p-1">
-            <TabsTrigger value="companies" className="min-w-0 gap-1 px-1.5 py-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
+          {/* Five equal columns cannot hold five icon-and-word labels on a 390px screen — at
+              12px text they collided with their own icons. Below `sm` the strip scrolls
+              sideways at its natural width instead, which is the one place horizontal scroll
+              is the right answer: the row is the control. */}
+          <TabsList className="-mx-3 flex h-auto w-auto max-w-full justify-start gap-1 overflow-x-auto rounded-none px-3 sm:mx-0 sm:grid sm:w-full sm:max-w-3xl sm:grid-cols-5 sm:gap-0 sm:rounded-lg sm:px-1 sm:py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <TabsTrigger value="companies" className="shrink-0 gap-1.5 px-3 py-2 text-xs whitespace-nowrap sm:min-w-0 sm:shrink sm:gap-2 sm:px-3 sm:text-sm">
               <Building2 className="h-4 w-4" />
               Companies
             </TabsTrigger>
-            <TabsTrigger value="teams" className="min-w-0 gap-1 px-1.5 py-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
+            <TabsTrigger value="teams" className="shrink-0 gap-1.5 px-3 py-2 text-xs whitespace-nowrap sm:min-w-0 sm:shrink sm:gap-2 sm:px-3 sm:text-sm">
               <UsersRound className="h-4 w-4" />
               Teams
             </TabsTrigger>
-            <TabsTrigger value="users" className="min-w-0 gap-1 px-1.5 py-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
+            <TabsTrigger value="users" className="shrink-0 gap-1.5 px-3 py-2 text-xs whitespace-nowrap sm:min-w-0 sm:shrink sm:gap-2 sm:px-3 sm:text-sm">
               <Users className="h-4 w-4" />
               Users
             </TabsTrigger>
-            <TabsTrigger value="statuses" className="min-w-0 gap-1 px-1.5 py-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
+            <TabsTrigger value="statuses" className="shrink-0 gap-1.5 px-3 py-2 text-xs whitespace-nowrap sm:min-w-0 sm:shrink sm:gap-2 sm:px-3 sm:text-sm">
               <SlidersHorizontal className="h-4 w-4" />
               Statuses
             </TabsTrigger>
-            <TabsTrigger value="modules" className="min-w-0 gap-1 px-1.5 py-2 text-xs sm:gap-2 sm:px-3 sm:text-sm">
+            <TabsTrigger value="modules" className="shrink-0 gap-1.5 px-3 py-2 text-xs whitespace-nowrap sm:min-w-0 sm:shrink sm:gap-2 sm:px-3 sm:text-sm">
               <ToggleLeft className="h-4 w-4" />
               Modules
             </TabsTrigger>

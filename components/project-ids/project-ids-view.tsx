@@ -203,7 +203,8 @@ export default function ProjectIdsView({ userId, userName }: { userId: string; u
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Two across on a phone; see task-overview.tsx for why. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatTile label="Current prefix" value={yearMonth} />
         <StatTile label="Used this month" value={loading ? '—' : String(monthCount)} />
         <StatTile label="Total IDs used" value={loading ? '—' : String(rows.length)} />
@@ -465,9 +466,11 @@ export default function ProjectIdsView({ userId, userName }: { userId: string; u
 function StatTile({ label, value }: { label: string; value: string }) {
   return (
     <Card>
-      <CardContent className="pt-6">
+      <CardContent className="pt-2 sm:pt-6">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-        <p className="mt-1 font-mono text-2xl font-bold tracking-tight">{value}</p>
+        {/* A claimed project ID is eight digits; at 2-up on a phone it has to be allowed to
+            break rather than push the card wide. */}
+        <p className="mt-1 font-mono text-xl font-bold tracking-tight break-all sm:text-2xl">{value}</p>
       </CardContent>
     </Card>
   )

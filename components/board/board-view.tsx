@@ -588,13 +588,21 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
   return (
     <div className="min-h-screen bg-background">
+      {/*
+        This header is sticky, so every row it occupies is a row the board never gets back.
+        On a phone it was running to roughly 240 of 844 pixels — back button, title, board
+        description, creator byline, then eight controls wrapping onto two lines. Below `sm`
+        the byline and description are dropped (reference detail, not something you need while
+        moving work) and the back control becomes its icon.
+      */}
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex min-w-0 flex-1 items-start gap-4">
+        <div className="container mx-auto px-4 py-3 sm:py-4">
+          <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-4">
               <Button
                 variant="outline"
                 size="sm"
+                aria-label="Back"
                 onClick={() => {
                   if (window.history.length > 1) {
                     router.back()
@@ -603,8 +611,8 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   }
                 }}
               >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back
+                <ArrowLeft className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Back</span>
               </Button>
               {/* Persistent nav so switching sections doesn't require leaving the board first
                   (mobile gets the equivalent via MobileBottomNav below — this page renders
@@ -648,9 +656,9 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   />
                 </div>
               ) : (
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h1 className="text-xl font-bold tracking-tight">{boardTitle}</h1>
+                    <h1 className="min-w-0 truncate text-lg font-bold tracking-tight sm:text-xl">{boardTitle}</h1>
                     {/* Starring from inside the board matters more than starring from the
                         list: this is where you realise you keep coming back to it. */}
                     <FavoriteStar
@@ -678,10 +686,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                     )}
                   </div>
                   {boardDescription && (
-                    <p className="text-sm text-muted-foreground">{boardDescription}</p>
+                    <p className="hidden text-sm text-muted-foreground sm:block">{boardDescription}</p>
                   )}
                   {(board?.creator?.full_name || board?.creator?.email) && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="hidden text-xs text-muted-foreground sm:block">
                       Created by {board.creator.full_name || board.creator.email}
                     </p>
                   )}
@@ -689,9 +697,16 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
               )}
             </div>
             
-            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            {/*
+              Eight controls do not fit across 358px, and wrapping stranded the Add Column
+              button alone on a second line — a whole extra row of a sticky header for one
+              icon. Below `lg` the strip scrolls sideways at its natural width, which keeps
+              the header one row tall and matches how the CRM sub-nav and the Super Admin tabs
+              behave at the same width.
+            */}
+            <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-0.5 lg:mx-0 lg:flex-wrap lg:justify-end lg:overflow-visible lg:px-0 lg:pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {/* View Toggle */}
-              <div className="flex items-center border rounded-md">
+              <div className="flex shrink-0 items-center border rounded-md">
                 <Button
                   onClick={() => setViewMode('tile')}
                   variant={viewMode === 'tile' ? 'default' : 'ghost'}

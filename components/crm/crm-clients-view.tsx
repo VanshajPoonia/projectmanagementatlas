@@ -115,18 +115,18 @@ export function CrmClientsView({
             {clients.length} client{clients.length === 1 ? '' : 's'} · change status inline without opening the record
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <div className="relative min-w-0 flex-1 sm:flex-none">
             <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" aria-hidden />
             <Input
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="Search name, company, email, phone"
               aria-label="Search clients"
-              className="w-64 pl-8"
+              className="w-full pl-8 sm:w-64"
             />
           </div>
-          <Button asChild size="sm">
+          <Button asChild size="sm" className="shrink-0">
             <Link href="/crm/clients/new">New client</Link>
           </Button>
         </div>
@@ -154,7 +154,76 @@ export function CrmClientsView({
         />
       ) : (
         <>
-          <div className="bg-card overflow-hidden rounded-lg border">
+          {/*
+            Below md the eight-column table becomes records. Picking a client is the whole
+            point of this list (it drives the workspace underneath), so the card is the
+            selection control, and the status select stays on it: changing status without
+            opening the record is the feature, and it should not need a desktop.
+          */}
+          <ul className="space-y-2 md:hidden">
+            {filtered.map(client => {
+              const contact = primaryContact(client.crm_contacts)
+              const rep = client.sales_rep_id ? profileById.get(client.sales_rep_id) : null
+              const isSelected = selected?.id === client.id
+              return (
+                <li key={client.id}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
+                    onClick={() => setSelectedId(client.id)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setSelectedId(client.id)
+                      }
+                    }}
+                    className={cn(
+                      'focus-visible:ring-ring block w-full rounded-lg border p-3 text-left outline-none focus-visible:ring-2',
+                      isSelected ? 'border-primary bg-accent' : 'bg-card',
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="font-mono text-xs">{client.client_ref ?? '—'}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {formatDistanceToNow(new Date(client.last_activity_at), { addSuffix: true })}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 font-medium">
+                      {contact ? `${contact.first_name} ${contact.last_name}` : clientDisplayName(client)}
+                    </p>
+                    {client.company_name && (
+                      <p className="text-muted-foreground text-sm">{client.company_name}</p>
+                    )}
+                    <p className="text-muted-foreground mt-0.5 truncate text-sm">
+                      {[contact?.email, contact?.mobile_phone].filter(Boolean).join(' · ') || 'No contact details'}
+                    </p>
+                    <div
+                      className="mt-2.5 flex items-center gap-2 border-t pt-2.5"
+                      onClick={e => e.stopPropagation()}
+                      onKeyDown={e => e.stopPropagation()}
+                    >
+                      <Select value={client.status} onValueChange={v => updateStatus(client.id, v)}>
+                        <SelectTrigger className="h-9 flex-1" aria-label={`Status for ${clientDisplayName(client)}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {activeStatuses(statuses, client.status).map(s => (
+                            <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <span className="text-muted-foreground shrink-0 text-sm">
+                        {rep?.full_name || rep?.email || 'Unassigned'}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          <div className="bg-card hidden overflow-hidden rounded-lg border md:block">
             {/* Horizontal scroll is confined to the table so the page body never scrolls
                 sideways on a narrow viewport. */}
             <div className="overflow-x-auto">

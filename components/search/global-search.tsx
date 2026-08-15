@@ -111,7 +111,12 @@ export default function GlobalSearch({ isAdmin }: GlobalSearchProps) {
           onKeyDown={(e) => {
             if (e.key === 'Escape') setOpen(false)
           }}
-          placeholder="Search tasks... (multiple words = match all)"
+          // "Search tasks... (multiple words = match all)" is 44 characters and a phone
+          // shows about 32, so the rule it was teaching got cut mid-word — "= matc" — on
+          // every narrow screen. The hint now appears where it is actually actionable: in
+          // the empty result, at the moment a search has come back with nothing.
+          placeholder="Search tasks"
+          title="Multiple words match all — a task must contain every one"
           className="pl-8 pr-8"
         />
         {query && (
@@ -129,7 +134,10 @@ export default function GlobalSearch({ isAdmin }: GlobalSearchProps) {
       {open && terms.length > 0 && (
         <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg max-h-96 overflow-y-auto">
           {results.length === 0 ? (
-            <p className="p-3 text-sm text-muted-foreground">No tasks match "{query}"</p>
+            <p className="p-3 text-sm text-muted-foreground">
+              No tasks match &ldquo;{query}&rdquo;.
+              {query.trim().includes(' ') && ' Every word has to appear in the same task.'}
+            </p>
           ) : (
             results.map((task) => (
               <button

@@ -140,7 +140,10 @@ export function AppShell({
               href={item.href}
               aria-current={isActive ? 'page' : undefined}
               className={cn(
-                'flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs font-medium',
+                // min-w-0 so five labels share a 320px screen by truncating rather than
+                // forcing the whole page to scroll sideways — measured at the WCAG 1.4.10
+                // reflow width, where "Marketing" alone pushed the bar 29px past the viewport.
+                'flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium sm:text-xs',
                 isActive ? 'text-primary' : 'text-muted-foreground',
               )}
             >
@@ -148,7 +151,7 @@ export function AppShell({
                 <Icon className="size-5" aria-hidden="true" />
                 {item.badge}
               </span>
-              <span className="leading-none">{item.label}</span>
+              <span className="w-full truncate text-center leading-none">{item.label}</span>
             </Link>
           )
         })}

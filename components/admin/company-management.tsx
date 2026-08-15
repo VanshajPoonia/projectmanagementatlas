@@ -113,7 +113,10 @@ export default function CompanyManagement() {
   const archivedCompanies = companies.filter((c) => c.is_archived)
 
   const renderRow = (company: CompanyRow) => (
-    <div key={company.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+    <div
+      key={company.id}
+      className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+    >
       {editingId === company.id ? (
         <div className="flex flex-1 flex-wrap items-center gap-2">
           <input
@@ -133,13 +136,16 @@ export default function CompanyManagement() {
         </div>
       ) : (
         <>
+          {/* The name is the thing being identified, so it gets the width. On a phone the
+              action pair below used ~190px of a 358px row, which cut every name to
+              "Shanks Rea…". */}
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="h-4 w-4 flex-shrink-0 rounded-full" style={{ backgroundColor: company.color }} />
-            <span className="truncate font-medium">{company.name}</span>
-            <code className="text-xs text-muted-foreground">{company.code}</code>
+            <span className="min-w-0 truncate font-medium">{company.name}</span>
+            <code className="shrink-0 text-xs text-muted-foreground">{company.code}</code>
             {company.is_archived && <Badge variant="outline" className="text-muted-foreground">Archived</Badge>}
           </div>
-          <div className="flex flex-shrink-0 items-center gap-1">
+          <div className="flex flex-shrink-0 items-center justify-end gap-1">
             <Button size="icon-sm" variant="ghost" onClick={() => startEdit(company)} aria-label={`Edit ${company.name}`}>
               <Pencil className="h-4 w-4" />
             </Button>
@@ -166,7 +172,11 @@ export default function CompanyManagement() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-2">
+        {/* Fixed widths (w-24, w-64) wrapped into a stagger on a phone: code alone on one
+            line, then the name pushed against the colour swatch. A two-column grid keeps the
+            two short fields paired and gives the long one the full width; from `sm` up it is
+            the original single row. */}
+        <form onSubmit={handleAdd} className="grid grid-cols-[1fr_auto] items-end gap-2 sm:flex sm:flex-wrap">
           <div className="space-y-1.5">
             <Label htmlFor="new-company-code" className="text-xs">Code</Label>
             <Input
@@ -174,18 +184,7 @@ export default function CompanyManagement() {
               value={newCode}
               onChange={(e) => setNewCode(e.target.value)}
               placeholder="e.g. SRG"
-              className="w-24"
-              disabled={saving}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="new-company-name" className="text-xs">Full name</Label>
-            <Input
-              id="new-company-name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. Shanks Realty Group"
-              className="w-64"
+              className="w-full sm:w-24"
               disabled={saving}
             />
           </div>
@@ -196,11 +195,22 @@ export default function CompanyManagement() {
               type="color"
               value={newColor}
               onChange={(e) => setNewColor(e.target.value)}
-              className="h-10 w-12 cursor-pointer rounded border"
+              className="h-10 w-14 cursor-pointer rounded border sm:w-12"
               disabled={saving}
             />
           </div>
-          <Button type="submit" className="gap-2" disabled={saving || !newCode.trim() || !newName.trim()}>
+          <div className="col-span-2 space-y-1.5 sm:col-span-1">
+            <Label htmlFor="new-company-name" className="text-xs">Full name</Label>
+            <Input
+              id="new-company-name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="e.g. Shanks Realty Group"
+              className="w-full sm:w-64"
+              disabled={saving}
+            />
+          </div>
+          <Button type="submit" className="col-span-2 gap-2 sm:col-span-1" disabled={saving || !newCode.trim() || !newName.trim()}>
             <Plus className="h-4 w-4" />
             Add Company
           </Button>

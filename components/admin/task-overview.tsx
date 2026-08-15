@@ -28,22 +28,23 @@ export default function TaskOverview({ tasks, users }: TaskOverviewProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Overview</h2>
-        <p className="text-muted-foreground">Quick overview of your project management</p>
-      </div>
+      {/* No heading here. The DashboardWindow this renders inside is already titled
+          "Overview" with the same description word for word, so repeating it printed the
+          title twice — which on a phone cost a third of the first screen. */}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Two across on a phone. One per row meant four full-height cards to read four
+          numbers, so the headline figure of the whole dashboard took two thumb-scrolls. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {stats.map((stat, index) => (
           <Card key={index} className="hover:shadow-md transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${stat.primary ? 'bg-primary' : 'bg-secondary'}`}>
-                <stat.icon className={`w-5 h-5 ${stat.primary ? 'text-primary-foreground' : 'text-foreground'}`} />
+            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+              <CardTitle className="min-w-0 text-xs font-medium sm:text-sm">{stat.title}</CardTitle>
+              <div className={`size-8 sm:size-10 shrink-0 rounded-lg flex items-center justify-center ${stat.primary ? 'bg-primary' : 'bg-secondary'}`}>
+                <stat.icon className={`size-4 sm:size-5 ${stat.primary ? 'text-primary-foreground' : 'text-foreground'}`} />
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-semibold">{stat.value}</div>
+              <div className="text-2xl font-semibold sm:text-3xl">{stat.value}</div>
             </CardContent>
           </Card>
         ))}

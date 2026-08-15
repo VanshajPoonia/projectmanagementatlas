@@ -168,7 +168,8 @@ export default function MetricsView({ tasks, users, boards }: MetricsViewProps) 
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Two across on a phone; see task-overview.tsx for why. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {stat(<Timer className="h-4 w-4" />, 'Avg entry → close', fmtDuration(avgCycle), `${completed.length} of ${completedTasks.length} completed`)}
         {stat(<Clock className="h-4 w-4" />, 'Median entry → close', fmtDuration(medCycle), 'recorded closes only')}
         {stat(<CheckCircle2 className="h-4 w-4" />, 'Completed', String(completedTasks.length), `${completed.length} with timing data`)}

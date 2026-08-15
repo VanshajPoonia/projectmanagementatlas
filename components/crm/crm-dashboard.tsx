@@ -82,7 +82,8 @@ export function CrmDashboard({
         </div>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Two across on a phone; a KPI is one number and does not need a full row. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatTile
           label="Open orders"
           value={summary.openOrders}
@@ -128,7 +129,7 @@ export function CrmDashboard({
             }
           />
         ) : (
-          <ul className="grid gap-px sm:grid-cols-2 lg:grid-cols-4">
+          <ul className="grid grid-cols-2 gap-px lg:grid-cols-4">
             {pipeline.map(({ status, count }) => (
               <li key={status.key}>
                 <Link

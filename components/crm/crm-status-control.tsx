@@ -154,7 +154,7 @@ export function CrmStatusControl({
         <StatusPill status={current} className="text-sm" />
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatTile label="Age" value={`${orderAgeDays(order, now).toFixed(1)}d`}
           hint={order.closed_at ? 'Frozen at closure' : 'Since it opened'} />
         <StatTile label="Time in current status"

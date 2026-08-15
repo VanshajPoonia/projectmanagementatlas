@@ -90,12 +90,30 @@ export function CrmShell({
     >
       {/* AppShell's <main> is deliberately unpadded; every host supplies its own.
           Without this the CRM content sat flush against the sidebar and clipped. */}
-      <div className="w-full space-y-6 p-4 md:p-6">
-        <nav aria-label="CRM sections" className="flex flex-wrap items-center gap-x-6 gap-y-2">
+      <div className="w-full space-y-5 p-4 md:space-y-6 md:p-6">
+        {/*
+          One scrolling row on a phone, the two labelled groups on a desktop.
+
+          Wrapping was costing a third of a 390px viewport: the OPERATIONS and ADMINISTRATION
+          labels forced each pill group onto its own line, so a phone showed 300px of
+          navigation before the first word of the page. The labels are what has to go — they
+          group five links, and on a screen this narrow the grouping is not worth the height.
+          Their information survives as `aria-label`ed groups for a screen reader, which never
+          had to see the layout in the first place.
+        */}
+        <nav
+          aria-label="CRM sections"
+          className="-mx-4 flex snap-x items-center gap-1 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:gap-x-6 md:gap-y-2 md:overflow-visible md:px-0 md:pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {sections.map(section =>
             section.entries.length ? (
-              <div key={section.label} className="flex items-center gap-2">
-                <span className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">
+              <div
+                key={section.label}
+                role="group"
+                aria-label={section.label}
+                className="flex shrink-0 items-center gap-2"
+              >
+                <span className="text-muted-foreground hidden text-[11px] font-semibold tracking-wide uppercase md:inline">
                   {section.label}
                 </span>
                 <div className="bg-muted flex items-center gap-1 rounded-full p-1">
@@ -113,7 +131,7 @@ export function CrmShell({
                         href={entry.href}
                         aria-current={active ? 'page' : undefined}
                         className={cn(
-                          'focus-visible:ring-ring rounded-full px-3 py-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2',
+                          'focus-visible:ring-ring flex snap-start items-center rounded-full px-3.5 py-2 text-xs font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 md:py-1.5',
                           active
                             ? 'bg-background text-foreground shadow-xs'
                             : 'text-muted-foreground hover:text-foreground',
