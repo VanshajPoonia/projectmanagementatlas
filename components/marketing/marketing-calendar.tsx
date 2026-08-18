@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Repeat,
   Settings,
+  SlidersHorizontal,
   Sparkles,
   Table2,
   Trash2,
@@ -62,6 +63,7 @@ import {
   toggleCompanySelection,
 } from './marketing-calendar-state'
 import MarketingCalendarManagement from '../admin/marketing-calendar-management'
+import ChannelManager from './channel-manager'
 import type { MarketingCalendarSummary } from '@/lib/use-marketing-calendars'
 
 // A day's item can be posted, explicitly/automatically missed, or still pending.
@@ -77,12 +79,14 @@ interface Company {
   color: string
 }
 
-interface Channel {
+export interface Channel {
   id: string
   channel: string
   label: string
   /** Column order in the channel grid. Shared — see reorderChannels below. */
   position: number
+  /** Switched off: keeps its events, but no longer occupies a column. */
+  is_archived: boolean
 }
 
 interface MarketingCalendarItem {
@@ -533,7 +537,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   // Shared, editable channel list (loaded from marketing_channels). Flat —
   // channels don't belong to a company; which companies an event is for is
   // decided per-event. Array order IS the column order of the channel grid.
-  const [channels, setChannels] = useState<Channel[]>([])
+  //
+  // Every row is held, archived ones included, and only the grid filters. Fetching with
+  // `.eq('is_archived', false)` instead would mean a switched-off channel has no entry in
+  // any lookup, and there would be nowhere to switch it back on — the same trap the CRM
+  // review found in its status lookups (CLAUDE.md).
+  const [allChannels, setAllChannels] = useState<Channel[]>([])
+  const channels = useMemo(() => allChannels.filter(c => !c.is_archived), [allChannels])
+  const [channelManagerOpen, setChannelManagerOpen] = useState(false)
   // Channel column being dragged, and the column index it would land on.
   const [draggingChannelId, setDraggingChannelId] = useState<string | null>(null)
   const [channelDropIndex,  setChannelDropIndex]  = useState<number | null>(null)
@@ -800,10 +811,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       .select('id,channel,label,is_archived,position')
       .order('position', { ascending: true })
     if (!data) return
-    setChannels(
-      (data as Array<Channel & { is_archived?: boolean }>)
-        .filter(c => !c.is_archived)
-        .map(({ id, channel, label, position }) => ({ id, channel, label, position })),
+    setAllChannels(
+      (data as Array<Channel & { is_archived?: boolean | null }>)
+        .map(({ id, channel, label, position, is_archived }) => ({
+          id, channel, label, position, is_archived: Boolean(is_archived),
+        })),
     )
   }, [supabase])
 
@@ -816,7 +828,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     if (!channel) return false
     // Past the highest existing position, not channels.length — seeded positions
     // have gaps, so counting would drop a new channel into the middle of the grid.
-    const position = channels.reduce((max, c) => Math.max(max, c.position), -1) + 1
+    const position = allChannels.reduce((max, c) => Math.max(max, c.position), -1) + 1
     const { error: insErr } = await supabase
       .from('marketing_channels')
       .insert({ channel, label: channel, position })
@@ -829,7 +841,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     await loadChannels()
     toast.success(`Added "${channel}"`)
     return true
-  }, [channels, loadChannels, supabase])
+  }, [allChannels, loadChannels, supabase])
 
   /**
    * Persist a new channel column order. The channel list is shared, so this is a
@@ -838,11 +850,14 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
    * Goes through the reorder RPC (migration 088) rather than an UPDATE: direct
    * writes to marketing_channels are admin-only and, read literally, exclude
    * super_admin — Bobby and Kayla would both have failed silently. The RPC can
-   * only renumber positions, so renaming/archiving stays admin-only.
+   * only renumber positions; renaming and switching off have their own RPCs
+   * (migration 105, below) for the same reason and with the same gate.
    */
   const reorderChannels = useCallback(async (next: Channel[]) => {
-    const previous = channels
-    setChannels(next)
+    const previous = allChannels
+    // The RPC only ever renumbers the ACTIVE channels, so the switched-off ones ride along
+    // unchanged rather than being dropped from state and reappearing on the next load.
+    setAllChannels([...next, ...allChannels.filter(c => c.is_archived)])
 
     const { error: reorderError } = await supabase.rpc('reorder_marketing_channels', {
       p_channel_ids: next.map(c => c.id),
@@ -850,17 +865,84 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     if (reorderError) {
       // The likeliest failure is a stale list (someone else added a channel), so
       // put the columns back and re-read rather than leaving a lie on screen.
-      setChannels(previous)
+      setAllChannels(previous)
       toast.error('Could not save the column order', { description: reorderError.message })
       loadChannels()
     }
-  }, [channels, loadChannels, supabase])
+  }, [allChannels, loadChannels, supabase])
 
   const moveChannel = useCallback((fromIndex: number, toIndex: number) => {
     const next = moveListItem(channels, fromIndex, toIndex)
     if (next === channels) return
     void reorderChannels(next)
   }, [channels, reorderChannels])
+
+  /**
+   * Rename a channel. Goes through the rename RPC (migration 105) for two reasons, both of
+   * which make a direct UPDATE wrong rather than merely inconvenient:
+   *
+   *   - marketing_channels' UPDATE policy reads `role = 'admin'` literally, which excludes
+   *     super_admin — so Bobby and Kayla, the two people who run this calendar, would have
+   *     had every rename silently do nothing (the same trap 088 hit for ordering).
+   *   - marketing_calendar_items.channel is TEXT with no foreign key. Renaming the channel
+   *     without re-pointing its events orphans them: they vanish from the grid, with no
+   *     error and nowhere to look. The RPC does both in one transaction.
+   */
+  const renameChannel = useCallback(async (channel: Channel, nextLabel: string): Promise<boolean> => {
+    const label = nextLabel.trim()
+    if (!label) return false
+    if (label === channel.label && label === channel.channel) return true
+
+    // The stored value and the display label are kept equal on rename. They differ only on
+    // the rows 054 seeded ("FB - Bobby" / "FB Bobby"); once someone renames one deliberately,
+    // carrying that split forward would mean the name they typed is not the name the events
+    // are filed under, and the next rename would have two things to reconcile.
+    const { data: moved, error: renameError } = await supabase.rpc('rename_marketing_channel', {
+      p_channel_id: channel.id,
+      p_channel: label,
+      p_label: label,
+    })
+
+    if (renameError) {
+      toast.error('Could not rename the channel', { description: renameError.message })
+      return false
+    }
+
+    await loadChannels()
+    await loadCalendar()
+    toast.success(`Renamed to "${label}"`, {
+      description: typeof moved === 'number' && moved > 0
+        ? `${moved} scheduled post${moved === 1 ? '' : 's'} moved with it.`
+        : undefined,
+    })
+    return true
+  }, [loadCalendar, loadChannels, supabase])
+
+  /**
+   * Switch a channel column off or back on. Archiving, not deleting: the events are joined
+   * to the channel by its text value, so a DELETE would strand every post ever scheduled on
+   * it. Off means "stop giving this a column"; the content is still there when it comes back.
+   */
+  const setChannelArchived = useCallback(async (channel: Channel, archived: boolean) => {
+    const { data: affected, error: archiveError } = await supabase.rpc('set_marketing_channel_archived', {
+      p_channel_id: channel.id,
+      p_archived: archived,
+    })
+
+    if (archiveError) {
+      toast.error(archived ? 'Could not turn off the channel' : 'Could not turn on the channel', {
+        description: archiveError.message,
+      })
+      return
+    }
+
+    await loadChannels()
+    toast.success(archived ? `Turned off "${channel.label}"` : `Turned on "${channel.label}"`, {
+      description: archived && typeof affected === 'number' && affected > 0
+        ? `${affected} scheduled post${affected === 1 ? '' : 's'} kept — turn it back on to see them.`
+        : undefined,
+    })
+  }, [loadChannels, supabase])
 
   /* ── computed views ─────────────────────────────────────────────── */
 
@@ -2224,6 +2306,15 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
               <RefreshCw className="h-4 w-4" />
             </Button>
 
+            {/* Not admin-gated: migration 105 lets any member of a marketing calendar maintain
+                the shared channel list, which is the same set of people who can see this tab.
+                Manage Calendars stays admin-only — that one grants other people access. */}
+            <Button type="button" variant="outline" size="sm" className="gap-1.5"
+              onClick={() => setChannelManagerOpen(true)}>
+              <SlidersHorizontal className="h-4 w-4" />
+              Edit channels
+            </Button>
+
             {isAdmin && (
               <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setManageOpen(true)}>
                 <Settings className="h-4 w-4" />
@@ -3491,6 +3582,16 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
           )}
         </DialogContent>
       </Dialog>
+
+      <ChannelManager
+        open={channelManagerOpen}
+        onOpenChange={setChannelManagerOpen}
+        channels={allChannels}
+        onRename={renameChannel}
+        onSetArchived={setChannelArchived}
+        onMove={moveChannel}
+        onAdd={handleAddChannel}
+      />
 
       {isAdmin && (
         <MarketingCalendarManagement

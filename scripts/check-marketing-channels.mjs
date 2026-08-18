@@ -170,7 +170,139 @@ try {
   check('an unauthenticated caller cannot execute the reorder function', Boolean(anonError))
   check('the anon attempt moved nothing', (await activeOrder()).join() === settled.join())
 
-  /* ── 7. the Personal business unit exists (migration 089) ────────── */
+  /* ── 7. rename + on/off through the RPCs (migration 105) ─────────── */
+  // The direct-table assertions above still stand: 105 opened no policy. What changed is that
+  // there is now a door, and it is not the literal role='admin' one that shut Bobby and Kayla
+  // out. A super_admin is the case that made 105 necessary, exactly as it made 088 necessary.
+  const renameTarget = seededChannelIds[1]
+  const { data: renameTargetRow } = await admin
+    .from('marketing_channels').select('channel,label').eq('id', renameTarget).maybeSingle()
+
+  // Events referencing the channel by its TEXT value — the whole reason renaming is an RPC.
+  // Seeded on whichever calendar exists; skipped entirely if the sandbox has none.
+  const { data: someCalendar } = await admin
+    .from('marketing_calendars').select('id').limit(1).maybeSingle()
+  let seededItemIds = []
+  if (someCalendar) {
+    const { data: seededItems } = await admin
+      .from('marketing_calendar_items')
+      .insert([
+        { calendar_id: someCalendar.id, date: '2026-01-05', day_label: 'MON', channel: renameTargetRow.channel, content: `probe ${stamp} a`, position: 0 },
+        { calendar_id: someCalendar.id, date: '2026-01-06', day_label: 'TUE', channel: renameTargetRow.channel, content: `probe ${stamp} b`, position: 0 },
+      ])
+      .select('id')
+    seededItemIds = (seededItems ?? []).map(i => i.id)
+  }
+
+  const renamedTo = `Order B ${stamp} renamed`
+  const { data: moved, error: superRenameError } = await superAdmin
+    .rpc('rename_marketing_channel', { p_channel_id: renameTarget, p_channel: renamedTo, p_label: renamedTo })
+  check('a super_admin can rename a channel through the RPC', !superRenameError)
+
+  const { data: afterRename } = await admin
+    .from('marketing_channels').select('channel,label').eq('id', renameTarget).maybeSingle()
+  check('the rename persisted to both the stored value and the label',
+    afterRename?.channel === renamedTo && afterRename?.label === renamedTo)
+
+  if (seededItemIds.length > 0) {
+    const { data: repointed } = await admin
+      .from('marketing_calendar_items').select('channel').in('id', seededItemIds)
+    check('every event moved with the channel — none orphaned',
+      repointed?.length === 2 && repointed.every(i => i.channel === renamedTo))
+    check('the RPC reported how many events it moved', moved === 2)
+    const { count: orphans } = await admin
+      .from('marketing_calendar_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('channel', renameTargetRow.channel)
+    check('nothing is left pointing at the old channel name', orphans === 0)
+  }
+
+  // A calendar member who is not an admin is the other half of who 105 lets in. Membership is
+  // what grants it, so the same user must be refused before the row exists and allowed after.
+  if (someCalendar) {
+    const { error: strangerError } = await member
+      .rpc('rename_marketing_channel', { p_channel_id: renameTarget, p_channel: 'nope', p_label: 'nope' })
+    check('a user on no marketing calendar cannot rename a channel', Boolean(strangerError))
+
+    await admin.from('marketing_calendar_members')
+      .insert({ calendar_id: someCalendar.id, user_id: memberId })
+
+    const memberRenamed = `Order B ${stamp} by member`
+    const { error: memberRenameError } = await member
+      .rpc('rename_marketing_channel', { p_channel_id: renameTarget, p_channel: memberRenamed, p_label: memberRenamed })
+    check('a calendar member can rename a channel', !memberRenameError)
+
+    const { data: afterMemberRename } = await admin
+      .from('marketing_channels').select('label').eq('id', renameTarget).maybeSingle()
+    check('the member\'s rename persisted', afterMemberRename?.label === memberRenamed)
+  }
+
+  // Duplicate names, blank names, and a channel that no longer exists.
+  const { data: firstActive } = await admin
+    .from('marketing_channels').select('id,channel').eq('id', seededChannelIds[0]).maybeSingle()
+  const { error: dupeError } = await superAdmin
+    .rpc('rename_marketing_channel', { p_channel_id: renameTarget, p_channel: firstActive.channel, p_label: firstActive.channel })
+  check('renaming onto another channel\'s name is refused', Boolean(dupeError))
+
+  const { error: blankError } = await superAdmin
+    .rpc('rename_marketing_channel', { p_channel_id: renameTarget, p_channel: '   ', p_label: '   ' })
+  check('a blank channel name is refused', Boolean(blankError))
+
+  const { error: goneError } = await superAdmin
+    .rpc('rename_marketing_channel', {
+      p_channel_id: '00000000-0000-0000-0000-000000000000', p_channel: 'ghost', p_label: 'ghost',
+    })
+  check('renaming a channel that does not exist is refused', Boolean(goneError))
+
+  /* ── 8. off and on ───────────────────────────────────────────────── */
+  const { data: keptCount, error: offError } = await superAdmin
+    .rpc('set_marketing_channel_archived', { p_channel_id: renameTarget, p_archived: true })
+  check('a super_admin can switch a channel off', !offError)
+
+  const { data: offRow } = await admin
+    .from('marketing_channels').select('is_archived').eq('id', renameTarget).maybeSingle()
+  check('the channel is archived, not deleted', offRow?.is_archived === true)
+  if (seededItemIds.length > 0) {
+    check('switching off reports the posts it kept rather than destroying them', keptCount === 2)
+    const { count: stillThere } = await admin
+      .from('marketing_calendar_items')
+      .select('id', { count: 'exact', head: true })
+      .in('id', seededItemIds)
+    check('every scheduled post survived the channel being switched off', stillThere === 2)
+  }
+
+  // An archived channel is out of the active set, so 088's reorder must no longer demand it.
+  const activeAfterOff = await activeOrder()
+  check('a switched-off channel leaves the column order', !activeAfterOff.includes(renameTarget))
+  const { error: reorderAfterOffError } = await member
+    .rpc('reorder_marketing_channels', { p_channel_ids: activeAfterOff })
+  check('the remaining columns can still be reordered', !reorderAfterOffError)
+
+  const { error: onError } = await superAdmin
+    .rpc('set_marketing_channel_archived', { p_channel_id: renameTarget, p_archived: false })
+  check('a channel can be switched back on', !onError)
+  const { data: onRow } = await admin
+    .from('marketing_channels').select('is_archived').eq('id', renameTarget).maybeSingle()
+  check('the channel is active again', onRow?.is_archived === false)
+
+  /* ── 9. neither RPC is reachable signed out ──────────────────────── */
+  const anonEdit = createClient(url, anon, { auth: { autoRefreshToken: false, persistSession: false } })
+  const { error: anonRenameError } = await anonEdit
+    .rpc('rename_marketing_channel', { p_channel_id: renameTarget, p_channel: 'anon', p_label: 'anon' })
+  check('an unauthenticated caller cannot rename a channel', Boolean(anonRenameError))
+  const { error: anonArchiveError } = await anonEdit
+    .rpc('set_marketing_channel_archived', { p_channel_id: renameTarget, p_archived: true })
+  check('an unauthenticated caller cannot switch a channel off', Boolean(anonArchiveError))
+
+  const { data: survived } = await admin
+    .from('marketing_channels').select('is_archived').eq('id', renameTarget).maybeSingle()
+  check('the anon attempts changed nothing', survived?.is_archived === false)
+
+  if (seededItemIds.length > 0) {
+    await admin.from('marketing_calendar_items').delete().in('id', seededItemIds)
+  }
+
+  /* ── 10. the Personal business unit exists (migration 089) ───────── */
   const { data: personal } = await member
     .from('companies').select('code,name,is_archived').eq('code', 'PERSONAL').maybeSingle()
   check('every signed-in user can see the Personal company', personal?.name === 'Personal' && personal.is_archived === false)

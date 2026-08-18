@@ -23,7 +23,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, Download, MessageSquare, Home, Lock, Kanban, ClipboardList, FileBarChart, Megaphone, SlidersHorizontal, Archive, ArchiveRestore } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, ChevronLeft, ChevronRight, Download, MessageSquare, Home, Lock, Kanban, ClipboardList, FileBarChart, Megaphone, SlidersHorizontal, Archive, ArchiveRestore, GripVertical } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import TaskCard from './task-card'
@@ -43,6 +43,7 @@ import { useDensity } from '@/components/shell/use-density'
 import { ThemeControls } from '@/components/theme/theme-controls'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
+import { moveListItem } from '@/lib/reorder'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { toast } from 'sonner'
 
@@ -58,6 +59,10 @@ interface BoardViewProps {
 }
 
 const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(id, full_name, email), task_assignees(user_id), task_tags(tag:tags(*)))'
+
+// Distinguishes a column drag from a card drag inside one DragDropContext. Cards keep the
+// library's default type, so the two can never accept each other's payload.
+const COLUMN_DRAG_TYPE = 'BOARD_COLUMN'
 
 export default function BoardView({ board, columns: initialColumns, users, isAdmin, isSuperAdmin = false, currentUserId, boardRole = null }: BoardViewProps) {
   const router = useRouter()
@@ -217,6 +222,14 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     if (!destination) return
     if (destination.droppableId === source.droppableId && destination.index === source.index) return
 
+    // Two kinds of drag share this handler: a card between columns (the default type) and a
+    // whole column along the board. They are told apart by the Droppable's `type`, not by
+    // guessing from the ids — a column id is a valid droppableId for both.
+    if (result.type === COLUMN_DRAG_TYPE) {
+      await moveColumn(source.index, destination.index)
+      return
+    }
+
     const sourceColumn = columns.find(col => col.id === source.droppableId)
     const destColumn = columns.find(col => col.id === destination.droppableId)
 
@@ -285,27 +298,83 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     setCreateDialogOpen(true)
   }
 
+  /**
+   * Picking a status in the "Add column" dialog names the column after it, so a new column
+   * agrees with the status list from the moment it exists. The title stays editable: it is
+   * only overwritten while it is empty or still reads as the previously picked status, so a
+   * name typed by hand is never silently replaced.
+   */
+  const handlePickNewColumnStatus = (statusKey: string) => {
+    const previous = taskStatuses.find((s: any) => s.key === newColumnStatusKey)
+    const next = taskStatuses.find((s: any) => s.key === statusKey)
+    const titleIsDerived = !newColumnTitle.trim() || newColumnTitle.trim() === previous?.label
+
+    setNewColumnStatusKey(statusKey)
+    if (next?.label && titleIsDerived) setNewColumnTitle(next.label)
+  }
+
   const handleAddColumn = async () => {
     if (!newColumnTitle.trim()) return
 
     const { data, error } = await supabase
       .from('columns')
       .insert({
-        title: newColumnTitle,
+        title: newColumnTitle.trim(),
         board_id: board.id,
         position: columns.length,
         status_key: newColumnStatusKey === '__none__' ? null : newColumnStatusKey,
       })
       .select()
-      .single()
 
-    if (data && !error) {
-      setColumns([...columns, { ...data, tasks: [] }])
-      setNewColumnTitle('')
-      setNewColumnStatusKey('__none__')
-      setNewColumnDialogOpen(false)
+    // This used to be `if (data && !error)` with no else — an RLS refusal (columns are
+    // admin-only) closed nothing, said nothing, and left the typed title sitting in a dialog
+    // that looked like it had not been submitted yet.
+    if (error || !data || data.length === 0) {
+      toast.error('Could not add the column', {
+        description: error?.code === '23505'
+          ? 'This board already has a column for that status.'
+          : error?.message ?? 'Only admins can change a board\u2019s columns.',
+      })
+      return
     }
+
+    setColumns([...columns, { ...data[0], tasks: [] }])
+    setNewColumnTitle('')
+    setNewColumnStatusKey('__none__')
+    setNewColumnDialogOpen(false)
   }
+
+  /**
+   * Persist a new left-to-right column order for this board. The order is a property of the
+   * board, not of the viewer, so it moves for everyone the moment it is saved.
+   *
+   * Goes through reorder_board_columns (migration 106) rather than N separate UPDATEs: sent
+   * separately they are N transactions, so a failure halfway leaves an order nobody chose,
+   * and under RLS a refusal is a zero-row response rather than an error — indistinguishable
+   * from "nothing needed changing". The RPC renumbers every column in one statement and
+   * raises when it is refused.
+   */
+  const moveColumn = useCallback(async (fromIndex: number, toIndex: number) => {
+    const next = moveListItem(columns, fromIndex, toIndex)
+    if (next === columns) return
+
+    const previous = columns
+    setColumns(next)
+
+    const { error } = await supabase.rpc('reorder_board_columns', {
+      p_board_id: board.id,
+      p_column_ids: next.map((col: any) => col.id),
+    })
+
+    if (error) {
+      // The likeliest refusal is a stale list — someone else added or removed a column
+      // since this page loaded — so put the board back and re-read it rather than leaving
+      // the optimistic order on screen pretending to be saved.
+      setColumns(previous)
+      toast.error('Could not rearrange the columns', { description: error.message })
+      refreshColumns()
+    }
+  }, [board.id, columns, refreshColumns, supabase])
 
   const handleDeleteColumn = async (columnId: string) => {
     const column = columns.find((candidate) => candidate.id === columnId)
@@ -348,19 +417,40 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
   const handleUpdateColumnStatus = async (columnId: string, statusKey: string) => {
     const resolvedKey = statusKey === '__none__' ? null : statusKey
-    const { error } = await supabase
-      .from('columns')
-      .update({ status_key: resolvedKey })
-      .eq('id', columnId)
+    const status = resolvedKey ? taskStatuses.find((s: any) => s.key === resolvedKey) : null
 
-    if (error) {
-      toast.error('Could not link this column to a status')
+    // Linking also renames the column to the status label. A column that says "WIP" while
+    // claiming to be "In Progress" is the disagreement this link exists to remove, and from
+    // here on Super Admin -> Statuses owns that name: renaming the status renames this column
+    // on every board (migration 107). Unlinking leaves the title alone — an unlinked column
+    // is a custom one, named by the board.
+    const patch: Record<string, unknown> = { status_key: resolvedKey }
+    if (status?.label) patch.title = status.label
+
+    const { data, error } = await supabase
+      .from('columns')
+      .update(patch)
+      .eq('id', columnId)
+      .select('id, title, status_key')
+
+    // An RLS refusal returns zero rows and no error, so the row count is the only thing that
+    // separates "saved" from "silently refused" (CLAUDE.md's board-membership lesson).
+    if (error || !data || data.length === 0) {
+      toast.error('Could not link this column to a status', {
+        // The likeliest failure is idx_columns_board_status_key_unique: one column per status
+        // per board, so a second claim on the same status is a duplicate key, not a policy.
+        description: error?.code === '23505'
+          ? 'Another column on this board is already linked to that status.'
+          : error?.message ?? 'Only admins can change a board\u2019s columns.',
+      })
       return
     }
 
-    setColumns(columns.map(col => col.id === columnId ? { ...col, status_key: resolvedKey } : col))
+    setColumns(columns.map(col => (
+      col.id === columnId ? { ...col, status_key: resolvedKey, title: data[0].title } : col
+    )))
     setStatusPickerColumn(null)
-    toast.success(resolvedKey ? 'Column linked to status' : 'Column unlinked from status')
+    toast.success(resolvedKey ? `Column linked to \u201C${data[0].title}\u201D` : 'Column unlinked from status')
   }
 
   // Subtasks are rows in the same `tasks` table and arrive in the same column payload
@@ -862,20 +952,46 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         {viewMode === 'tile' ? (
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="-mx-8 overflow-x-auto px-8 pb-6 snap-x snap-mandatory md:-mx-12 md:snap-none md:px-12 scroll-pl-8">
-              <div className="flex items-start gap-8">
-                {columns.map((column) => {
+              {/* Columns are rearrangeable by admins: drag a column header, or use Move left /
+                  Move right in its menu (drag-and-drop is neither keyboard- nor touch-reachable —
+                  the same lesson the marketing calendar's channel columns learned). The order is
+                  a property of the board, so it moves for everyone. */}
+              <Droppable droppableId={`board-columns-${board.id}`} type={COLUMN_DRAG_TYPE} direction="horizontal">
+                {(columnsProvided) => (
+              <div
+                className="flex items-start gap-8"
+                ref={columnsProvided.innerRef}
+                {...columnsProvided.droppableProps}
+              >
+                {columns.map((column, columnIndex) => {
                   const visibleTasks = filterTasks(boardTasks(column))
                     .sort((a: any, b: any) => a.position - b.position)
 
                   return (
-                    <section
+                    <Draggable
                       key={column.id}
-                      className="w-[min(360px,calc(100vw-4rem))] flex-shrink-0 rounded-lg border bg-muted/20 snap-start"
+                      draggableId={`column-${column.id}`}
+                      index={columnIndex}
+                      isDragDisabled={!isAdmin}
                     >
-                      <div className="rounded-t-lg border-b px-4 py-3">
+                      {(columnProvided, columnSnapshot) => (
+                    <section
+                      ref={columnProvided.innerRef}
+                      {...columnProvided.draggableProps}
+                      className={`w-[min(360px,calc(100vw-4rem))] flex-shrink-0 rounded-lg border bg-muted/20 snap-start ${
+                        columnSnapshot.isDragging ? 'shadow-lg ring-2 ring-primary/30' : ''
+                      }`}
+                    >
+                      <div
+                        className={`rounded-t-lg border-b px-4 py-3 ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                        {...columnProvided.dragHandleProps}
+                      >
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
+                              {isAdmin && (
+                                <GripVertical className="h-4 w-4 flex-shrink-0 text-muted-foreground/40" aria-hidden="true" />
+                              )}
                               <div
                                 className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
                                 style={{ backgroundColor: column.color || '#3b82f6' }}
@@ -909,6 +1025,21 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-48">
+                                  {/* The keyboard- and touch-reachable half of rearranging. */}
+                                  <DropdownMenuItem
+                                    disabled={columnIndex === 0}
+                                    onClick={() => moveColumn(columnIndex, columnIndex - 1)}
+                                  >
+                                    <ChevronLeft className="w-4 h-4 mr-2" />
+                                    Move Left
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    disabled={columnIndex === columns.length - 1}
+                                    onClick={() => moveColumn(columnIndex, columnIndex + 1)}
+                                  >
+                                    <ChevronRight className="w-4 h-4 mr-2" />
+                                    Move Right
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => setColorPickerColumn(column.id)}>
                                     <Palette className="w-4 h-4 mr-2" />
                                     Change Color
@@ -974,9 +1105,14 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                         )}
                       </Droppable>
                     </section>
+                      )}
+                    </Draggable>
                   )
                 })}
+                {columnsProvided.placeholder}
               </div>
+                )}
+              </Droppable>
             </div>
           </DragDropContext>
         ) : (
@@ -1373,9 +1509,9 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                 />
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Status (optional — lets tasks moved here reliably track that status)
+                    Status (optional — a linked column is named by its status and tracks it everywhere)
                   </label>
-                  <Select value={newColumnStatusKey} onValueChange={setNewColumnStatusKey}>
+                  <Select value={newColumnStatusKey} onValueChange={handlePickNewColumnStatus}>
                     <SelectTrigger>
                       <SelectValue placeholder="No status mapping" />
                     </SelectTrigger>

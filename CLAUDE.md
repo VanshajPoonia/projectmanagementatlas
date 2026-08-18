@@ -308,12 +308,12 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `104`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `108`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-15: **dev is at `104`; prod has `101` and `103`, with `087`, `102` and `104`
-  outstanding.** Prod has still never had `087` (deliberate, see below) — `088`–`093` and
+  As of 2026-08-19: **dev is at `107`; prod has `101` and `103`, with `087`, `102`, `104`,
+  `105`, `106` and `107` outstanding.** Prod has still never had `087` (deliberate, see below) — `088`–`093` and
   `097` were applied with `--only=… --allow-prod`, which is what the runner's `--only` flag
   exists for. ⚠️ **The code for `102` and `104` is already deployed to production**, so
   applying both is overdue, not optional: without `102` the "Move to another board" button
@@ -370,6 +370,68 @@ deliberately left out.
     function. When that shape does not fit, use a real `SEQUENCE`, which is race-free without
     a lock; gaps from a rolled-back intake are fine, because a reference is an identifier and
     not a count.
+- ⚠️ **RLS applies SELECT policies to an UPDATE, so a write policy alone does not mean the
+  write lands.** Found 2026-08-19 while building `107`, and it silently invalidated a stated
+  design decision. `099` recorded, deliberately, that the `columns` write policies stay
+  `private.is_admin_user()` "so an admin can still write columns on a private board they
+  cannot read... that sweep must still reach private boards." Postgres does not work that
+  way: any `UPDATE ... WHERE` has to read the row to find it, so the SELECT policy applies
+  too. `099` had just narrowed the `columns` SELECT policy with
+  `column_hidden_by_board_privacy`, so from that migration on an admin who is not a member of
+  a private board matched **zero rows** there and the UPDATE quietly did nothing. Measured,
+  not reasoned: same admin, two boards differing only in `is_private`, the identical
+  `UPDATE columns SET title=… WHERE status_key='done'` renamed one and left the other. The
+  generalisation is the useful part — **when a table's SELECT policy is narrower than its
+  UPDATE policy, the SELECT policy is the one that decides what an UPDATE can touch.** A
+  `SECURITY DEFINER` function that writes one named column is the way around it; RLS-refused
+  writes stay silent, so anything crossing that gap needs a row count.
+- **`105`, `106`, `107` (2026-08-19) — marketing channel editing and board column ordering.**
+  Gates: `pnpm check:marketing-channels` (39, was 16) and `pnpm check:board-columns` (30, new),
+  plus a real-browser pass covering drag, the menu, the rename cascade and the channel dialog.
+  - **`105` is purely additive** — two new `public` functions plus one `private` helper, no
+    existing table, row, policy or grant touched — so it is `--allow-prod` eligible on this
+    repo's own rule. It exists because `marketing_channels.label` and `is_archived` were
+    columns **no screen could write**: `055` narrowed UPDATE/DELETE to `profiles.role =
+    'admin'` LITERALLY and left a comment saying to keep it that way "since there's no UI for
+    that yet". That literal excludes `super_admin`, i.e. **Bobby and Kayla, the only two
+    people who run this calendar** — so the admin-only path it preserved had never been
+    reachable by either of them. Same trap as `088`, third recorded instance of the
+    guest/client lesson.
+    - **Renaming a channel is two writes that must not be separable.**
+      `marketing_calendar_items.channel` is TEXT with no FK, so renaming the channel alone
+      orphans every event pointing at the old string — they vanish from the grid with no
+      error. `rename_marketing_channel` does both in one transaction and returns how many
+      events moved. `set_marketing_channel_archived` is the off switch; archiving, never
+      DELETE, for exactly the same reason.
+    - Who may: `private.can_manage_marketing_channels()` = admin/super_admin **or an active
+      member of any marketing calendar** — deliberately the same set as
+      `canUseMarketingCalendar` in `user-dashboard.tsx`. The table's own policies are
+      untouched, so the direct-write path is still literal-admin-only.
+  - ⚠️ **`106` creates a function but also backfills rows on an existing table**, so it is not
+    "purely additive" in the sense the `--allow-prod` rule means — decide it deliberately. The
+    backfill sets `columns.status_key` where it is NULL and the title already matches an
+    ACTIVE status label exactly, and only when that board has no other column claiming that
+    status (`idx_columns_board_status_key_unique` is one column per status per board). Every
+    row it touches would have been renamed by the old title sweep anyway, so nothing changes
+    what it is called. `reorder_board_columns` is `SECURITY INVOKER` for the same reason
+    `102`'s RPC is: the `columns` UPDATE policy stays the authority, and plpgsql is there only
+    so `GET DIAGNOSTICS` turns a refusal into a raised exception. Its staleness guard is
+    `088`'s — every column on the board, exactly once.
+  - **`107` is purely additive** (one function) and `--allow-prod` eligible, but read the
+    bullet above first: it is `SECURITY DEFINER` precisely so a status rename can reach a
+    private board's column. It writes `columns.title` and nothing else, only for rows already
+    linked by `063`'s FK, gated on `private.is_admin_user()`, and **reads nothing back** — its
+    return value is a count. `status-management.tsx` calls it instead of the old
+    `update({title}).eq('title', oldLabel)`, which was wrong twice: it matched on the column's
+    current TITLE (so a board whose "To Do" column had been renamed "Tasks" silently stopped
+    tracking the status) and it skipped every private board.
+- **Board columns are named by their status now, not near it.** Renaming a status renames every
+  column linked to it on every board; linking a column to a status in the board's own menu
+  renames that column to match; picking a status in "Add column" names it. A column with
+  **no** `status_key` is a custom column and is never touched — that is the escape hatch.
+  New boards seed **one column per active status** in status order, rather than asking for the
+  four built-in keys by name: a status the company added appeared in every dropdown and on no
+  new board, and an archived one was seeded onto new boards forever.
 - ⚠️ **`app_modules` had no writer at all until 2026-08-15.** `066` gave the table an
   "Admins manage modules" policy (`private.is_admin_user()`, so admin *and* super_admin) and a
   full DML grant; `080` seeded `appointments` disabled and `103` seeded `crm` disabled; and no

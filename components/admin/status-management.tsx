@@ -104,12 +104,35 @@ export default function StatusManagement() {
       return
     }
 
-    // Board columns are seeded with the status label as their literal title (e.g. "Done"),
-    // so a status rename here would otherwise only show up in dropdowns while every board's
-    // column header keeps showing the old name. Rename any column still using the old label
-    // to keep boards in sync.
+    // A board column that represents this status must be called what the status is called.
+    // This used to be a direct `update({title}).eq('title', status.label)`, which was wrong
+    // twice over (migration 107 has the full account):
+    //
+    //   1. Matching on TITLE only reached columns that still read exactly like the OLD label.
+    //      A board whose "To Do" column had been renamed "Tasks" stopped tracking the status
+    //      silently, and every board then disagreed about the name of the same thing. The RPC
+    //      matches on columns.status_key — what the column IS, not what it currently reads.
+    //   2. It skipped every private board. RLS applies SELECT policies to an UPDATE that has
+    //      to read rows to find them, and 099 hid private boards' columns from non-members, so
+    //      an admin's sweep matched zero rows there and reported no error.
+    //
+    // Columns with no status_key are deliberately untouched: a board's custom columns are
+    // named by the board, not by the status list.
     if (label !== status.label) {
-      await supabase.from('columns').update({ title: label }).eq('title', status.label)
+      const { data: renamedCount, error: columnError } = await supabase
+        .rpc('rename_columns_for_status', { p_status_key: status.key, p_title: label })
+
+      // The RPC raises on refusal rather than returning zero rows, so an error here is real.
+      if (columnError) {
+        toast.warning('Status renamed, but board columns were not', {
+          description: columnError.message,
+        })
+      } else if (typeof renamedCount === 'number' && renamedCount > 0) {
+        toast.success(`Status updated — renamed ${renamedCount} board ${renamedCount === 1 ? 'column' : 'columns'}`)
+        setEditingId(null)
+        load()
+        return
+      }
     }
 
     setEditingId(null)

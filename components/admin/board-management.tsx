@@ -97,23 +97,43 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
 
       if (boardError) throw boardError
 
-      // Create default columns, using the current labels for the built-in statuses so a
-      // renamed status (e.g. "Done" -> "Completed") is reflected on every new board too.
-      const { data: defaultStatuses } = await supabase
+      // Seed the columns from the admin-managed status list, one column per ACTIVE status,
+      // in the order Super Admin -> Statuses puts them. This used to ask for four specific
+      // keys by name, so a status the company had added — the whole point of that screen
+      // being editable — appeared in every dropdown and on no new board, and an archived
+      // one kept being seeded onto boards forever. Column order is the status order because
+      // that list is already arranged left-to-right in the same left-to-right sense.
+      const { data: activeStatuses } = await supabase
         .from('task_statuses')
-        .select('key, label')
-        .in('key', ['to_do', 'in_progress', 'done', 'cancelled'])
-      const labelFor = (key: string, fallback: string) =>
-        defaultStatuses?.find((s: { key: string; label: string }) => s.key === key)?.label || fallback
+        .select('key, label, position')
+        .eq('is_archived', false)
+        .order('position', { ascending: true })
+        .order('label', { ascending: true })
 
-      const columns = [
-        { title: labelFor('to_do', 'To Do'), position: 0, board_id: board.id, status_key: 'to_do' },
-        { title: labelFor('in_progress', 'In Progress'), position: 1, board_id: board.id, status_key: 'in_progress' },
-        { title: labelFor('done', 'Completed'), position: 2, board_id: board.id, status_key: 'done' },
-        { title: labelFor('cancelled', 'Cancelled'), position: 3, board_id: board.id, status_key: 'cancelled' },
-      ]
+      // A board with no columns cannot be used at all and gives no hint why, so a failed or
+      // empty status read falls back to the four built-ins rather than shipping an empty board.
+      const seed: Array<{ key: string; label: string }> = activeStatuses?.length
+        ? activeStatuses.map((s: { key: string; label: string }) => ({ key: s.key, label: s.label }))
+        : [
+            { key: 'to_do', label: 'To Do' },
+            { key: 'in_progress', label: 'In Progress' },
+            { key: 'done', label: 'Completed' },
+            { key: 'cancelled', label: 'Cancelled' },
+          ]
 
-      await supabase.from('columns').insert(columns)
+      const columns = seed.map((s, index) => ({
+        title: s.label,
+        position: index,
+        board_id: board.id,
+        status_key: s.key,
+      }))
+
+      const { error: columnError } = await supabase.from('columns').insert(columns)
+      if (columnError) {
+        setBoards([board, ...boards])
+        setError('Board created, but its columns could not be added. Open the board to add them.')
+        return
+      }
 
       // Written for public boards too, not just private ones. Migrations 065/067 key the
       // guest/client restriction off the membership row itself rather than off `is_private`,
