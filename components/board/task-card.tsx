@@ -22,7 +22,7 @@ import {
   type Density,
 } from '@/components/shell/density'
 import { cleanTaskDescription } from '@/lib/display-text'
-import { getNormalizedTaskStatus, findExactColumnForStatus, getEffectiveStatusKey } from '@/lib/task-status'
+import { getNormalizedTaskStatus, findExactColumnForStatus, getEffectiveStatusKey, statusesForPicker } from '@/lib/task-status'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { sendTaskAssignmentEmail } from '@/lib/email'
 import { logTaskActivity } from '@/lib/task-activity'
@@ -420,8 +420,12 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
                     >
                       <SelectValue />
                     </SelectTrigger>
+                    {/* Scoped to what this board has a column for, plus whatever this card
+                        already is — handleStatusChange refuses the rest, and a card sitting in
+                        a status whose column was deleted must still say so rather than render
+                        an empty control. */}
                     <SelectContent onClick={(e) => e.stopPropagation()}>
-                      {statuses.map(s => (
+                      {statusesForPicker(statuses, columns, effectiveStatus).map(s => (
                         <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
                       ))}
                     </SelectContent>
@@ -564,6 +568,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
       </Card>
 
       <TaskDetailModal
+        columns={columns}
         taskId={task.id}
         open={detailOpen}
         onClose={() => setDetailOpen(false)}

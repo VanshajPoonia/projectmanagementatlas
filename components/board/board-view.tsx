@@ -42,7 +42,7 @@ import { DensityToggle } from '@/components/shell/density-toggle'
 import { useDensity } from '@/components/shell/use-density'
 import { ThemeControls } from '@/components/theme/theme-controls'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
-import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
+import { getNormalizedTaskStatus, getTaskStatusLabel, statusesMissingFromBoard } from '@/lib/task-status'
 import { moveListItem } from '@/lib/reorder'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { toast } from 'sonner'
@@ -375,6 +375,43 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       refreshColumns()
     }
   }, [board.id, columns, refreshColumns, supabase])
+
+  /**
+   * Active statuses this board has no column for. Picking one of these used to be possible in
+   * every status dropdown and then refused on save, with "ask an admin to link a column" shown
+   * to whoever hit it — usually the admin. The pickers no longer offer them; this is the other
+   * half, so the gap is visible to the person who can close it instead of being invisible
+   * until someone trips over it.
+   */
+  const missingStatuses = useMemo(
+    () => statusesMissingFromBoard(taskStatuses, columns),
+    [taskStatuses, columns],
+  )
+
+  const handleAddStatusColumn = async (statusKey: string, label: string) => {
+    const { data, error } = await supabase
+      .from('columns')
+      .insert({
+        title: label,
+        board_id: board.id,
+        position: columns.length,
+        status_key: statusKey,
+      })
+      .select()
+
+    // Zero rows with no error is an RLS refusal, not a no-op (CLAUDE.md).
+    if (error || !data || data.length === 0) {
+      toast.error(`Could not add the ${label} column`, {
+        description: error?.message ?? 'Only admins can change a board\u2019s columns.',
+      })
+      return
+    }
+
+    setColumns([...columns, { ...data[0], tasks: [] }])
+    toast.success(`Added the ${label} column`, {
+      description: `Tasks on this board can now be set to ${label}.`,
+    })
+  }
 
   const handleDeleteColumn = async (columnId: string) => {
     const column = columns.find((candidate) => candidate.id === columnId)
@@ -949,6 +986,28 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       </header>
 
       <main className="w-full px-8 py-10 pb-24 md:px-12 md:pb-10">
+        {isAdmin && missingStatuses.length > 0 && (
+          <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+            <span className="text-amber-900 dark:text-amber-200">
+              This board has no column for{' '}
+              <strong>{missingStatuses.map((s: any) => s.label).join(', ')}</strong>, so
+              {missingStatuses.length === 1 ? ' that status ' : ' those statuses '}
+              can&apos;t be used here.
+            </span>
+            {missingStatuses.map((s: any) => (
+              <Button
+                key={s.key}
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 bg-background"
+                onClick={() => handleAddStatusColumn(s.key, s.label)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add {s.label}
+              </Button>
+            ))}
+          </div>
+        )}
         {viewMode === 'tile' ? (
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="-mx-8 overflow-x-auto px-8 pb-6 snap-x snap-mandatory md:-mx-12 md:snap-none md:px-12 scroll-pl-8">
@@ -1476,6 +1535,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           isAdmin={isAdmin}
           currentUserId={currentUserId}
           boardRole={boardRole}
+          columns={columns}
         />
       )}
 

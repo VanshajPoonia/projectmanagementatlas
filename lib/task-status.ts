@@ -104,6 +104,73 @@ export function findExactColumnForStatus(
 }
 
 /**
+ * The statuses this board can actually accept — the ones findExactColumnForStatus resolves to
+ * a column. Everything else would be refused at save time, so a picker must not offer it.
+ *
+ * Why this exists: the status pickers listed every status the org had defined regardless of
+ * the board in front of you, and the check that rejects an impossible one runs on SUBMIT. So
+ * you could pick "Cancelled" on a board with no Cancelled column, fill the whole form, and
+ * only then be told no — with "ask an admin" as the remedy even when you were the admin.
+ * Filtering the list at the source turns that into an option that was never offered.
+ *
+ * ⚠️ Fails OPEN. When `columns` is null/undefined — not loaded yet, or a caller that has no
+ * board in scope — every status is returned rather than none. An empty picker reads as a
+ * broken control, and the submit-time guard is still there to catch a genuinely impossible
+ * choice; a picker that is briefly too generous is strictly better than one that is empty.
+ */
+export function statusesAvailableOnBoard<T extends StatusLike>(
+  statuses: T[] | undefined | null,
+  columns: ColumnLike[] | undefined | null,
+): T[] {
+  if (!statuses?.length) return []
+  if (!columns) return statuses
+  return statuses.filter((s) => Boolean(findExactColumnForStatus(s.key, s.label, columns)))
+}
+
+/**
+ * The inverse: active statuses this board has no column for. Drives the admin-only prompt
+ * that offers to create the missing column, so the gap is visible to the person who can
+ * close it instead of surfacing as a refusal to whoever hits it first.
+ *
+ * Unlike statusesAvailableOnBoard this fails CLOSED — unknown columns means nothing is
+ * reported missing, because prompting someone to fix a board you have not finished reading
+ * is worse than staying quiet.
+ */
+export function statusesMissingFromBoard<T extends StatusLike>(
+  statuses: T[] | undefined | null,
+  columns: ColumnLike[] | undefined | null,
+): T[] {
+  if (!statuses?.length || !columns) return []
+  return statuses.filter((s) => !findExactColumnForStatus(s.key, s.label, columns))
+}
+
+/**
+ * What a status picker should offer: the statuses the board can accept, plus — always — the
+ * one the record already holds, even when no column represents it any more.
+ *
+ * That last part is the CRM review's lesson (CLAUDE.md): a select whose value is not among
+ * its options renders blank, so a task sitting in a status whose column was deleted would
+ * show an empty control and silently offer to change to something else. Keeping its own
+ * status listed means the control always says what is true.
+ */
+export function statusesForPicker<T extends StatusLike>(
+  statuses: T[] | undefined | null,
+  columns: ColumnLike[] | undefined | null,
+  keepKey?: string | null,
+): T[] {
+  const available = statusesAvailableOnBoard(statuses, columns)
+  if (!keepKey || available.some((s) => s.key === keepKey)) return available
+
+  const current = statuses?.find((s) => s.key === keepKey)
+  if (!current) return available
+
+  // Re-derived from `statuses` rather than appended, so the picker keeps the admin-defined
+  // order instead of pushing the current status to the bottom.
+  const keep = new Set([...available.map((s) => s.key), keepKey])
+  return (statuses ?? []).filter((s) => keep.has(s.key))
+}
+
+/**
  * Find the board column a task should live in for a given status.
  *
  * FK-first: a column explicitly mapped to this status (columns.status_key) wins. Otherwise we

@@ -1,7 +1,7 @@
 'use client'
 
 import type { FormEvent } from 'react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,7 +15,7 @@ import { LinkIcon, Plus, X, Tag } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { isDirty, useUnsavedChanges } from '@/components/shell/unsaved-changes'
-import { findExactColumnForStatus } from '@/lib/task-status'
+import { findExactColumnForStatus, statusesAvailableOnBoard } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
 
 interface CreateTaskDialogProps {
@@ -51,6 +51,17 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
   const taskStatuses = useTaskStatuses()
+  /**
+   * Only statuses this board actually has a column for. The submit handler below refuses
+   * anything else, and used to do so *after* the whole form was filled in — with "ask an
+   * admin" as the remedy even when the person reading it was the admin. Cancelled stays
+   * excluded on top of that: it is an archive destination, reached by moving existing work
+   * there, not somewhere new work is created.
+   */
+  const creatableStatuses = useMemo(
+    () => statusesAvailableOnBoard(taskStatuses, columns).filter((s) => s.key !== 'cancelled'),
+    [taskStatuses, columns],
+  )
 
   // Unsaved-change protection. Escape, the X, or a click on the overlay used to throw away
   // everything typed here — title, description, assignees, links, tags and the first comment
@@ -491,16 +502,26 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
               <label htmlFor="status" className="text-sm font-medium">
                 Status <span className="text-destructive">*</span>
               </label>
-              <Select value={status} onValueChange={setStatus} disabled={loading}>
+              <Select value={status} onValueChange={setStatus} disabled={loading || creatableStatuses.length === 0}>
                 <SelectTrigger id="status">
-                  <SelectValue placeholder="Select status" />
+                  <SelectValue placeholder={creatableStatuses.length === 0 ? 'No status available' : 'Select status'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {taskStatuses.filter((s) => s.key !== 'cancelled').map((s) => (
+                  {creatableStatuses.map((s) => (
                     <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {/* Scoping the list to what the board can take introduces one new way to reach a
+                  dead end: a board whose only column is Cancelled now has nothing to offer. An
+                  empty dropdown reads as a broken control, so say what is wrong and who fixes
+                  it — the board banner above has the one-click remedy for an admin. */}
+              {creatableStatuses.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  This board has no column for any status a new task can start in. An admin can
+                  add one from the board&apos;s &ldquo;Add Column&rdquo; button.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

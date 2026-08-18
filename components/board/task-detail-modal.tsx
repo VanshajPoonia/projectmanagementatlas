@@ -26,7 +26,7 @@ import { RestrictionNote } from '@/components/shell/action-guard'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
-import { findExactColumnForStatus } from '@/lib/task-status'
+import { findExactColumnForStatus, statusesForPicker } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
 import {
   buildTaskAssetPath,
@@ -72,6 +72,12 @@ interface TaskDetailModalProps {
   currentUserId: string
   /** The caller's board_members row for this board, if any (null = no row = full default access). */
   boardRole?: 'member' | 'guest' | 'client' | null
+  /**
+   * The board's columns, when the caller has them. Used only to scope the status picker to
+   * what this board can accept. Optional and fails open: without it every status is offered,
+   * exactly as before, and the save handler still refuses an impossible one.
+   */
+  columns?: Array<{ id: string; title: string; status_key?: string | null }> | null
   initialTab?: 'comments' | 'attachments' | 'links' | 'activity'
   /**
    * Fired when subtasks change. Separate from `onUpdate` because callers wire that to
@@ -81,7 +87,7 @@ interface TaskDetailModalProps {
   onSubtaskChange?: () => void
 }
 
-export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId, boardRole = null, initialTab = 'comments', onSubtaskChange }: TaskDetailModalProps) {
+export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId, boardRole = null, columns = null, initialTab = 'comments', onSubtaskChange }: TaskDetailModalProps) {
   const supabase = createClient()
   const taskStatuses = useTaskStatuses()
   const [task, setTask] = useState<any>(null)
@@ -960,7 +966,10 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {taskStatuses.map((s) => (
+                  {/* Scoped to what this board has a column for, keeping this task's own
+                      status listed. The save handler refuses anything else — it used to do
+                      that only after everything else had been typed. */}
+                  {statusesForPicker(taskStatuses, columns, status).map((s) => (
                     <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
                   ))}
                   {/* Keep the task's current status selectable even if it has since been archived. */}
