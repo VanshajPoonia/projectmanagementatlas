@@ -16,6 +16,7 @@
     "check:isolation": "node --env-file=.env.local scripts/check-isolation.mjs",
     "check:board-roles": "node --env-file=.env.local scripts/check-board-roles.mjs",
     "check:board-columns": "node --env-file=.env.local scripts/check-board-columns.mjs",
+    "check:column-delete": "node --env-file=.env.local scripts/check-column-delete.mjs",
     "check:access-matrix": "node --env-file=.env.local scripts/check-access-matrix.mjs",
     "check:deprovision": "node --env-file=.env.local scripts/check-deprovision.mjs",
     "check:deactivation": "node --env-file=.env.local scripts/check-deactivation.mjs",

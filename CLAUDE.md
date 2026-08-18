@@ -427,6 +427,32 @@ deliberately left out.
     `update({title}).eq('title', oldLabel)`, which was wrong twice: it matched on the column's
     current TITLE (so a board whose "To Do" column had been renamed "Tasks" silently stopped
     tracking the status) and it skipped every private board.
+- ⚠️ **"Hidden from you" and "does not exist" arrive looking identical.** This is the shape
+  behind several bugs in this repo, so it is worth naming. A client reads a table through RLS
+  and gets a filtered list; nothing in the response says anything was withheld. Any UI logic
+  that then treats emptiness or absence as a *fact about the world* is wrong for exactly the
+  users the policy was written for. Audited every table 2026-08-19: **9 tables can never hide
+  a row** from a signed-in user (`app_modules`, `companies`, `marketing_channels`, `profiles`,
+  `project_ids`, `tags`, `task_statuses`, `team_members`, `teams`) and are safe to reason about
+  as complete; **35 can return a partial list** and must not be. The safe move when a decision
+  depends on completeness is a `SECURITY DEFINER` function that counts or checks past RLS and
+  returns the narrowest possible answer.
+  - **`columns` → column deletion (fixed by `108`).** `board-view.tsx` asked
+    `column.tasks.length > 0`, but `can_view_task` hides ARCHIVED tasks from everyone except a
+    super_admin while deleting a column only needs `is_admin_user()`. A plain admin saw an
+    empty column, confirmed "Remove this empty column?", and got `074`'s refusal quoting tasks
+    that were not on screen. **No data was ever at risk** — `074`'s
+    `prevent_nonempty_column_delete` trigger runs as the table owner and sees everything, which
+    is the only reason this was a clarity bug and not a cascade. Verified by attempting it.
+    `public.board_column_task_count` now answers the question honestly, and
+    `pnpm check:column-delete` (13) pins all three halves: the filtered view really is short,
+    the honest count really is complete, and the trigger really does refuse.
+  - **Already defended, checked and left alone:** the archived-tasks panel is gated on
+    `isSuperAdmin`, so it never claims "0 archived" to someone who simply cannot see them; the
+    `board_members` roster has no admin bypass, and `canManageMembership` swaps the picker for
+    `MEMBERSHIP_LOCKED_REASON` rather than showing a non-creator an empty list; membership
+    writes count their returned rows; `crm` lookups fetch every status and filter only in
+    pickers.
 - ⚠️ **The "this board is missing a status column" banner is safe only because the board page
   redirects first.** `statusesMissingFromBoard` receives `columns` already filtered by RLS, and
   an empty array from a filter is indistinguishable from a board that genuinely has no columns.

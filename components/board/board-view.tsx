@@ -426,13 +426,36 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   }
 
   const handleDeleteColumn = async (columnId: string) => {
-    const column = columns.find((candidate) => candidate.id === columnId)
-    if ((column?.tasks || []).length > 0) {
+    // `column.tasks` is RLS-filtered, and can_view_task hides ARCHIVED tasks from everyone
+    // except a super_admin — while deleting a column only needs is_admin_user(). So a plain
+    // admin looking at a column of archived work sees an empty column, and asking the client
+    // whether it is empty gets back "yes" from a list that was never complete. They would
+    // then confirm "Remove this empty column?" and be refused by 074's trigger with a
+    // sentence contradicting what is on screen. Ask the database instead (migration 108).
+    const { data: countRows, error: countError } = await supabase
+      .rpc('board_column_task_count', { p_column_id: columnId })
+
+    if (countError) {
+      toast.error('Could not check whether this column is empty', { description: countError.message })
+      return
+    }
+
+    // The function RETURNS TABLE, so PostgREST hands back an array of one row.
+    const counts = Array.isArray(countRows) ? countRows[0] : countRows
+    if (counts && counts.total > 0) {
+      // Name what is actually in the way. "Archived" is the part the admin cannot see for
+      // themselves, so leaving it out is what made the old refusal unreadable.
+      const parts = [
+        counts.active ? `${counts.active} active` : null,
+        counts.archived ? `${counts.archived} archived` : null,
+        counts.deleted ? `${counts.deleted} deleted` : null,
+      ].filter(Boolean)
       toast.error('This column still contains tasks', {
-        description: 'Move active tasks and restore or retain archived tasks before removing the column.',
+        description: `${parts.join(', ')}. Move them to another column first; deleting the column would take them with it.`,
       })
       return
     }
+
     if (!confirm('Remove this empty column?')) return
 
     const { error } = await supabase.from('columns').delete().eq('id', columnId)

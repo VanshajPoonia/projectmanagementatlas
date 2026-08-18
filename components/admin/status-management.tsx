@@ -128,7 +128,7 @@ export default function StatusManagement() {
           description: columnError.message,
         })
       } else if (typeof renamedCount === 'number' && renamedCount > 0) {
-        toast.success(`Status updated — renamed ${renamedCount} board ${renamedCount === 1 ? 'column' : 'columns'}`)
+        toast.success(`Status updated. Renamed ${renamedCount} board ${renamedCount === 1 ? 'column' : 'columns'}.`)
         setEditingId(null)
         load()
         return
