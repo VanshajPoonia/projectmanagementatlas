@@ -427,6 +427,19 @@ deliberately left out.
     `update({title}).eq('title', oldLabel)`, which was wrong twice: it matched on the column's
     current TITLE (so a board whose "To Do" column had been renamed "Tasks" silently stopped
     tracking the status) and it skipped every private board.
+- ⚠️ **The "this board is missing a status column" banner is safe only because the board page
+  redirects first.** `statusesMissingFromBoard` receives `columns` already filtered by RLS, and
+  an empty array from a filter is indistinguishable from a board that genuinely has no columns.
+  So for an admin who is NOT a member of a private board — whose columns `099` hides — the
+  banner would claim every status was missing and offer to "fix" a board that is already
+  complete, and the `columns` INSERT policy is bare `private.is_admin_user()` with no privacy
+  term, so those clicks would really have created duplicates. It cannot happen because
+  `app/admin/board/[id]/page.tsx` and its `/dashboard` twin do `if (!board) redirect(...)`, and
+  the `boards` SELECT policy hides a private board from a non-member, so they never reach the
+  screen. Measured on dev with a private board and a super_admin outsider: redirected to
+  `/admin`, board untouched. **If that redirect is ever loosened — an admin bypass on the
+  boards SELECT policy would do it — this banner has to start telling an unreadable board
+  apart from an empty one before it renders.**
 - **Board columns are named by their status now, not near it.** Renaming a status renames every
   column linked to it on every board; linking a column to a status in the board's own menu
   renames that column to match; picking a status in "Add column" names it. A column with
