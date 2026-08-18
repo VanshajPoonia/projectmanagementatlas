@@ -321,7 +321,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       .insert({
         title: newColumnTitle.trim(),
         board_id: board.id,
-        position: columns.length,
+        position: nextColumnPosition(),
         status_key: newColumnStatusKey === '__none__' ? null : newColumnStatusKey,
       })
       .select()
@@ -377,6 +377,18 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   }, [board.id, columns, refreshColumns, supabase])
 
   /**
+   * Where a newly added column goes: past the highest position in use, not `columns.length`.
+   * Positions are not guaranteed contiguous — deleting a column leaves a gap, and production's
+   * EmpowerMe board runs 0,1,2,4,5 — so counting the columns can land a new one on top of an
+   * existing position and leave the order between the two decided by nothing. The marketing
+   * calendar already learned this for its channel columns; boards had not.
+   */
+  const nextColumnPosition = useCallback(
+    () => columns.reduce((max: number, col: any) => Math.max(max, col.position ?? -1), -1) + 1,
+    [columns],
+  )
+
+  /**
    * Active statuses this board has no column for. Picking one of these used to be possible in
    * every status dropdown and then refused on save, with "ask an admin to link a column" shown
    * to whoever hit it — usually the admin. The pickers no longer offer them; this is the other
@@ -394,7 +406,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       .insert({
         title: label,
         board_id: board.id,
-        position: columns.length,
+        position: nextColumnPosition(),
         status_key: statusKey,
       })
       .select()
