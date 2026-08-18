@@ -312,14 +312,16 @@ deliberately left out.
   use `IF NOT EXISTS`, and write the intent as a comment header — match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod — always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-19: **dev is at `107`; prod has `101` and `103`, with `087`, `102`, `104`,
-  `105`, `106` and `107` outstanding.** Prod has still never had `087` (deliberate, see below) — `088`–`093` and
-  `097` were applied with `--only=… --allow-prod`, which is what the runner's `--only` flag
-  exists for. ⚠️ **The code for `102` and `104` is already deployed to production**, so
-  applying both is overdue, not optional: without `102` the "Move to another board" button
-  calls an RPC that does not exist, and without `104` the CRM status history can record a
-  disposition nobody supplied (see below). Neither number was written down correctly before —
-  this block said prod was at `095` when it was actually at `101`. Run `pnpm migrate:status`.
+  As of 2026-08-19, verified by running the runner against both: **dev and prod are BOTH fully
+  applied at `107` — all 107 files, zero pending on either.** `105`–`107` went to prod with
+  `--only=105,106,107 --allow-prod`, which is what the runner's `--only` flag exists for.
+  ⚠️ **The per-migration notes below saying a given number is "dev-only" are HISTORICAL** —
+  each was true the day it was written and most have since been applied. `087`, `096`–`102`
+  and `104` are all on prod now. The ledger is the only truth; those notes are kept for the
+  *reasoning* they record about what each migration does, not as a statement of where it
+  lives. This block has been wrong twice before (it said prod was at `095` when it was at
+  `101`, then at `101` when it was at `104`), which is why the rule above is to run
+  `pnpm migrate:status` rather than read this sentence.
 - **`103` (CRM) is dev-only and purely additive** — seven new tables, one `app_modules` row,
   no existing table, policy, grant or row touched. That makes it `--allow-prod` eligible on
   this repo's own rule, unlike `098`–`102`. The module seeds **`enabled = false`**, so
@@ -685,14 +687,15 @@ deliberately left out.
   sha from `gh api repos/VanshajPoonia/projectmanagementatlas/deployments` — `vercel inspect` does
   not print it, and matching timestamps by eye is a guess.
 
-### Migration `087` is written but deliberately NOT applied to prod
+### Migration `087` — was held back from prod on purpose; it is now applied (2026-08-19)
 
 `scripts/087_marketing_checks_shared.sql` widens SELECT/DELETE on `marketing_calendar_checks` from
-per-viewer to calendar-membership, so members see one shared posted/missed state. It is applied to
-the dev sandbox, verified by `pnpm check:marketing-calendars` (19/19), and self-verifying per the
-convention above.
+per-viewer to calendar-membership, so members see one shared posted/missed state. It is
+self-verifying per the convention above and covered by `pnpm check:marketing-calendars`.
 
-It is not on prod because **nobody is currently affected by its absence** — every marketing calendar
-member is an admin, and admins already read every check row (see the People section). Apply it the
-day a non-admin is given calendar access. Until then the gap is intentional, not an oversight; do not
-"fix" it in passing.
+**It is on prod now** — confirmed in `applied_migrations`, alongside `096`–`102` and `104`. This
+section previously said "deliberately NOT applied to prod, apply it the day a non-admin is given
+calendar access", and that instruction is spent: someone applied it. Kept here because the
+*reasoning* is still the useful part — the gap was harmless for as long as it lasted, because every
+marketing calendar member is an admin and admins already read every check row (see the People
+section). Nothing about the feature changed when it landed.
