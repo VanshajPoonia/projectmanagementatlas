@@ -53,3 +53,32 @@ export function isModuleEnabled(modules: AppModule[], key: ModuleKey): boolean {
   const found = modules.find((m) => m.module_key === key)
   return found ? found.enabled : true
 }
+
+/**
+ * Read one module's switch on the server, with the caller's own session.
+ *
+ * ⚠️ This exists because a module toggle that only hides a button is not a toggle. The AI
+ * assistant was gated at three render sites and nowhere else, so switching it off in
+ * Super Admin > Modules removed the widget while `POST /api/ai-chat` kept answering - the
+ * same "UI-deep" defect migration 104 had to fix for `requires_reason`. Any module with a
+ * server route of its own owes that route this check.
+ *
+ * The fallback follows lib/modules.ts's rule rather than requireCrmAccess's stricter one:
+ * a module absent from `app_modules` stays AVAILABLE, so a failure to read the table can
+ * never silently disable working features for everyone. Modules that must fail closed
+ * (appointments, crm) carry `enabled: false` in DEFAULT_MODULES and so are refused by this
+ * same lookup.
+ */
+export async function isModuleEnabledOnServer(
+  supabase: { from: (table: string) => any },
+  key: ModuleKey,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('app_modules')
+    .select('module_key, enabled')
+    .eq('module_key', key)
+    .maybeSingle()
+
+  if (data) return Boolean(data.enabled)
+  return DEFAULT_MODULES.find((module) => module.module_key === key)?.enabled ?? true
+}

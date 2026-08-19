@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { isModuleEnabled, DEFAULT_MODULES, type AppModule } from './modules'
+// Server-only, so it lives in the registry rather than the React-bearing module.
+import { isModuleEnabledOnServer } from './module-registry'
 
 describe('isModuleEnabled', () => {
   it('reports each default module according to its own flag', () => {
@@ -34,5 +36,37 @@ describe('isModuleEnabled', () => {
 
   it('defaults to enabled when a key has no row yet', () => {
     expect(isModuleEnabled([], 'ai_assistant')).toBe(true)
+  })
+})
+
+describe('isModuleEnabledOnServer', () => {
+  // The AI assistant was gated at three render sites and nowhere else, so switching it off
+  // hid the widget while POST /api/ai-chat kept answering. A module toggle that only hides
+  // a button is not a toggle - this is the server half.
+  const client = (row: { module_key: string; enabled: boolean } | null, error?: unknown) => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({ maybeSingle: async () => ({ data: row, error: error ?? null }) }),
+      }),
+    }),
+  })
+
+  it('reports the stored value when the row exists', async () => {
+    expect(await isModuleEnabledOnServer(client({ module_key: 'ai_assistant', enabled: true }), 'ai_assistant')).toBe(true)
+    expect(await isModuleEnabledOnServer(client({ module_key: 'ai_assistant', enabled: false }), 'ai_assistant')).toBe(false)
+  })
+
+  // Follows lib/modules.ts's rule, not requireCrmAccess's stricter one: an unreadable
+  // app_modules must never silently disable working features for everyone at once.
+  it('falls back to available for a module that defaults on', async () => {
+    expect(await isModuleEnabledOnServer(client(null), 'ai_assistant')).toBe(true)
+    expect(await isModuleEnabledOnServer(client(null), 'boards')).toBe(true)
+  })
+
+  // ...but the two modules seeded disabled must stay refused on that same path, or a failed
+  // read would reveal a module a super admin has never switched on.
+  it('keeps the fail-closed modules closed when the row is missing', async () => {
+    expect(await isModuleEnabledOnServer(client(null), 'crm')).toBe(false)
+    expect(await isModuleEnabledOnServer(client(null), 'appointments')).toBe(false)
   })
 })
