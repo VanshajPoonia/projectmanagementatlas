@@ -19,7 +19,7 @@
 // and their INSERT rejected with 42501. Under delete-all-then-reinsert that combination
 // silently reported success while changing nothing; see canManageMembership below.
 
-import type { BoardRole } from '@/lib/capabilities'
+import { NOT_BOARD_CREATOR, allows, type BoardRole } from '@/lib/capabilities'
 
 export type { BoardRole }
 
@@ -102,12 +102,24 @@ export function canManageMembership(
   board: { created_by?: string | null } | null | undefined,
   userId: string | null | undefined,
 ): boolean {
-  return Boolean(board?.created_by && userId && board.created_by === userId)
+  if (!userId) return false
+  // Delegates rather than restating the rule. `members.manage` used to answer "any admin",
+  // which contradicted this function and 061 both; one of the two had to become the
+  // definition, and the capability vocabulary is the place the plan asks for it to live.
+  return allows(
+    { userId, platformRole: 'user' },
+    'members.manage',
+    undefined,
+    { created_by: board?.created_by ?? null },
+  )
 }
 
-/** Sentence shown in place of the picker when the viewer is not the board's creator. */
-export const MEMBERSHIP_LOCKED_REASON =
-  'Only the person who created this board can change who has access to it.'
+/**
+ * Sentence shown in place of the picker when the viewer is not the board's creator.
+ * Re-exported from the capability layer so the picker and the palette cannot disagree
+ * about how this restriction is worded.
+ */
+export const MEMBERSHIP_LOCKED_REASON = NOT_BOARD_CREATOR
 
 /**
  * What a `board_members` row actually MEANS depends on the board's visibility, and the
