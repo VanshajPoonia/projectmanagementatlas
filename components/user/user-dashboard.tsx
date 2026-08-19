@@ -12,7 +12,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveTab } from '../shell/tab-url'
 import { AppShell } from '../shell/app-shell'
 import { addressableTabs, buildWorkspaceNav } from '../shell/workspace-nav'
-import type { Command } from '../shell/commands'
+import { buildCreateCommands, type Command } from '../shell/commands'
 import type { SidebarNavGroup } from '../shell/app-sidebar'
 import Link from 'next/link'
 import ChatPanel from '../chat/chat-panel'
@@ -194,30 +194,12 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
   // ⌘K "Create" entries. Both are navigations to where the create affordance already
   // lives, and each is gated on the module that owns it - a create shortcut for a
   // section a super_admin switched off would be a dead end.
-  const paletteCommands: Command[] = useMemo(() => {
-    const list: Command[] = []
-    if (showBoards) {
-      list.push({
-        id: 'create:board-task',
-        group: 'create',
-        label: 'New task on a board',
-        hint: 'Opens Boards',
-        icon: 'plus',
-        href: '/dashboard?tab=boards',
-      })
-    }
-    if (showPersonal) {
-      list.push({
-        id: 'create:personal-task',
-        group: 'create',
-        label: 'New personal task',
-        hint: 'Private to you',
-        icon: 'plus',
-        href: '/dashboard?tab=personal',
-      })
-    }
-    return list
-  }, [showBoards, showPersonal])
+  // Shared with /my-work, /admin and /crm so the Create section is identical everywhere
+  // and its hrefs follow the viewer's role rather than this file's own route.
+  const paletteCommands: Command[] = useMemo(
+    () => buildCreateCommands({ role: user.role, modules }),
+    [user.role, modules],
+  )
 
   return (
     <AppShell
@@ -471,9 +453,14 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
             </DashboardWindow>
           </TabsContent>
 
+          {/* Gated like its five siblings below. The flag existed but was read only by the
+              ⌘K Create commands, which now module-gate themselves in buildCreateCommands -
+              leaving these two tabs the only ones whose content ignored their own module. */}
+          {showPersonal && (
           <TabsContent value="personal">
             <PersonalTasks userId={user.id} />
           </TabsContent>
+          )}
 
           {showCalendar && (
             <TabsContent value="calendar">
@@ -493,6 +480,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
             </TabsContent>
           )}
 
+          {showBoards && (
           <TabsContent value="boards">
             <Card>
               <CardHeader className="flex flex-col items-start justify-between gap-4 space-y-0 px-4 sm:flex-row sm:items-center sm:px-6">
@@ -606,6 +594,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
               </CardContent>
             </Card>
           </TabsContent>
+          )}
 
           {showChat && (
             <TabsContent value="chat">

@@ -24,7 +24,11 @@ export default async function MyWorkPage() {
 
   // Same shape as the dashboard's query so the two screens agree about what a task is.
   // RLS decides what comes back; nothing here re-implements visibility.
-  const { data: tasksData } = await supabase
+  // ⚠️ The error is kept, not discarded. Dropping it made a failed query render as "You're
+  // all caught up" - the most reassuring possible way to tell someone their work list is
+  // broken, and this codebase's own "hidden from you and does not exist arrive looking
+  // identical" trap on the screen people are told to open first.
+  const { data: tasksData, error: tasksError } = await supabase
     .from('tasks')
     .select('*, task_assignees(user_id), column:columns(title, status_key, board_id, board:boards(id, title, archived_at))')
     .is('deleted_at', null)
@@ -42,5 +46,5 @@ export default async function MyWorkPage() {
   // rather than rendering the fallback and correcting itself. See lib/shell-data.ts.
   const shell = await loadShellData(supabase)
 
-  return <MyWorkView user={profile} tasks={tasks} shell={shell} />
+  return <MyWorkView user={profile} tasks={tasks} shell={shell} loadFailed={Boolean(tasksError)} />
 }

@@ -7,7 +7,7 @@ import { AlertTriangle, ArrowRight, Clock, UserX } from 'lucide-react'
 import { CrmShell, type CrmUser } from './crm-shell'
 import type { ShellData } from '@/lib/shell-data'
 import { StatTile, StatusPill } from './crm-primitives'
-import { EmptyState } from '@/components/shell/states'
+import { EmptyState, ErrorState } from '@/components/shell/states'
 import { useNow } from '@/lib/use-now'
 import { Button } from '@/components/ui/button'
 import {
@@ -42,6 +42,7 @@ export function CrmDashboard({
   openIntervals,
   clients,
   serverNow,
+  loadFailed = false,
 }: {
   user: CrmUser
   /** Server-loaded modules + calendars, handed straight to CrmShell. See lib/shell-data.ts. */
@@ -50,6 +51,11 @@ export function CrmDashboard({
   orders: CrmOrder[]
   openIntervals: CrmStatusInterval[]
   clients: CrmClientSummary[]
+  /**
+   * True when any of the server queries behind this screen failed. Without it an error and
+   * a genuinely empty CRM render identically, and every number on the page is a claim.
+   */
+  loadFailed?: boolean
   serverNow: string
 }) {
   // One `now` for the whole render, seeded from the server so hydration matches. Calling
@@ -69,6 +75,17 @@ export function CrmDashboard({
 
   return (
     <CrmShell user={user} shell={shell} breadcrumbs={[{ label: 'CRM' }]}>
+      {/* Rendered INSTEAD of the content, not above it. A count of 0 beside a failed read
+          is not a small number, it is an unknown one, and showing both invites the zero
+          being believed. */}
+      {loadFailed ? (
+        <ErrorState
+          title="This screen could not load its records"
+          description="Nothing is wrong with your data - the page failed to read it. Reload to try again; if it keeps failing, tell an admin."
+          className="mt-6"
+        />
+      ) : (
+      <>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
@@ -190,6 +207,8 @@ export function CrmDashboard({
           </ul>
         )}
       </section>
+      </>
+      )}
     </CrmShell>
   )
 }

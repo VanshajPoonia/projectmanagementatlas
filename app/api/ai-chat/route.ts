@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { callGemini, GeminiError, type ChatTurn, type ChatAttachment } from '@/lib/ai-chat'
+import { isModuleEnabledOnServer } from '@/lib/module-registry'
 
 // Tool rounds + Gemini + a web search can take a while; give it room (Hobby allows 60s).
 export const maxDuration = 60
@@ -58,6 +59,17 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // The module switch is enforced HERE, not only where the widget renders. Gating it at
+    // the three render sites alone meant a super admin who turned the assistant off got a
+    // hidden button and a live endpoint - the toggle looked like it did something and did
+    // not. See lib/module-registry.ts::isModuleEnabledOnServer.
+    if (!(await isModuleEnabledOnServer(supabase, 'ai_assistant'))) {
+      return NextResponse.json(
+        { error: 'The AI assistant is switched off for this workspace.' },
+        { status: 403 },
+      )
     }
 
     // Overall hourly cap (all modes).

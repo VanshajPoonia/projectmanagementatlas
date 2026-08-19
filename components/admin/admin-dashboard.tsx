@@ -9,6 +9,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { resolveActiveTab } from '../shell/tab-url'
 import { AppShell } from '../shell/app-shell'
 import { addressableTabs, buildWorkspaceNav } from '../shell/workspace-nav'
+import { buildCreateCommands, type Command } from '../shell/commands'
 import type { SidebarNavGroup } from '../shell/app-sidebar'
 import BoardManagement from './board-management'
 import AccessLog from './access-log'
@@ -191,6 +192,13 @@ export default function AdminDashboard({ user, users, boards, tasks, shell }: Ad
 
   const activeLabel = sidebarGroups[0].items.find((i) => i.id === activeTab)?.label ?? 'Home'
 
+  // ⌘K's Create section. This screen used to pass no commands at all, so the palette had
+  // no Create group for an admin - and per CLAUDE.md every real user of this app is one.
+  const paletteCommands: Command[] = useMemo(
+    () => buildCreateCommands({ role: user.role, modules }),
+    [user.role, modules],
+  )
+
   return (
     <AppShell
       user={{ id: user.id, role: user.role, full_name: user.full_name, email: user.email }}
@@ -198,6 +206,7 @@ export default function AdminDashboard({ user, users, boards, tasks, shell }: Ad
       activeId={activeTab}
       breadcrumbs={[{ label: activeLabel }]}
       favorites={favoriteItems}
+      commands={paletteCommands}
       topbarActions={
         <>
           <ThemeControls />

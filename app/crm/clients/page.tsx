@@ -8,7 +8,9 @@ export default async function CrmClientsPage() {
   const access = await requireCrmAccess(supabase)
   if (!access) redirect('/dashboard')
 
-  const [{ data: clients }, { data: statuses }, { data: profiles }] = await Promise.all([
+  // Errors kept, not dropped - see app/crm/orders/page.tsx for why an empty CRM and a
+  // broken one must not look the same.
+  const results = await Promise.all([
     supabase
       .from('crm_clients')
       .select('*, crm_contacts(*)')
@@ -18,6 +20,9 @@ export default async function CrmClientsPage() {
     supabase.from('profiles').select('id, full_name, email').order('full_name'),
   ])
 
+  const [{ data: clients }, { data: statuses }, { data: profiles }] = results
+  const loadFailed = results.some((result) => result.error)
+
   return (
     <CrmClientsView
       user={access.profile}
@@ -25,6 +30,7 @@ export default async function CrmClientsPage() {
       clients={clients ?? []}
       statuses={statuses ?? []}
       profiles={profiles ?? []}
+      loadFailed={loadFailed}
     />
   )
 }

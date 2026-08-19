@@ -6,13 +6,14 @@ import { format } from 'date-fns'
 import { AlertTriangle, CalendarDays, CircleDot, Info, Sparkles } from 'lucide-react'
 
 import { AppShell } from '@/components/shell/app-shell'
-import { EmptyState } from '@/components/shell/states'
+import { EmptyState, ErrorState } from '@/components/shell/states'
 import { buildWorkspaceNav } from '@/components/shell/workspace-nav'
 import type { SidebarNavGroup } from '@/components/shell/app-sidebar'
-import type { Command } from '@/components/shell/commands'
+import { buildCreateCommands, type Command } from '@/components/shell/commands'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ThemeControls } from '@/components/theme/theme-controls'
+import { allows } from '@/lib/capabilities'
 import { useAppModules } from '@/lib/modules'
 import type { ShellData } from '@/lib/shell-data'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
@@ -31,6 +32,11 @@ interface MyWorkViewProps {
    * what every screen used to do. See lib/shell-data.ts.
    */
   shell?: ShellData
+  /**
+   * True when the task query itself failed. Without this an empty `tasks` array is
+   * indistinguishable from a genuinely clear plate, and the screen cheerfully says so.
+   */
+  loadFailed?: boolean
 }
 
 function dueLabel(due: unknown): { text: string; overdue: boolean } | null {
@@ -51,7 +57,7 @@ function dueLabel(due: unknown): { text: string; overdue: boolean } | null {
  * an unexplained ordering is a black box, and people stop trusting it the first time it
  * disagrees with them.
  */
-export default function MyWorkView({ user, tasks, shell }: MyWorkViewProps) {
+export default function MyWorkView({ user, tasks, shell, loadFailed = false }: MyWorkViewProps) {
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
   const basePath = isAdmin ? '/admin' : '/dashboard'
 
@@ -79,32 +85,20 @@ export default function MyWorkView({ user, tasks, shell }: MyWorkViewProps) {
         role: user?.role ?? 'user',
         modules,
         canUseMarketingCalendar: isAdmin || calendars.length > 0,
+        // Resolved from the same capability the admin dashboard uses. Leaving it out here
+        // meant the same admin saw an Access log item on /admin and not on this screen.
+        canViewAudit: allows({ userId: user?.id ?? '', platformRole: user?.role ?? 'user' }, 'audit.view'),
       }),
-    [user?.role, modules, isAdmin, calendars.length],
+    [user?.role, user?.id, modules, isAdmin, calendars.length],
   )
 
   // The palette's Create section. Both are honest navigations to where the create
   // affordance actually lives - no capability gate, because neither performs a write.
+  // Built by the shared builder so the host follows the viewer's role: these were
+  // hardcoded to '/dashboard', which for an admin redirects to /admin and drops the tab.
   const commands: Command[] = useMemo(
-    () => [
-      {
-        id: 'create:board-task',
-        group: 'create',
-        label: 'New task on a board',
-        hint: 'Opens Boards',
-        icon: 'plus',
-        href: '/dashboard?tab=boards',
-      },
-      {
-        id: 'create:personal-task',
-        group: 'create',
-        label: 'New personal task',
-        hint: 'Private to you',
-        icon: 'plus',
-        href: '/dashboard?tab=personal',
-      },
-    ],
-    [],
+    () => buildCreateCommands({ role: user?.role ?? 'user', modules }),
+    [user?.role, modules],
   )
 
   return (
@@ -125,6 +119,16 @@ export default function MyWorkView({ user, tasks, shell }: MyWorkViewProps) {
           </p>
         </header>
 
+        {/* Shown INSTEAD of the counts and sections, never above them: a zero next to a
+            failed query is not a small number, it is an unknown one, and rendering the two
+            together invites reading the zeros as fact. */}
+        {loadFailed ? (
+          <ErrorState
+            title="Your work could not be loaded"
+            description="Nothing is wrong with your tasks - this page failed to read them. Reload to try again; if it keeps failing, tell an admin."
+          />
+        ) : (
+        <>
         <dl className="grid grid-cols-3 gap-3">
           <Stat label="Open" value={summary.open} />
           <Stat label="Overdue" value={summary.overdue} tone={summary.overdue > 0 ? 'danger' : 'plain'} />
@@ -249,6 +253,9 @@ export default function MyWorkView({ user, tasks, shell }: MyWorkViewProps) {
               </CardContent>
             </Card>
           ))
+        )}
+
+        </>
         )}
 
         {/* Stated rather than silently omitted: a "Blocked" section that guessed would be

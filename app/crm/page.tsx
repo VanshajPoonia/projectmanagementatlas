@@ -13,8 +13,9 @@ export default async function CrmPage() {
   const access = await requireCrmAccess(supabase)
   if (!access) redirect('/dashboard')
 
-  const [{ data: statuses }, { data: orders }, { data: history }, { data: clients }] =
-    await Promise.all([
+  // Errors kept, not dropped - see app/crm/orders/page.tsx. A dashboard that renders zeros
+  // on a failed read is the worst version of this defect: every number on it is a claim.
+  const results = await Promise.all([
       // Every status, archived included. An order can still be sitting in an archived one, and
       // a status missing from the lookup map reads as "not terminal" - which would have counted
       // every won order as live pipeline the day someone archived Won. Pickers filter, queries
@@ -27,6 +28,9 @@ export default async function CrmPage() {
       supabase.from('crm_clients').select('id, client_ref, company_name, status, crm_contacts(*)'),
     ])
 
+  const [{ data: statuses }, { data: orders }, { data: history }, { data: clients }] = results
+  const loadFailed = results.some((result) => result.error)
+
   return (
     <CrmDashboard
       user={access.profile}
@@ -36,6 +40,7 @@ export default async function CrmPage() {
       openIntervals={history ?? []}
       clients={clients ?? []}
       serverNow={new Date().toISOString()}
+      loadFailed={loadFailed}
     />
   )
 }

@@ -1,17 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { History, Loader2, MinusCircle, PlusCircle, RefreshCw } from 'lucide-react'
+import { History, MinusCircle, PlusCircle, RefreshCw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { EmptyState, ErrorState, PermissionDenied } from '@/components/shell/states'
+import { EmptyState, ErrorState, LoadingRows, PermissionDenied } from '@/components/shell/states'
 import { can } from '@/lib/capabilities'
 import {
   AUDIT_CATEGORIES,
   actorLabel,
-  filterByCategory,
+  categoryPattern,
   formatTime,
   groupByDay,
   toneOf,
@@ -50,13 +50,27 @@ export default function AccessLog({
 
   const decision = can({ userId: currentUserId, platformRole: currentUserRole }, 'audit.view')
 
+  /**
+   * ⚠️ The category is pushed into the QUERY, not applied to the page afterwards.
+   *
+   * This used to fetch the 50 newest events and narrow them in the browser, so an empty
+   * screen meant "none in the newest 50" while reading as "none at all" - and "Load older
+   * entries" was offered or withheld based on the unfiltered count. That is this repo's
+   * own "hidden from you and does not exist arrive looking identical" trap, in the one
+   * screen whose entire value is being believable.
+   */
   const load = useCallback(
-    async (limit: number) => {
-      const { data, error: queryError } = await supabase
+    async (limit: number, forCategory: AuditCategory) => {
+      let query = supabase
         .from('audit_events')
         .select('id, occurred_at, actor_id, action, entity_type, entity_id, subject_id, summary, metadata')
         .order('occurred_at', { ascending: false })
         .limit(limit + 1)
+
+      const pattern = categoryPattern(forCategory)
+      if (pattern) query = query.like('action', pattern)
+
+      const { data, error: queryError } = await query
 
       if (queryError) {
         setError(queryError.message)
@@ -82,24 +96,29 @@ export default function AccessLog({
     [supabase],
   )
 
+  // Re-queries on every category change, which is the point: the filter is a different
+  // question for the database, not a different view of the same answer.
   useEffect(() => {
     if (!decision.allowed) {
       setLoading(false)
       return
     }
-    load(PAGE_SIZE).finally(() => setLoading(false))
-  }, [decision.allowed, load])
+    setLoading(true)
+    load(PAGE_SIZE, category).finally(() => setLoading(false))
+  }, [decision.allowed, load, category])
 
   const refresh = async () => {
     setRefreshing(true)
-    await load(Math.max(PAGE_SIZE, events.length))
+    await load(Math.max(PAGE_SIZE, events.length), category)
     setRefreshing(false)
   }
 
   if (!decision.allowed) return <PermissionDenied />
 
-  const visible = filterByCategory(events, category)
-  const days = groupByDay(visible)
+  // No client-side filtering left to do - the query answered the question. filterByCategory
+  // still exists for callers holding a complete set in memory; using it here would be a
+  // second, weaker filter on top of the authoritative one.
+  const days = groupByDay(events)
 
   return (
     <div className="space-y-6">
@@ -142,12 +161,10 @@ export default function AccessLog({
         ))}
       </div>
 
-      {loading && (
-        <p className="text-muted-foreground flex items-center gap-2 text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          Loading the access log…
-        </p>
-      )}
+      {/* The shared skeleton rather than a bare spinner: it is shaped like the list it
+          becomes, so the page does not jump, it announces itself through aria-live, and its
+          pulse is motion-safe. LoadingRows had been written and then used only in tests. */}
+      {loading && <LoadingRows rows={5} />}
 
       {!loading && error && (
         <ErrorState
@@ -156,7 +173,7 @@ export default function AccessLog({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { setLoading(true); load(PAGE_SIZE).finally(() => setLoading(false)) }}
+              onClick={() => { setLoading(true); load(PAGE_SIZE, category).finally(() => setLoading(false)) }}
             >
               Try again
             </Button>
@@ -219,7 +236,7 @@ export default function AccessLog({
       ))}
 
       {!loading && !error && hasMore && (
-        <Button variant="outline" className="w-full" onClick={() => load(events.length + PAGE_SIZE)}>
+        <Button variant="outline" className="w-full" onClick={() => load(events.length + PAGE_SIZE, category)}>
           Load older entries
         </Button>
       )}

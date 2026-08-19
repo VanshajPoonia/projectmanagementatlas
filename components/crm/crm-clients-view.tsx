@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { CrmShell, type CrmUser } from './crm-shell'
 import type { ShellData } from '@/lib/shell-data'
 import { Field, StatusPill } from './crm-primitives'
-import { EmptyState } from '@/components/shell/states'
+import { EmptyState, ErrorState } from '@/components/shell/states'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -46,6 +46,7 @@ export function CrmClientsView({
   clients: initialClients,
   statuses,
   profiles,
+  loadFailed = false,
 }: {
   user: CrmUser
   /** Server-loaded modules + calendars, handed straight to CrmShell. See lib/shell-data.ts. */
@@ -53,6 +54,11 @@ export function CrmClientsView({
   clients: CrmClient[]
   statuses: CrmStatus[]
   profiles: Profile[]
+  /**
+   * True when any of the server queries behind this screen failed. Without it an error and
+   * a genuinely empty CRM render identically, and every number on the page is a claim.
+   */
+  loadFailed?: boolean
 }) {
   const supabase = useMemo(() => createClient(), [])
   const [clients, setClients] = useState(initialClients)
@@ -112,6 +118,17 @@ export function CrmClientsView({
 
   return (
     <CrmShell user={user} shell={shell} breadcrumbs={[{ label: 'CRM', href: '/crm' }, { label: 'Clients' }]}>
+      {/* Rendered INSTEAD of the content, not above it. A count of 0 beside a failed read
+          is not a small number, it is an unknown one, and showing both invites the zero
+          being believed. */}
+      {loadFailed ? (
+        <ErrorState
+          title="This screen could not load its records"
+          description="Nothing is wrong with your data - the page failed to read it. Reload to try again; if it keeps failing, tell an admin."
+          className="mt-6"
+        />
+      ) : (
+      <>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Clients</h1>
@@ -300,6 +317,8 @@ export function CrmClientsView({
             />
           )}
         </>
+      )}
+      </>
       )}
     </CrmShell>
   )

@@ -9,7 +9,7 @@ import { CrmShell, type CrmUser } from './crm-shell'
 import type { ShellData } from '@/lib/shell-data'
 import { StatusPill } from './crm-primitives'
 import { NewOrderDialog } from './new-order-dialog'
-import { EmptyState } from '@/components/shell/states'
+import { EmptyState, ErrorState } from '@/components/shell/states'
 import { useNow } from '@/lib/use-now'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -55,6 +55,7 @@ export function CrmOrdersView({
   openIntervals,
   initialStatus,
   serverNow,
+  loadFailed = false,
 }: {
   user: CrmUser
   /** Server-loaded modules + calendars, handed straight to CrmShell. See lib/shell-data.ts. */
@@ -64,6 +65,11 @@ export function CrmOrdersView({
   clients: CrmClientSummary[]
   profiles: Profile[]
   openIntervals: CrmStatusInterval[]
+  /**
+   * True when any of the server queries behind this screen failed. Without it an error and
+   * a genuinely empty CRM render identically, and every number on the page is a claim.
+   */
+  loadFailed?: boolean
   initialStatus: string | null
   serverNow: string
 }) {
@@ -94,6 +100,17 @@ export function CrmOrdersView({
 
   return (
     <CrmShell user={user} shell={shell} breadcrumbs={[{ label: 'CRM', href: '/crm' }, { label: 'Orders' }]}>
+      {/* Rendered INSTEAD of the content, not above it. A count of 0 beside a failed read
+          is not a small number, it is an unknown one, and showing both invites the zero
+          being believed. */}
+      {loadFailed ? (
+        <ErrorState
+          title="This screen could not load its records"
+          description="Nothing is wrong with your data - the page failed to read it. Reload to try again; if it keeps failing, tell an admin."
+          className="mt-6"
+        />
+      ) : (
+      <>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Orders</h1>
@@ -299,6 +316,8 @@ export function CrmOrdersView({
         profiles={profiles}
         currentUserId={user.id}
       />
+      </>
+      )}
     </CrmShell>
   )
 }

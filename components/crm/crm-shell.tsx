@@ -14,6 +14,8 @@ import { usePathname } from 'next/navigation'
 
 import { AppShell } from '@/components/shell/app-shell'
 import { buildWorkspaceNav } from '@/components/shell/workspace-nav'
+import { buildCreateCommands, type Command } from '@/components/shell/commands'
+import { allows } from '@/lib/capabilities'
 import { ThemeControls } from '@/components/theme/theme-controls'
 import { useAppModules } from '@/lib/modules'
 import type { ShellData } from '@/lib/shell-data'
@@ -79,8 +81,17 @@ export function CrmShell({
         role: user.role,
         modules,
         canUseMarketingCalendar: isAdmin || calendars.length > 0,
+        // Same capability the admin dashboard resolves. Omitting it here gave the same
+        // admin a different sidebar depending on which screen they happened to be on.
+        canViewAudit: allows({ userId: user.id, platformRole: user.role }, 'audit.view'),
       }),
-    [user.role, modules, isAdmin, calendars.length],
+    [user.role, user.id, modules, isAdmin, calendars.length],
+  )
+
+  // ⌘K's Create section - absent from this shell entirely until now.
+  const paletteCommands: Command[] = useMemo(
+    () => buildCreateCommands({ role: user.role, modules }),
+    [user.role, modules],
   )
 
   const sections: { label: string; entries: CrmNavEntry[] }[] = [
@@ -95,6 +106,7 @@ export function CrmShell({
       activeId="crm"
       breadcrumbs={breadcrumbs}
       favorites={favoriteItems}
+      commands={paletteCommands}
       topbarActions={<ThemeControls />}
     >
       {/* AppShell's <main> is deliberately unpadded; every host supplies its own.

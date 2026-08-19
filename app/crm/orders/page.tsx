@@ -14,8 +14,10 @@ export default async function CrmOrdersPage({
 
   const { status } = await searchParams
 
-  const [{ data: orders }, { data: statuses }, { data: clients }, { data: profiles }, { data: open }] =
-    await Promise.all([
+  // ⚠️ Errors are kept. Destructuring `{ data }` alone made every failure render as an
+  // empty CRM - no orders, no clients, no pipeline - which is indistinguishable from a
+  // quiet week and considerably more alarming once someone acts on it.
+  const results = await Promise.all([
       supabase.from('crm_orders').select('*').order('opened_at', { ascending: false }),
       // All statuses; the pickers filter. See lib/crm.ts activeStatuses().
       supabase.from('crm_statuses').select('*').order('position'),
@@ -23,6 +25,9 @@ export default async function CrmOrdersPage({
       supabase.from('profiles').select('id, full_name, email').order('full_name'),
       supabase.from('crm_order_status_history').select('*').is('exited_at', null),
     ])
+
+  const [{ data: orders }, { data: statuses }, { data: clients }, { data: profiles }, { data: open }] = results
+  const loadFailed = results.some((result) => result.error)
 
   return (
     <CrmOrdersView
@@ -35,6 +40,7 @@ export default async function CrmOrdersPage({
       openIntervals={open ?? []}
       initialStatus={status ?? null}
       serverNow={new Date().toISOString()}
+      loadFailed={loadFailed}
     />
   )
 }
