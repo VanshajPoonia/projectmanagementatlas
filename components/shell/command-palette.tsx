@@ -24,12 +24,21 @@ import {
   type Command,
 } from './commands'
 import type { FavoriteItem } from './app-sidebar'
-import type { NavGroup } from './nav-model'
+import type { NavGroup, Role } from './nav-model'
+import { dashboardHost } from './workspace-nav'
 import type { RecentRecord } from './recent-records'
 
 interface CommandPaletteProps {
   /** Already role/module-filtered by the host (same groups as the sidebar). */
   groups: NavGroup[]
+  /**
+   * The viewer's role, used only to pick the host for search results.
+   *
+   * A board opened at /dashboard/board/<id> renders with `isAdmin={false}` deliberately,
+   * so sending an admin there from a search hit quietly stripped their admin controls on
+   * arrival. Same rule as the sidebar's, from the same function, so the two cannot drift.
+   */
+  role?: Role
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Starred boards, already resolved against what this viewer can open. */
@@ -65,6 +74,7 @@ const SEARCH_LIMIT = 6
  */
 export function CommandPalette({
   groups,
+  role = 'user',
   open,
   onOpenChange,
   favorites = [],
@@ -135,18 +145,19 @@ export function CommandPalette({
     }
   }, [query, open])
 
-  const searchCommands: Command[] = useMemo(
-    () =>
-      hits.map((hit) => ({
-        id: `search:${hit.id}`,
-        group: 'search' as const,
-        label: hit.title,
-        hint: hit.boardTitle ?? undefined,
-        icon: 'search',
-        href: hit.boardId ? `/dashboard/board/${hit.boardId}` : undefined,
-      })),
-    [hits],
-  )
+  const searchCommands: Command[] = useMemo(() => {
+    const host = dashboardHost(role)
+    return hits.map((hit) => ({
+      id: `search:${hit.id}`,
+      group: 'search' as const,
+      label: hit.title,
+      hint: hit.boardTitle ?? undefined,
+      icon: 'search',
+      // Deep-links straight to the task, which the board already understands (?task=),
+      // rather than dropping the searcher on the board to find it again.
+      href: hit.boardId ? `${host}/board/${hit.boardId}?task=${hit.id}` : undefined,
+    }))
+  }, [hits, role])
 
   const rendered = useMemo(
     () =>

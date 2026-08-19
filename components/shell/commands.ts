@@ -13,9 +13,11 @@
 // Pure and framework-free (no React, no router) so the visibility and execution rules
 // are unit-testable - same split as nav-model.ts.
 
+import { isModuleEnabled, type AppModule } from '@/lib/module-registry'
 import type { CapabilityDecision } from '@/lib/capabilities'
-import type { NavGroup } from './nav-model'
+import type { NavGroup, Role } from './nav-model'
 import type { RecentRecord } from './recent-records'
+import { dashboardHost } from './workspace-nav'
 
 /** Palette sections, in render order. */
 export type CommandGroupId = 'favorite' | 'recent' | 'navigate' | 'search' | 'create' | 'context'
@@ -173,6 +175,263 @@ export function buildFavoriteCommands(
     keywords: ['favourite', 'favorite', 'starred'],
     href: favorite.href,
   }))
+}
+
+/**
+ * The palette's Create section.
+ *
+ * ⚠️ Two defects lived in the copies this replaces, and both are the kind that only show
+ * up for the people who actually use the product:
+ *
+ *   1. my-work-view.tsx hardcoded '/dashboard?tab=boards'. app/dashboard/page.tsx
+ *      redirects an admin to /admin and DROPS the query string, so for every admin - which
+ *      per CLAUDE.md is all five real users - both Create commands landed on whatever tab
+ *      they last had open. `dashboardHost` is shared with the sidebar so the two cannot
+ *      drift again.
+ *   2. admin-dashboard.tsx and crm-shell.tsx passed no commands at all, so the Create
+ *      section simply did not exist on the screens an admin lands on.
+ *
+ * Module-gated, because offering "New personal task" when `personal_tasks` is switched off
+ * is a link to a tab that is no longer there.
+ */
+export function buildCreateCommands({
+  role,
+  modules,
+}: {
+  role: Role
+  modules: AppModule[]
+}): Command[] {
+  const host = dashboardHost(role)
+  const commands: Command[] = []
+
+  if (isModuleEnabled(modules, 'boards')) {
+    commands.push({
+      id: 'create:board-task',
+      group: 'create',
+      label: 'New task on a board',
+      hint: 'Opens Boards',
+      icon: 'plus',
+      keywords: ['task', 'work item', 'add'],
+      href: `${host}?tab=boards`,
+    })
+  }
+  if (isModuleEnabled(modules, 'personal_tasks')) {
+    commands.push({
+      id: 'create:personal-task',
+      group: 'create',
+      label: 'New personal task',
+      hint: 'Private to you',
+      icon: 'plus',
+      keywords: ['personal', 'todo', 'add'],
+      href: `${host}?tab=personal`,
+    })
+  }
+
+  return commands
+}
+
+/**
+ * Priority is a bare 1-5 integer on `tasks`, and the only place its meaning was written
+ * down was a hardcoded <SelectItem> list inside task-card.tsx. Naming it here lets the
+ * palette say "Set priority: High" instead of "Set priority: 2".
+ */
+export const TASK_PRIORITIES: readonly { value: number; label: string }[] = [
+  { value: 1, label: 'Highest' },
+  { value: 2, label: 'High' },
+  { value: 3, label: 'Medium' },
+  { value: 4, label: 'Low' },
+  { value: 5, label: 'Lowest' },
+] as const
+
+export interface BoardContextOptions {
+  boardTitle: string
+  /** Decisions come from lib/capabilities.ts; a denied command is dropped or made inert. */
+  createDecision: CapabilityDecision
+  manageDecision: CapabilityDecision
+  membersDecision: CapabilityDecision
+  onCreate: () => void
+  onFilter: () => void
+  onOpenSettings: () => void
+  onCopyLink: () => void
+}
+
+/**
+ * The palette's project-context actions, from the plan's Prompt A list:
+ * open saved view · create work · filter · open members/settings if permitted.
+ *
+ * "Open saved view" is deliberately absent rather than stubbed: saved views are Prompt E
+ * and do not exist yet, and a command that opens nothing is worse than one that is not
+ * offered. The rest are all reachable today.
+ *
+ * Every command carries its CapabilityDecision, so `resolveCommands` drops the ones this
+ * role has no path to and leaves the explainable ones visible but inert.
+ */
+export function buildBoardContextCommands(options: BoardContextOptions): Command[] {
+  return [
+    {
+      id: 'context:create-task',
+      group: 'context',
+      label: 'Create work item',
+      hint: options.boardTitle,
+      icon: 'plus',
+      keywords: ['new', 'task', 'add'],
+      run: options.onCreate,
+      decision: options.createDecision,
+    },
+    {
+      id: 'context:filter',
+      group: 'context',
+      label: 'Filter this board',
+      hint: 'Assignee, priority, due date',
+      icon: 'filter',
+      keywords: ['search', 'narrow', 'sort'],
+      run: options.onFilter,
+    },
+    {
+      id: 'context:members',
+      group: 'context',
+      label: 'Manage who has access',
+      icon: 'users',
+      keywords: ['members', 'permissions', 'share', 'guest', 'client'],
+      run: options.onOpenSettings,
+      decision: options.membersDecision,
+    },
+    {
+      id: 'context:settings',
+      group: 'context',
+      label: 'Board settings',
+      icon: 'settings',
+      keywords: ['rename', 'colour', 'color', 'columns'],
+      run: options.onOpenSettings,
+      decision: options.manageDecision,
+    },
+    {
+      id: 'context:copy-board-link',
+      group: 'context',
+      label: 'Copy link to this board',
+      icon: 'link',
+      keywords: ['url', 'share'],
+      run: options.onCopyLink,
+    },
+  ]
+}
+
+export interface WorkItemContextOptions {
+  task: { id: string; title: string; priority?: number | null; parentId?: string | null }
+  /** The board's columns, so "move to" offers real destinations rather than free text. */
+  columns: readonly { id: string; title: string }[]
+  currentColumnId?: string | null
+  /** `task.edit` for this task - the gate on every mutating command below. */
+  editDecision: CapabilityDecision
+  onMoveToColumn: (columnId: string) => void
+  onSetPriority: (priority: number) => void
+  onOpenAssignees: () => void
+  onOpenLabels: () => void
+  onCopyLink: () => void
+  onOpenParent: () => void
+  onOpenBoard: () => void
+}
+
+/**
+ * The palette's work-item-context actions, from the plan's Prompt A list:
+ * change state · change priority · assign · add/remove label · copy link · open parent ·
+ * open project.
+ *
+ * State and priority are emitted one command per value ("Move to: In Progress"), which is
+ * how a flat palette expresses a choice - a command that opens a dropdown would just be a
+ * slower version of clicking the card.
+ *
+ * ⚠️ Assign and label deliberately OPEN the task's own controls rather than writing
+ * inline. Assignment fans out into task_assignees, the assigned_to mirror, a notification
+ * row and an email; reproducing that here would be a fourth copy of a rule this codebase
+ * has already been bitten by having three copies of. The palette's job is to get you to
+ * the control without leaving the keyboard, not to own a second write path.
+ */
+export function buildWorkItemContextCommands(options: WorkItemContextOptions): Command[] {
+  const { task, editDecision } = options
+  const commands: Command[] = []
+
+  for (const column of options.columns) {
+    if (column.id === options.currentColumnId) continue
+    commands.push({
+      id: `context:move:${column.id}`,
+      group: 'context',
+      label: `Move to: ${column.title}`,
+      hint: task.title,
+      icon: 'kanban',
+      keywords: ['state', 'status', 'column', column.title],
+      run: () => options.onMoveToColumn(column.id),
+      decision: editDecision,
+    })
+  }
+
+  for (const priority of TASK_PRIORITIES) {
+    if (priority.value === task.priority) continue
+    commands.push({
+      id: `context:priority:${priority.value}`,
+      group: 'context',
+      label: `Set priority: ${priority.label}`,
+      hint: task.title,
+      icon: 'flag',
+      keywords: ['priority', 'urgency', String(priority.value)],
+      run: () => options.onSetPriority(priority.value),
+      decision: editDecision,
+    })
+  }
+
+  commands.push(
+    {
+      id: 'context:assign',
+      group: 'context',
+      label: 'Assign this work item',
+      hint: task.title,
+      icon: 'users',
+      keywords: ['assignee', 'owner', 'who'],
+      run: options.onOpenAssignees,
+      decision: editDecision,
+    },
+    {
+      id: 'context:labels',
+      group: 'context',
+      label: 'Add or remove a label',
+      hint: task.title,
+      icon: 'tag',
+      keywords: ['tag', 'label'],
+      run: options.onOpenLabels,
+      decision: editDecision,
+    },
+    {
+      id: 'context:copy-task-link',
+      group: 'context',
+      label: 'Copy link to this work item',
+      icon: 'link',
+      keywords: ['url', 'share'],
+      run: options.onCopyLink,
+    },
+    {
+      id: 'context:open-board',
+      group: 'context',
+      label: 'Open the project board',
+      icon: 'kanban',
+      keywords: ['project', 'board', 'parent'],
+      run: options.onOpenBoard,
+    },
+  )
+
+  // Only offered when there is a parent to open - a command that navigates nowhere is the
+  // same defect as the saved-view stub this builder refuses to emit.
+  if (task.parentId) {
+    commands.push({
+      id: 'context:open-parent',
+      group: 'context',
+      label: 'Open the parent work item',
+      icon: 'inbox-check',
+      keywords: ['parent', 'up'],
+      run: options.onOpenParent,
+    })
+  }
+
+  return commands
 }
 
 /** Recently viewed records, newest first - the palette's "where was I?" section. */
