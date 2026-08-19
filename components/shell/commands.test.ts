@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   COMMAND_GROUP_ORDER,
+  TASK_PRIORITIES,
+  buildBoardContextCommands,
+  buildCreateCommands,
+  buildWorkItemContextCommands,
   buildFavoriteCommands,
   buildNavigationCommands,
   buildRecentCommands,
@@ -216,5 +220,202 @@ describe('command group order', () => {
       ]),
     ])
     expect(groups.map((g) => g.label)).toEqual(['Favourites', 'Recent'])
+  })
+})
+
+describe('buildCreateCommands', () => {
+  const allOn = [
+    { module_key: 'boards' as const, enabled: true },
+    { module_key: 'personal_tasks' as const, enabled: true },
+  ]
+
+  /**
+   * The regression that matters most here. app/dashboard/page.tsx redirects an admin to
+   * /admin and DROPS the query string, so a Create command hardcoded to
+   * '/dashboard?tab=boards' put every admin on whatever tab they last had open. Per
+   * CLAUDE.md all five real users of this app hold admin or super_admin, so the palette's
+   * Create section was broken for literally everyone who uses it.
+   */
+  for (const role of ['admin', 'super_admin'] as const) {
+    it(`never hands a ${role} a /dashboard link`, () => {
+      const hrefs = buildCreateCommands({ role, modules: allOn }).map((c) => c.href)
+      expect(hrefs.length).toBeGreaterThan(0)
+      for (const href of hrefs) expect(href?.startsWith('/admin?tab=')).toBe(true)
+    })
+  }
+
+  it('keeps a plain member on /dashboard, where their tabs actually live', () => {
+    const hrefs = buildCreateCommands({ role: 'user', modules: allOn }).map((c) => c.href)
+    for (const href of hrefs) expect(href?.startsWith('/dashboard?tab=')).toBe(true)
+  })
+
+  // A Create command for a module that is switched off is a link to a tab that is no
+  // longer in the nav - the my-work copy of this list was not module-gated at all.
+  it('drops a create action whose module is switched off', () => {
+    const ids = buildCreateCommands({
+      role: 'user',
+      modules: [
+        { module_key: 'boards', enabled: true },
+        { module_key: 'personal_tasks', enabled: false },
+      ],
+    }).map((c) => c.id)
+    expect(ids).toContain('create:board-task')
+    expect(ids).not.toContain('create:personal-task')
+  })
+
+  it('puts everything it builds in the create group', () => {
+    for (const command of buildCreateCommands({ role: 'admin', modules: allOn })) {
+      expect(command.group).toBe('create')
+    }
+  })
+
+  // Navigation, not mutation: these open the screen where the create affordance lives, so
+  // a capability gate here would be a second, competing answer to a question the
+  // destination already asks.
+  it('carries no capability decision, because none of them write anything', () => {
+    for (const command of buildCreateCommands({ role: 'user', modules: allOn })) {
+      expect(command.decision).toBeUndefined()
+    }
+  })
+})
+
+describe('buildBoardContextCommands', () => {
+  const noop = () => {}
+  const options = {
+    boardTitle: 'Roadmap',
+    createDecision: ALLOWED,
+    manageDecision: ALLOWED,
+    membersDecision: ALLOWED,
+    onCreate: noop,
+    onFilter: noop,
+    onOpenSettings: noop,
+    onCopyLink: noop,
+  }
+
+  it('covers the plan\'s project-context list that exists today', () => {
+    const ids = buildBoardContextCommands(options).map((c) => c.id)
+    expect(ids).toContain('context:create-task')
+    expect(ids).toContain('context:filter')
+    expect(ids).toContain('context:members')
+    expect(ids).toContain('context:settings')
+  })
+
+  // "Open saved view" is on the plan's list and saved views are Prompt E. A command that
+  // opens nothing is worse than one that is not offered, so it is absent on purpose and
+  // this test is what stops someone stubbing it in.
+  it('offers no saved-view command while saved views do not exist', () => {
+    const ids = buildBoardContextCommands(options).map((c) => c.id)
+    expect(ids.some((id) => id.includes('saved') || id.includes('view'))).toBe(false)
+  })
+
+  it('puts everything in the context group', () => {
+    for (const command of buildBoardContextCommands(options)) expect(command.group).toBe('context')
+  })
+
+  // The palette is a second route to every action, so its commands must carry the same
+  // decisions the buttons do - resolveCommands is what then drops or disables them.
+  it('drops the admin-only entries for someone with no path to them', () => {
+    const resolved = resolveCommands(
+      buildBoardContextCommands({ ...options, manageDecision: HIDDEN, membersDecision: HIDDEN }),
+    ).map((c) => c.id)
+    expect(resolved).not.toContain('context:settings')
+    expect(resolved).not.toContain('context:members')
+    expect(resolved).toContain('context:filter')
+  })
+
+  it('leaves a guest the create command visible but inert, with the reason', () => {
+    const resolved = resolveCommands(
+      buildBoardContextCommands({ ...options, createDecision: EXPLAINED }),
+    )
+    const create = resolved.find((c) => c.id === 'context:create-task')
+    expect(create?.disabled).toBe(true)
+    expect(create?.unavailableReason).toContain('Guest')
+  })
+
+  it('refuses to run the create command for a guest even if it is reached', () => {
+    const command = buildBoardContextCommands({ ...options, createDecision: EXPLAINED })
+      .find((c) => c.id === 'context:create-task')!
+    const ran = vi.fn()
+    expect(runCommand({ ...command, run: ran }, () => {})).toBe(false)
+    expect(ran).not.toHaveBeenCalled()
+  })
+})
+
+describe('buildWorkItemContextCommands', () => {
+  const noop = () => {}
+  const columns = [
+    { id: 'col-todo', title: 'To Do' },
+    { id: 'col-doing', title: 'In Progress' },
+    { id: 'col-done', title: 'Done' },
+  ]
+  const options = {
+    task: { id: 't1', title: 'Ship it', priority: 3, parentId: null as string | null },
+    columns,
+    currentColumnId: 'col-todo',
+    editDecision: ALLOWED,
+    onMoveToColumn: noop,
+    onSetPriority: noop,
+    onOpenAssignees: noop,
+    onOpenLabels: noop,
+    onCopyLink: noop,
+    onOpenParent: noop,
+    onOpenBoard: noop,
+  }
+
+  it('covers the plan\'s work-item-context list', () => {
+    const ids = buildWorkItemContextCommands({ ...options, task: { ...options.task, parentId: 'p1' } })
+      .map((c) => c.id)
+    expect(ids.some((id) => id.startsWith('context:move:'))).toBe(true)      // change state
+    expect(ids.some((id) => id.startsWith('context:priority:'))).toBe(true)  // change priority
+    expect(ids).toContain('context:assign')                                  // assign
+    expect(ids).toContain('context:labels')                                  // add/remove label
+    expect(ids).toContain('context:copy-task-link')                          // copy link
+    expect(ids).toContain('context:open-parent')                             // open parent
+    expect(ids).toContain('context:open-board')                              // open project
+  })
+
+  // A command that moves the task where it already is, or sets the priority it already
+  // has, is a no-op dressed as an action.
+  it('omits the column the task is already in', () => {
+    const ids = buildWorkItemContextCommands(options).map((c) => c.id)
+    expect(ids).not.toContain('context:move:col-todo')
+    expect(ids).toContain('context:move:col-doing')
+  })
+
+  it('omits the priority the task already has', () => {
+    const ids = buildWorkItemContextCommands(options).map((c) => c.id)
+    expect(ids).not.toContain('context:priority:3')
+    expect(ids).toContain('context:priority:1')
+    expect(ids.filter((id) => id.startsWith('context:priority:'))).toHaveLength(TASK_PRIORITIES.length - 1)
+  })
+
+  it('offers no open-parent command when there is no parent to open', () => {
+    const ids = buildWorkItemContextCommands(options).map((c) => c.id)
+    expect(ids).not.toContain('context:open-parent')
+  })
+
+  // The whole point of routing these through the capability layer: a guest reaching the
+  // palette must not find an unguarded second route to every write on the card.
+  it('makes every mutating command inert for a guest, and leaves the read-only ones alone', () => {
+    const resolved = resolveCommands(
+      buildWorkItemContextCommands({ ...options, editDecision: EXPLAINED }),
+    )
+    for (const command of resolved) {
+      const mutating =
+        command.id.startsWith('context:move:') ||
+        command.id.startsWith('context:priority:') ||
+        command.id === 'context:assign' ||
+        command.id === 'context:labels'
+      expect(command.disabled).toBe(mutating)
+    }
+    expect(resolved.find((c) => c.id === 'context:copy-task-link')?.disabled).toBe(false)
+  })
+
+  it('names the task it will act on, so a stale palette cannot mislead', () => {
+    for (const command of buildWorkItemContextCommands(options)) {
+      if (command.id.startsWith('context:move:') || command.id.startsWith('context:priority:')) {
+        expect(command.hint).toBe('Ship it')
+      }
+    }
   })
 })
