@@ -13,11 +13,13 @@
 //   direct URL access (= reading a row by id, which is all a URL ultimately does)
 //   mutation without UI (every check here is a raw PostgREST call, by construction)
 //   cross-board access · role change during an active session
-// Plus two regressions specific to defects found while writing this slice:
-//   role preservation across an unrelated board edit, and the non-creator silent-failure.
+// Plus three regressions specific to defects found while writing this slice:
+//   role preservation across an unrelated board edit, the non-creator silent-failure,
+//   and direct public-share insertion after a member is narrowed to guest/client.
 //
 // Non-destructive: everything it creates is removed in `finally`. Run: pnpm check:access-matrix
 
+import { randomUUID } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { assertDevDatabase } from './guard-db.mjs'
 
@@ -44,7 +46,7 @@ function section(name) {
 }
 
 const people = {}      // label -> { id, email, password, client }
-const created = { boards: [], columns: [], tasks: [] }
+const created = { boards: [], columns: [], tasks: [], shareLinks: [] }
 
 async function makePerson(label, platformRole) {
   const email = `matrix-${label}-${stamp}@goatlasgo.us`
@@ -126,6 +128,15 @@ async function canCreate(client, columnId, userId) {
   if (ids.length) await admin.from('tasks').delete().in('id', ids)
   return ids.length === 1
 }
+async function canShare(client, resourceType, resourceId, userId) {
+  const token = (randomUUID() + randomUUID()).replaceAll('-', '')
+  const { data } = await client.from('share_links')
+    .insert({ token, resource_type: resourceType, resource_id: resourceId, created_by: userId })
+    .select('id')
+  const ids = (data ?? []).map((row) => row.id)
+  created.shareLinks.push(...ids)
+  return ids.length === 1
+}
 
 try {
   await makePerson('member', 'user')
@@ -195,6 +206,56 @@ try {
   await dropMembership(open.id, people.admin.id)
   check('admin: regains write access once the guest row is removed',
     await canCreate(people.admin.client, open.columnId, people.admin.id))
+
+  // ── Public share links (migration 109) ─────────────────────────────────────────────
+  section('public share links respect board role')
+  // Create a task while the actor is a full member, then change only their board role.
+  // This is the exact B3a regression: task ownership must not outlive the share capability.
+  const { data: memberTask, error: memberTaskError } = await people.member.client.from('tasks')
+    .insert({
+      column_id: other.columnId,
+      title: `share-role-fixture-${stamp}`,
+      created_by: people.member.id,
+      position: 7,
+      visibility: 'board',
+    })
+    .select('id')
+    .single()
+  if (memberTaskError) throw new Error(`create share-role fixture: ${memberTaskError.message}`)
+  created.tasks.push(memberTask.id)
+
+  await dropMembership(other.id, people.member.id)
+  check('task creator with no membership row: can create a public task link',
+    await canShare(people.member.client, 'task', memberTask.id, people.member.id))
+  check('unrelated member: cannot create a public link for someone else\'s task',
+    !(await canShare(people.outsider.client, 'task', memberTask.id, people.outsider.id)))
+
+  for (const role of ['guest', 'client']) {
+    await setRole(other.id, people.member.id, role)
+    check(`task creator narrowed to ${role}: cannot create a public task link`,
+      !(await canShare(people.member.client, 'task', memberTask.id, people.member.id)))
+  }
+  await setRole(other.id, people.member.id, 'member')
+  check('task creator restored to member: can share again on the next request',
+    await canShare(people.member.client, 'task', memberTask.id, people.member.id))
+
+  await dropMembership(open.id, people.admin.id)
+  check('admin with no restricted row: can create a public task link',
+    await canShare(people.admin.client, 'task', open.taskId, people.admin.id))
+  check('admin with no restricted row: can create a public board link',
+    await canShare(people.admin.client, 'board', open.id, people.admin.id))
+  check('private-board creator: can still create a public board link',
+    await canShare(owner.client, 'board', secret.id, owner.id))
+  check('private-task creator: can still create a public task link',
+    await canShare(owner.client, 'task', secret.taskId, owner.id))
+  for (const role of ['guest', 'client']) {
+    await setRole(open.id, people.admin.id, role)
+    check(`admin narrowed to ${role}: cannot create a public task link`,
+      !(await canShare(people.admin.client, 'task', open.taskId, people.admin.id)))
+    check(`admin narrowed to ${role}: cannot create a public board link`,
+      !(await canShare(people.admin.client, 'board', open.id, people.admin.id)))
+  }
+  await dropMembership(open.id, people.admin.id)
 
   // ── Private boards / direct URL access ─────────────────────────────────────────────
   section('private board + direct URL access')
@@ -383,6 +444,7 @@ try {
     try { const { error } = await fn(); if (error) console.error(`  cleanup ${label}: ${error.message}`) }
     catch (e) { console.error(`  cleanup ${label}: ${e.message}`) }
   }
+  if (created.shareLinks.length) await cleanup('share links', () => admin.from('share_links').delete().in('id', created.shareLinks))
   if (created.tasks.length) await cleanup('tasks', () => admin.from('tasks').delete().in('id', created.tasks))
   if (created.columns.length) await cleanup('columns', () => admin.from('columns').delete().in('id', created.columns))
   if (created.boards.length) await cleanup('boards', () => admin.from('boards').delete().in('id', created.boards))
