@@ -427,6 +427,32 @@ deliberately left out.
     `update({title}).eq('title', oldLabel)`, which was wrong twice: it matched on the column's
     current TITLE (so a board whose "To Do" column had been renamed "Tasks" silently stopped
     tracking the status) and it skipped every private board.
+- ⚠️ **A zero-row write is a refusal, and `RETURNING` is filtered by the SELECT policy on
+  the NEW row.** The first half is already recorded above for `board_members`; the second
+  half is what makes the obvious fix wrong in two places. `lib/rls-write.ts` (2026-08-19)
+  is the one tested answer: ask for the rows back, count them, and when zero come back
+  *and the write could have changed the row's own visibility*, probe whether the row is
+  still readable before calling it a refusal. Setting `visibility='assigned'` while
+  removing yourself from the assignees is a write that succeeds and returns nothing -
+  reporting that as "not saved" sends the user to redo a change already in the database.
+  Columns that are not inputs to `can_view_task` (title, priority, due date, column,
+  position) need no probe.
+- ⚠️ **A capability that is stricter than its policy is not "safe by default".** Found
+  auditing Prompt B (2026-08-19). `lib/capabilities.ts` denied `comment.create` to
+  guest/client while the `task_comments` INSERT policy gates on `can_view_task` - measured,
+  not reasoned: a real guest session posts a comment fine. Being wrong in the restrictive
+  direction still takes an ability away from someone the database was built to serve, and
+  they cannot tell that refusal from a bug. Same defect in `task.attachment.delete`, which
+  ignored 091's `uploaded_by = auth.uid()` clause. Every capability now names the policy it
+  mirrors, and the ones that deliberately differ say why.
+- ⚠️ **`/dashboard?tab=…` is wrong for an admin, everywhere, not just in the nav.**
+  `app/dashboard/page.tsx` redirects an admin to `/admin` **and drops the query string**.
+  `buildWorkspaceNav` has known this since it was written; the ⌘K palette did not, and
+  hardcoded `/dashboard` in both its Create commands and its search results - so for all
+  five real users of this app (every one of them an admin) those commands landed on
+  whatever tab they last had open. There is now one `dashboardHost(role)` in
+  `components/shell/workspace-nav.ts` and every `?tab=` link is built from it. **Any new
+  surface that builds a tab link must call it rather than writing the path.**
 - ⚠️ **"Hidden from you" and "does not exist" arrive looking identical.** This is the shape
   behind several bugs in this repo, so it is worth naming. A client reads a table through RLS
   and gets a filtered list; nothing in the response says anything was withheld. Any UI logic
