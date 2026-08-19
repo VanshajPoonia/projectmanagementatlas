@@ -10,10 +10,11 @@ import { Calendar as CalendarPicker } from '@/components/ui/calendar'
 import { Calendar, User, Tag, Clock, Repeat, History, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
-import { TaskDetailModal } from './task-detail-modal'
 import { useState } from 'react'
 import { getAssignees, getAssigneeIds } from '@/lib/assignees'
 import { can, type Actor } from '@/lib/capabilities'
+import { writeFailureMessage } from '@/lib/rls-write'
+import { updateTaskFields } from '@/lib/task-mutations'
 import {
   DEFAULT_DENSITY,
   densityCardClass,
@@ -45,11 +46,19 @@ interface TaskCardProps {
   subtasks?: any[]
   isDragging?: boolean
   onUpdate?: () => void
+  /**
+   * Ask the host to open this task's detail.
+   *
+   * The card used to render its own TaskDetailModal, a second copy of the one board-view
+   * already renders for the list and mobile views - and, more importantly, it meant the
+   * board never learned which task was open. The ⌘K palette's work-item context actions
+   * need exactly that, and a component cannot offer "change the state of what you have
+   * open" while the answer lives inside a child it does not talk to.
+   */
+  onOpenDetail: (taskId: string, tab: 'comments' | 'activity') => void
 }
 
-export default function TaskCard({ task, isAdmin, currentUserId, boardRole = null, density = DEFAULT_DENSITY, users, board, columns, subtasks, isDragging, onUpdate }: TaskCardProps) {
-  const [detailOpen, setDetailOpen] = useState(false)
-  const [detailInitialTab, setDetailInitialTab] = useState<'comments' | 'activity'>('comments')
+export default function TaskCard({ task, isAdmin, currentUserId, boardRole = null, density = DEFAULT_DENSITY, users, board, columns, subtasks, isDragging, onUpdate, onOpenDetail }: TaskCardProps) {
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(task.title)
   const [editingDesc, setEditingDesc] = useState(false)
@@ -71,6 +80,30 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
   const currentUser = users.find((u: any) => u.id === currentUserId)
   const statuses = useTaskStatuses()
 
+  /**
+   * Every field edit on this card goes through here so none of them can go back to
+   * reading `error` alone. A refused UPDATE returns zero rows and no error, which the old
+   * code announced as a save - reachable through the exact matrix row the plan names,
+   * "role change during an active session", because `boardRole` is a server-rendered prop
+   * and stays stale until reload.
+   *
+   * No `stillReadable` probe: none of the columns written here (title, description,
+   * priority, column/status, due date) is an input to private.can_view_task, so the row
+   * cannot go out of view as a result of the write itself.
+   */
+  const saveField = async (
+    patch: Record<string, unknown>,
+    subject: string,
+  ): Promise<boolean> => {
+    const outcome = await updateTaskFields(supabase, task.id, patch)
+    const failure = writeFailureMessage(outcome, subject)
+    if (failure) {
+      toast.error(failure.title, { description: failure.description })
+      return false
+    }
+    return true
+  }
+
   const handleSaveTitle = async () => {
     const trimmed = titleDraft.trim()
     setEditingTitle(false)
@@ -78,9 +111,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
       setTitleDraft(task.title)
       return
     }
-    const { error } = await supabase.from('tasks').update({ title: trimmed }).eq('id', task.id)
-    if (error) {
-      toast.error('Could not update title', { description: error.message })
+    if (!(await saveField({ title: trimmed }, 'title'))) {
       setTitleDraft(task.title)
       return
     }
@@ -94,9 +125,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
     const trimmed = descDraft.trim()
     setEditingDesc(false)
     if (trimmed === (taskDescription || '')) return
-    const { error } = await supabase.from('tasks').update({ description: trimmed || null }).eq('id', task.id)
-    if (error) {
-      toast.error('Could not update description', { description: error.message })
+    if (!(await saveField({ description: trimmed || null }, 'description'))) {
       setDescDraft(taskDescription || '')
       return
     }
@@ -105,11 +134,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
   }
 
   const handlePriorityChange = async (value: string) => {
-    const { error } = await supabase.from('tasks').update({ priority: parseInt(value) }).eq('id', task.id)
-    if (error) {
-      toast.error('Could not update priority', { description: error.message })
-      return
-    }
+    if (!(await saveField({ priority: parseInt(value) }, 'priority'))) return
     logTaskActivity(supabase, task.id, currentUserId, `changed priority from ${task.priority} to ${value}`)
     onUpdate?.()
   }
@@ -132,22 +157,14 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
       updates.position = (matchingColumn as any).tasks?.length || 0
     }
 
-    const { error } = await supabase.from('tasks').update(updates).eq('id', task.id)
-    if (error) {
-      toast.error('Could not update status', { description: error.message })
-      return
-    }
+    if (!(await saveField(updates, 'status'))) return
     // Status history is written transactionally by the database lifecycle trigger.
     // Logging it again here would double-count the transition in timing metrics.
     onUpdate?.()
   }
 
   const handleDueDateChange = async (date: Date | undefined) => {
-    const { error } = await supabase.from('tasks').update({ due_date: date ? date.toISOString() : null }).eq('id', task.id)
-    if (error) {
-      toast.error('Could not update due date', { description: error.message })
-      return
-    }
+    if (!(await saveField({ due_date: date ? date.toISOString() : null }, 'due date'))) return
     logTaskActivity(
       supabase,
       task.id,
@@ -176,7 +193,18 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
     }
 
     // Keep the assigned_to mirror in sync with the first assignee.
-    await supabase.from('tasks').update({ assigned_to: newAssignees[0] || null }).eq('id', task.id)
+    //
+    // ⚠️ Deliberately NOT row-counted, unlike every other write on this card. `assigned_to`
+    // is an input to private.can_view_task, so removing yourself as the last assignee of a
+    // task you did not create is a write that succeeds and then returns zero rows because
+    // you can no longer read it. Counting here would report that as a refusal. The
+    // authoritative write is the task_assignees insert/delete above, which IS checked;
+    // this one is a mirror, and task_assignees stays the source of truth either way.
+    const { error: mirrorError } = await supabase
+      .from('tasks').update({ assigned_to: newAssignees[0] || null }).eq('id', task.id)
+    if (mirrorError) {
+      toast.error('Could not update the primary assignee', { description: mirrorError.message })
+    }
 
     const toggledUser = users.find((u: any) => u.id === userId)
     logTaskActivity(
@@ -256,10 +284,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
         className={`group min-w-0 cursor-grab overflow-hidden active:cursor-grabbing transition-colors hover:border-primary/40 hover:shadow-md ${densityCardClass(density)} ${
           isDragging ? 'shadow-xl opacity-80 cursor-grabbing' : ''
         } ${isOverdue ? 'border-red-300 bg-red-50/30 dark:border-red-800 dark:bg-red-950/40' : ''}`}
-        onClick={() => {
-          setDetailInitialTab('comments')
-          setDetailOpen(true)
-        }}
+        onClick={() => onOpenDetail(task.id, 'comments')}
       >
         <div className={density === 'compact' ? 'space-y-1.5' : 'space-y-2.5'}>
           <div className="flex min-w-0 items-start justify-between gap-2">
@@ -302,8 +327,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
               className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
               onClick={(e) => {
                 e.stopPropagation()
-                setDetailInitialTab('activity')
-                setDetailOpen(true)
+                onOpenDetail(task.id, 'activity')
               }}
               aria-label="View activity"
               title="View activity"
@@ -567,23 +591,6 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
         </div>
       </Card>
 
-      <TaskDetailModal
-        columns={columns}
-        taskId={task.id}
-        open={detailOpen}
-        onClose={() => setDetailOpen(false)}
-        onUpdate={() => {
-          setDetailOpen(false)
-          onUpdate?.()
-        }}
-        // Refresh the board's rollup without dismissing the task being worked in.
-        onSubtaskChange={() => onUpdate?.()}
-        board={board}
-        isAdmin={isAdmin}
-        currentUserId={currentUserId}
-        boardRole={boardRole}
-        initialTab={detailInitialTab}
-      />
     </>
   )
 }

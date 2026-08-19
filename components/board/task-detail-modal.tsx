@@ -22,7 +22,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { can, type Actor } from '@/lib/capabilities'
-import { RestrictionNote } from '@/components/shell/action-guard'
+import { classifyWrite, didWrite, writeFailureMessage } from '@/lib/rls-write'
+import { ActionGuard, RestrictionNote, guardAction } from '@/components/shell/action-guard'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
@@ -159,11 +160,22 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   }
   const editDecision = can(actor, 'task.edit', subject)
   const dueDateDecision = can(actor, 'task.schedule', subject)
-  const attachmentDeleteDecision = can(actor, 'task.attachment.delete', subject)
+  const attachDecision = can(actor, 'task.attach', subject)
+  const commentDecision = can(actor, 'comment.create', subject)
+  const shareDecision = can(actor, 'share.external', subject)
+
+  /**
+   * Deleting an attachment is decided PER FILE, not per task: 091's policy is
+   * `uploaded_by = auth.uid() OR can_delete_task(...)`, so an assignee keeps control of
+   * their own upload while not being able to remove anyone else's. A single
+   * task-level flag could not express that and silently took the uploader's own file
+   * away from them.
+   */
+  const attachmentDeleteDecision = (uploadedBy: string | null | undefined) =>
+    can(actor, 'task.attachment.delete', { ...subject, uploadedBy })
 
   const canUploadLargeFiles = can(actor, 'task.attach.large', subject).allowed
   const canEdit = editDecision.allowed
-  const canDeleteAttachments = attachmentDeleteDecision.allowed
   // Per the PM portal spec: the due date can only be changed by the task's creator (or an admin).
   const canEditDueDate = dueDateDecision.allowed
 
@@ -192,7 +204,10 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const loadAttachments = async () => {
     const { data } = await supabase
       .from('task_attachments')
-      .select('id, task_id, file_name, file_type, file_size, storage_path, created_at, uploaded_by:profiles(full_name, email)')
+      // `uploaded_by` is the raw uuid, not an embedded profile: 091's DELETE policy keys
+      // off `uploaded_by = auth.uid()`, so the per-file delete decision needs the id. The
+      // embedded profile this replaces was fetched and never rendered.
+      .select('id, task_id, file_name, file_type, file_size, storage_path, created_at, uploaded_by')
       .eq('task_id', taskId)
       .order('created_at', { ascending: false })
 
@@ -374,12 +389,30 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       updateData.column_id = matchingColumnId
     }
 
-    const { error } = await supabase
-      .from('tasks')
-      .update(updateData)
-      .eq('id', taskId)
+    /**
+     * ⚠️ This is the one task write that genuinely needs the readability probe.
+     *
+     * `updateData` carries `visibility` and `assigned_to`, both inputs to
+     * private.can_view_task, so a save that sets visibility='assigned' while removing the
+     * saver from the assignees succeeds and then returns zero rows - they can no longer
+     * read what they just wrote. A bare row count would call that a refusal and send them
+     * back to redo a change that is already in the database. See lib/rls-write.ts.
+     */
+    const outcome = await classifyWrite(
+      await supabase.from('tasks').update(updateData).eq('id', taskId).select('id'),
+      {
+        stillReadable: async () => {
+          const { data } = await supabase.from('tasks').select('id').eq('id', taskId).maybeSingle()
+          return Boolean(data)
+        },
+      },
+    )
+    const failure = writeFailureMessage(outcome, 'task')
+    if (failure) {
+      toast.error(failure.title, { description: failure.description })
+    }
 
-    if (!error) {
+    if (didWrite(outcome)) {
       // Get current user info for notifications
       const { data: { user } } = await supabase.auth.getUser()
       const { data: currentUserProfile } = await supabase
@@ -477,9 +510,9 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       
       onUpdate()
       loadTaskDetails()
-      toast.success('Task updated')
-    } else {
-      toast.error('Could not update task', { description: error.message })
+      // 'invisible' already told the user what happened, and calling that a success on
+      // top of it would be two contradictory toasts for one save.
+      if (outcome.kind === 'ok') toast.success('Task updated')
     }
 
     setLoading(false)
@@ -889,7 +922,10 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   <span className="hidden sm:inline">Move</span>
                 </Button>
               )}
-              {(isAdmin || task?.created_by === currentUserId) && (
+              {/* Minting a public URL is `share.external`, not an inline copy of the
+                  same rule - this check used to be written out here and had already
+                  drifted from the capability by missing the guest/client term. */}
+              {shareDecision.allowed && (
                 <ShareLinkDialog resourceType="task" resourceId={taskId} />
               )}
             </div>
@@ -1350,26 +1386,33 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                 </div>
               </ScrollArea>
 
-              <div className="flex gap-2">
-                <Input
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Write a comment..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      handleAddComment()
-                    }
-                  }}
-                />
-                <Button 
-                  onClick={handleAddComment} 
-                  size="icon" 
-                  disabled={!newComment.trim()}
-                  type="button"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
+              {/* Commenting is deliberately NOT gated on canEdit: the task_comments
+                  INSERT policy keys off can_view_task, so a guest or client who can open
+                  this task may talk on it. That is the point of the client role. */}
+              <div className="space-y-2">
+                <RestrictionNote decision={commentDecision} />
+                <div className="flex gap-2">
+                  <Input
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Write a comment..."
+                    disabled={!commentDecision.allowed}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        handleAddComment()
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={guardAction(commentDecision, handleAddComment)}
+                    size="icon"
+                    disabled={!newComment.trim() || !commentDecision.allowed}
+                    type="button"
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </TabsContent>
 
@@ -1468,7 +1511,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                               >
                                 <Download className="w-4 h-4" />
                               </Button>
-                              {canDeleteAttachments && (
+                              {attachmentDeleteDecision(attachment.uploaded_by).allowed && (
                                 <Button
                                   variant="destructive"
                                   size="icon"
@@ -1496,17 +1539,21 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                   // allowlist accepts (migration 091); the inline path never was.
                   accept={largeUpload && canUploadLargeFiles ? TASK_ATTACHMENT_ACCEPT : '*/*'}
                   onChange={handleFileUpload}
-                  disabled={uploading}
+                  disabled={uploading || !attachDecision.allowed}
                 />
-                <Button
-                  variant="outline"
-                  className="w-full gap-2 bg-transparent"
-                  onClick={() => document.getElementById('file-upload')?.click()}
-                  disabled={uploading}
-                >
-                  <Upload className="w-4 h-4" />
-                  {uploading ? 'Uploading...' : 'Upload File'}
-                </Button>
+                <ActionGuard decision={attachDecision} className="w-full">
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2 bg-transparent"
+                    onClick={guardAction(attachDecision, () =>
+                      document.getElementById('file-upload')?.click(),
+                    )}
+                    disabled={uploading || !attachDecision.allowed}
+                  >
+                    <Upload className="w-4 h-4" />
+                    {uploading ? 'Uploading...' : 'Upload File'}
+                  </Button>
+                </ActionGuard>
 
                 {/* Admin-only, explicit, per-upload opt-in. Hiding it is presentation
                     only - migration 091's INSERT policy is what actually stops a
