@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   actorLabel,
   categoryOf,
+  categoryPattern,
   filterByCategory,
   formatTime,
   groupByDay,
   toneOf,
+  type AuditAction,
   type AuditEvent,
 } from './audit-events'
 
@@ -158,5 +160,83 @@ describe('formatTime', () => {
 
   it('returns empty for an unparseable value rather than "Invalid Date"', () => {
     expect(formatTime('nonsense')).toBe('')
+  })
+})
+
+describe('the vocabulary matches what the database actually writes', () => {
+  // 098 wrote nine actions; 100 added profile.deleted and 101 added
+  // profile.deactivated/reactivated, and this union was never updated. The reader that
+  // exists to show access changes did not know about the two biggest ones.
+  const EMITTED: AuditAction[] = [
+    'board_member.added',
+    'board_member.role_changed',
+    'board_member.removed',
+    'team_member.added',
+    'team_member.removed',
+    'calendar_member.added',
+    'calendar_member.removed',
+    'profile.role_changed',
+    'profile.deactivated',
+    'profile.reactivated',
+    'profile.deleted',
+    'module.toggled',
+  ]
+
+  it('gives every emitted action a real category, never "other"', () => {
+    for (const action of EMITTED) {
+      expect(categoryOf({ action })).not.toBe('other')
+    }
+  })
+
+  it('files the three actions added after 098 under People', () => {
+    for (const action of ['profile.deleted', 'profile.deactivated', 'profile.reactivated'] as const) {
+      expect(categoryOf({ action })).toBe('people')
+    }
+  })
+
+  it('still files an unknown future action under "other" rather than guessing', () => {
+    expect(categoryOf({ action: 'widget.frobnicated' })).toBe('other')
+  })
+})
+
+describe('toneOf treats losing access as losing access', () => {
+  // These used to fall through to 'change' - the same neutral weight as a rename - because
+  // the rule keyed off a '.removed' suffix these actions do not have.
+  it('marks a deleted account as a revocation', () => {
+    expect(toneOf({ action: 'profile.deleted' })).toBe('revoke')
+  })
+
+  it('marks a deactivated account as a revocation', () => {
+    expect(toneOf({ action: 'profile.deactivated' })).toBe('revoke')
+  })
+
+  it('marks restoring access as a grant, so the pair reads as a pair', () => {
+    expect(toneOf({ action: 'profile.reactivated' })).toBe('grant')
+  })
+
+  it('leaves the suffix rules working for everything else', () => {
+    expect(toneOf({ action: 'board_member.added' })).toBe('grant')
+    expect(toneOf({ action: 'board_member.removed' })).toBe('revoke')
+    expect(toneOf({ action: 'board_member.role_changed' })).toBe('change')
+    expect(toneOf({ action: 'module.toggled' })).toBe('change')
+  })
+})
+
+describe('categoryPattern - the filter the query runs', () => {
+  it('asks for everything when the category is "all"', () => {
+    expect(categoryPattern('all')).toBeNull()
+  })
+
+  it('produces a prefix pattern that matches exactly its own category', () => {
+    for (const category of ['boards', 'teams', 'calendars', 'people', 'modules'] as const) {
+      const pattern = categoryPattern(category)!
+      expect(pattern.endsWith('%')).toBe(true)
+      const prefix = pattern.slice(0, -1)
+      // Every action this pattern would match must belong to the category it came from -
+      // otherwise the server-side filter and the client-side labels disagree.
+      for (const action of ['board_member.added', 'team_member.added', 'calendar_member.added', 'profile.deleted', 'module.toggled'] as const) {
+        if (action.startsWith(prefix)) expect(categoryOf({ action })).toBe(category)
+      }
+    }
   })
 })
