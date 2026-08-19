@@ -96,12 +96,115 @@ describe('task.schedule - mirrors canEditDueDate', () => {
   })
 })
 
-describe('task.attachment.delete - mirrors canDeleteAttachments', () => {
-  it('is creator-or-admin, not assignee', () => {
+describe('task.attachment.delete - mirrors 091\'s DELETE policy', () => {
+  // `uploaded_by = auth.uid() OR can_delete_task(t.created_by)`. The uploader clause was
+  // missing, so an assignee could not delete a file they had attached themselves - a
+  // capability strictly narrower than the policy it claims to mirror.
+  it('allows the task creator and any admin', () => {
     expect(allows(actor(), 'task.attachment.delete', mine)).toBe(true)
-    expect(allows(actor(), 'task.attachment.delete', assignedToMe)).toBe(false)
     expect(allows(actor({ platformRole: 'admin' }), 'task.attachment.delete', theirs)).toBe(true)
   })
+
+  it('allows whoever uploaded the file, even on someone else\'s task', () => {
+    expect(allows(actor(), 'task.attachment.delete', { ...theirs, uploadedBy: ME })).toBe(true)
+    expect(allows(actor(), 'task.attachment.delete', { ...assignedToMe, uploadedBy: ME })).toBe(true)
+  })
+
+  it('still refuses a bystander, and explains without mentioning due dates', () => {
+    const decision = can(actor(), 'task.attachment.delete', { ...theirs, uploadedBy: OTHER })
+    expect(decision.allowed).toBe(false)
+    expect(decision.reason).not.toContain('due date')
+    expect(decision.reason).toContain('attached')
+  })
+
+  it('is still refused for a guest, whose uploads RLS would never have accepted', () => {
+    expect(allows(actor({ boardRole: 'guest' }), 'task.attachment.delete', { ...mine, uploadedBy: ME })).toBe(false)
+  })
+})
+
+describe('comment.create - mirrors the task_comments INSERT policy, not task.edit', () => {
+  // 035 (restated by 101) gates commenting on can_view_task, NOT can_manage_task, and
+  // task_restricted_by_board_role is only ANDed into the latter. Measured against real
+  // RLS on the dev sandbox: a board guest who cannot edit or attach CAN comment.
+  // Grouping this with task.edit denied the one capability a client portal is built on.
+  for (const boardRole of ['guest', 'client'] as const) {
+    it(`lets a ${boardRole} comment, because the database does`, () => {
+      expect(allows(actor({ boardRole }), 'comment.create', theirs)).toBe(true)
+    })
+
+    it(`still refuses that ${boardRole} the writes RLS refuses`, () => {
+      expect(allows(actor({ boardRole }), 'task.edit', theirs)).toBe(false)
+      expect(allows(actor({ boardRole }), 'task.attach', theirs)).toBe(false)
+    })
+  }
+
+  it('lets an unrelated member comment on work they cannot edit', () => {
+    expect(allows(actor(), 'comment.create', theirs)).toBe(true)
+    expect(allows(actor(), 'task.edit', theirs)).toBe(false)
+  })
+})
+
+describe('members.manage - board creator only, no admin bypass', () => {
+  // Migration 061 removed the admin bypass on board_members deliberately: an admin who
+  // could re-add themselves to a private board made "remove this admin" meaningless.
+  // Returning ALLOW for any admin told them a write the database would refuse was fine.
+  const myBoard = { created_by: ME }
+  const theirBoard = { created_by: OTHER }
+
+  it('allows the board creator, admin or not', () => {
+    expect(allows(actor(), 'members.manage', undefined, myBoard)).toBe(true)
+    expect(allows(actor({ platformRole: 'admin' }), 'members.manage', undefined, myBoard)).toBe(true)
+  })
+
+  it('refuses an admin who did not create the board, and explains why', () => {
+    const decision = can(actor({ platformRole: 'admin' }), 'members.manage', undefined, theirBoard)
+    expect(decision.allowed).toBe(false)
+    expect(decision.presentation).toBe('explain')
+    expect(decision.reason).toContain('created this board')
+  })
+
+  it('hides it from a non-admin entirely', () => {
+    expect(can(actor(), 'members.manage', undefined, theirBoard).presentation).toBe('hide')
+  })
+
+  it('refuses rather than guesses when no board was supplied', () => {
+    expect(allows(actor({ platformRole: 'super_admin' }), 'members.manage')).toBe(false)
+  })
+
+  // project.manage is a different question with a different answer, and conflating the
+  // two is what produced the bug above.
+  it('does not drag project.manage down with it', () => {
+    expect(allows(actor({ platformRole: 'admin' }), 'project.manage', undefined, theirBoard)).toBe(true)
+  })
+})
+
+describe('share.external - resource owner/admin, narrowed by board role', () => {
+  const myBoard = { created_by: ME }
+  const theirBoard = { created_by: OTHER }
+
+  it('allows task and board creators', () => {
+    expect(allows(actor(), 'share.external', mine)).toBe(true)
+    expect(allows(actor(), 'share.external', undefined, myBoard)).toBe(true)
+  })
+
+  it('hides sharing from an unrelated regular member', () => {
+    expect(can(actor(), 'share.external', theirs).presentation).toBe('hide')
+    expect(can(actor(), 'share.external', undefined, theirBoard).presentation).toBe('hide')
+  })
+
+  it('allows an admin for either resource shape', () => {
+    const admin = actor({ platformRole: 'admin' })
+    expect(allows(admin, 'share.external', theirs)).toBe(true)
+    expect(allows(admin, 'share.external', undefined, theirBoard)).toBe(true)
+  })
+
+  for (const boardRole of ['guest', 'client'] as const) {
+    it(`blocks a ${boardRole} even when they created the resource or are an admin`, () => {
+      const restricted = actor({ platformRole: 'super_admin', boardRole })
+      expect(allows(restricted, 'share.external', mine)).toBe(false)
+      expect(allows(restricted, 'share.external', undefined, myBoard)).toBe(false)
+    })
+  }
 })
 
 describe('the isAdmin override', () => {
@@ -135,6 +238,10 @@ describe('presentation', () => {
   it('hides configuration surfaces from non-admins rather than explaining them', () => {
     for (const capability of ['project.manage', 'members.manage', 'audit.view'] as const) {
       expect(can(actor(), capability).presentation).toBe('hide')
+    }
+    // members.manage is excluded here on purpose - it is board-creator-scoped, so "an
+    // admin may" is exactly the false statement it used to make. See its own block.
+    for (const capability of ['project.manage', 'audit.view'] as const) {
       expect(allows(actor({ platformRole: 'admin' }), capability)).toBe(true)
     }
   })
@@ -157,10 +264,31 @@ describe('presentation', () => {
   })
 })
 
-describe('viewing', () => {
-  // Sight is granted by RLS/board membership; this layer must not add a second,
-  // competing read rule that could disagree with the database.
-  it('never denies task.view', () => {
-    expect(allows(actor({ boardRole: 'client' }), 'task.view', theirs)).toBe(true)
+describe('the vocabulary itself', () => {
+  // `task.view` used to exist and resolve to an unconditional ALLOW, which is not an
+  // answer: who may see a task is private.can_view_task (visibility, assignment, board
+  // privacy) and no client holds those inputs. A capability that always says yes exists
+  // only to be trusted wrongly, so it was deleted rather than left as documentation.
+  it('has no task.view to mislead a caller', () => {
+    // @ts-expect-error - removed from the Capability union on purpose
+    expect(() => can(actor(), 'task.view')).not.toThrow()
+    // @ts-expect-error - see above
+    expect(can(actor(), 'task.view')).toBeUndefined()
+  })
+
+  // Every capability that can deny must be able to say why, or the UI has nothing to
+  // render and falls back to a control that looks broken.
+  it('never denies with presentation "explain" and no reason', () => {
+    const everyDenial = [
+      can(actor({ boardRole: 'guest' }), 'task.create'),
+      can(actor(), 'task.edit', theirs),
+      can(actor(), 'task.schedule', assignedToMe),
+      can(actor(), 'task.attachment.delete', { ...theirs, uploadedBy: OTHER }),
+      can(actor({ platformRole: 'admin' }), 'members.manage', undefined, { created_by: OTHER }),
+    ]
+    for (const decision of everyDenial) {
+      expect(decision.allowed).toBe(false)
+      if (decision.presentation === 'explain') expect(decision.reason).toBeTruthy()
+    }
   })
 })
