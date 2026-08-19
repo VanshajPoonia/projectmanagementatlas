@@ -4,7 +4,7 @@
 // These used to name one file literally ('Marketing Project Management.xlsx'), which
 // meant a second import under any other filename would have shown its own boilerplate
 // to every user with no way to hide it. The match is now on the shape the importer
-// writes — a leading `Source:` / `Imported from` line naming a spreadsheet — which
+// writes - a leading `Source:` / `Imported from` line naming a spreadsheet - which
 // covers the original file and any future one. Every string the old constants
 // matched is still matched, so no existing description can start rendering differently.
 //

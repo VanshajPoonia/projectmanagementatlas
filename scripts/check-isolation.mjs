@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Cross-tenant isolation harness — Phase 0 safety net.
+// Cross-tenant isolation harness - Phase 0 safety net.
 //
 // Signs in as two independent users and reports what each can see THROUGH RLS (using the
 // anon key + a real session, exactly like the app), then tears the test users down.
 //
-// TODAY (pre-Phase-1) both users see the same global pool — read policies are literally
+// TODAY (pre-Phase-1) both users see the same global pool - read policies are literally
 // `USING (auth.uid() IS NOT NULL)`. That is the single-tenant behaviour the rebuild removes.
 // This script establishes that baseline now and becomes the pass/fail gate in Phase 1:
 // once each user belongs to a different org, each must see ZERO of the other's rows.
@@ -76,9 +76,9 @@ try {
   if (sharedGlobal.length) {
     console.log(`BASELINE = SINGLE-TENANT: both users see the same rows in [${sharedGlobal.join(', ')}].`)
     console.log('This is expected until Phase 1. When org isolation lands, flip this script to assert')
-    console.log('each user sees 0 of the other org\'s rows — that assertion is the tenancy gate.')
+    console.log('each user sees 0 of the other org\'s rows - that assertion is the tenancy gate.')
   } else {
-    console.log('users already see disjoint/zero rows — verify this is intended before Phase 1.')
+    console.log('users already see disjoint/zero rows - verify this is intended before Phase 1.')
   }
 } catch (e) {
   console.error('isolation harness error:', e.message)

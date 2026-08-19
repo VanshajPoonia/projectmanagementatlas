@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Booking flow verification harness — the pass/fail gate for migrations
+// Booking flow verification harness - the pass/fail gate for migrations
 // 082/083. Creates a throwaway host + booking link via the service role, then
 // exercises the anon-facing RPCs directly (as a real anon-key caller would,
 // mirroring check-appointments.mjs and check-board-roles.mjs), covering:
@@ -39,7 +39,7 @@ let hostId, linkId, linkToken, restrictionId
 const createdAppointmentIds = []
 
 function check(label, condition) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}`)
   if (!condition) failures++
 }
 
@@ -51,7 +51,7 @@ function genToken() {
 // far enough out that "required lead time" and "same day" never interfere
 // with the happy-path cases. RESTRICTED_DATE carries an all-day restriction
 // covering its ENTIRE day, so every "OK" slot below deliberately uses a
-// different date — otherwise the restriction would (correctly) block them too.
+// different date - otherwise the restriction would (correctly) block them too.
 const RESTRICTED_DATE = '2027-03-10'
 const OK_DATE = '2027-03-11'
 const RESTRICTED_START = `${RESTRICTED_DATE}T20:00:00Z` // inside the all-day restriction
@@ -119,8 +119,8 @@ try {
   // "cannot span midnight" check fires first, masking the lead-time check
   // this test actually targets (caught by this exact harness on a run near
   // 23:34 UTC). Testing deterministically instead: pick a slot 2 days out at
-  // noon UTC — comfortably clear of any "already passed" edge case and never
-  // near a midnight boundary — then temporarily require the maximum lead time
+  // noon UTC - comfortably clear of any "already passed" edge case and never
+  // near a midnight boundary - then temporarily require the maximum lead time
   // the schema allows (720 hours = 30 days, appointment_settings' CHECK
   // constraint ceiling), which is always larger than a ~2-day gap regardless
   // of what time "now" happens to be when this harness runs.
@@ -216,7 +216,7 @@ try {
     console.log(`${failures} check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All checks passed — booking, cancellation, concurrency, and rate limiting all behave correctly.')
+    console.log('All checks passed - booking, cancellation, concurrency, and rate limiting all behave correctly.')
   }
 } catch (e) {
   console.error('booking harness error:', e.message)

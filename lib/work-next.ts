@@ -1,4 +1,4 @@
-// "What should I work on next" — ranks a user's open tasks into a short, ordered
+// "What should I work on next" - ranks a user's open tasks into a short, ordered
 // shortlist.
 //
 // Deliberately a pure function over data the dashboard already holds (no schema, no
@@ -7,10 +7,10 @@
 // and people stop trusting it the first time it disagrees with them.
 //
 // Scoring is additive across three signals:
-//   urgency  — how close (or past) the due date is; dominates, since deadlines are
+//   urgency  - how close (or past) the due date is; dominates, since deadlines are
 //              the thing that actually breaks
-//   priority — the 1..5 scale (1 = highest, see scripts/046_flip_priority_scale.sql)
-//   momentum — a nudge for work already in progress, so half-done tasks get closed
+//   priority - the 1..5 scale (1 = highest, see scripts/046_flip_priority_scale.sql)
+//   momentum - a nudge for work already in progress, so half-done tasks get closed
 //              out instead of accumulating
 
 import { getNormalizedTaskStatus } from './task-status'
@@ -20,7 +20,7 @@ export interface WorkNextItem {
   score: number
   /** Human-readable justifications, most significant first. */
   reasons: string[]
-  /** True when the due date has passed — lets the UI style the row as a warning. */
+  /** True when the due date has passed - lets the UI style the row as a warning. */
   isOverdue: boolean
 }
 

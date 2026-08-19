@@ -15,8 +15,8 @@ import {
 
 interface UseFavoritesOptions {
   /**
-   * Where a starred board links to. Differs by surface — the admin shell routes board
-   * links through /admin/board/:id, the user shell through /dashboard/board/:id — so the
+   * Where a starred board links to. Differs by surface - the admin shell routes board
+   * links through /admin/board/:id, the user shell through /dashboard/board/:id - so the
    * host supplies it rather than this hook guessing from the URL.
    */
   boardHref: (boardId: string) => string
@@ -26,14 +26,14 @@ interface UseFavoritesOptions {
  * The viewer's own starred list, resolved to things they can actually open.
  *
  * RLS scopes every read and write on user_favorites to `user_id = auth.uid()`, so this never
- * filters by user client-side — the trap CLAUDE.md records from the marketing-checks bug,
+ * filters by user client-side - the trap CLAUDE.md records from the marketing-checks bug,
  * where a client `.eq('user_id', …)` threw away rows the policy had already cleared. The
  * insert still writes `user_id` explicitly because the column has no default; the policy's
  * WITH CHECK is what makes writing someone else's id impossible, not the client.
  *
  * The second query is what makes this safe to drop into any shell host. Favourites store a
  * bare uuid with no foreign key, so the hook asks boards for those ids and lets boards' own
- * RLS (061/070) answer — a starred board that was deleted, archived, or turned private
+ * RLS (061/070) answer - a starred board that was deleted, archived, or turned private
  * behind the viewer's back simply doesn't come back and is dropped. Resolving here rather
  * than in each host also means /my-work and a board page get the sidebar block without
  * having to fetch a board list they otherwise have no use for.

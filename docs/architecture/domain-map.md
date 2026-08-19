@@ -1,4 +1,4 @@
-# Domain Map — Current vs. North-Star
+# Domain Map - Current vs. North-Star
 
 _Audit date: 2026-07-23. Current model derived from the 62 migrations in `scripts/`._
 
@@ -76,11 +76,11 @@ methodology (Kanban, Scrum, Gantt, marketing calendar) renders the **same** Work
 different **views**. Work-item *types* (Task, Bug, Story, Epic, Content, …) are **data, not tables**,
 powered by:
 
-- `work_item_types` (per-workspace configurable types) — _future_
-- `field_definitions` + `field_values` (the custom-fields engine = **Phase 1**) — _future_
-- `states` (per-type/per-project workflow, decoupling status from board columns) — _evolves from
+- `work_item_types` (per-workspace configurable types) - _future_
+- `field_definitions` + `field_values` (the custom-fields engine = **Phase 1**) - _future_
+- `states` (per-type/per-project workflow, decoupling status from board columns) - _evolves from
   today's `task_statuses`_
-- `relations` (blocks/blocked-by/precedes/follows/duplicate/related/implements…) — _future_
+- `relations` (blocks/blocked-by/precedes/follows/duplicate/related/implements…) - _future_
 
 ## 3. Mapping: today → north-star (migration direction, not a plan to execute now)
 
@@ -101,5 +101,5 @@ powered by:
 
 All of the above is enforced by **Postgres RLS reached through the user's session client**, with
 `private`-schema `SECURITY DEFINER` chokepoint functions where recursion or cross-row checks are
-needed. Any new tenancy level (Workspace/Team/Project membership) must extend this same model —
+needed. Any new tenancy level (Workspace/Team/Project membership) must extend this same model -
 **server-side checks are the source of truth; hiding UI is never sufficient.**

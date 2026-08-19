@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Write gate for board column ordering and status-name cascade (migrations 106 + 107).
 //
-// Two bugs this exists to pin, both of the kind CLAUDE.md keeps recording — the database was
+// Two bugs this exists to pin, both of the kind CLAUDE.md keeps recording - the database was
 // fine and no human could reach the feature, or the write silently reached nothing:
 //
 //   1. columns.position decided every board's left-to-right order and nothing ever wrote it
@@ -9,8 +9,8 @@
 //      reorder_board_columns (106) is the write path; it is SECURITY INVOKER, so a non-admin
 //      must be REFUSED rather than quietly changing nothing.
 //   2. Renaming a status swept board columns with `update({title}).eq('title', oldLabel)`.
-//      That reached only columns whose title still read exactly like the old label, and — the
-//      part nobody could have noticed — no private board at all, because RLS applies SELECT
+//      That reached only columns whose title still read exactly like the old label, and - the
+//      part nobody could have noticed - no private board at all, because RLS applies SELECT
 //      policies to an UPDATE that has to read rows to find them, and 099 hid private boards'
 //      columns from non-members. rename_columns_for_status (107) is the fix, and the control
 //      case below still runs the OLD direct UPDATE to prove that is why it was needed.
@@ -43,7 +43,7 @@ let userIds = []
 let failures = 0
 
 function check(label, condition) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}`)
   if (!condition) failures++
 }
 
@@ -113,7 +113,7 @@ try {
     ],
   })
 
-  // Private, owned by somebody else, with the admin deliberately NOT a member — the board the
+  // Private, owned by somebody else, with the admin deliberately NOT a member - the board the
   // old sweep could not write and could not see.
   const secret = await makeBoard({
     title: `probe-private-${stamp}`, ownerId, isPrivate: true,
@@ -191,7 +191,7 @@ try {
   const secretAfterSweep = await orderOf(secret.id)
   check('the old direct sweep reaches an open board',
     openAfterSweep.some(c => c.title === 'Swept by title'))
-  check('the old direct sweep silently misses a private board — the bug 107 fixes',
+  check('the old direct sweep silently misses a private board - the bug 107 fixes',
     secretAfterSweep.every(c => c.title !== 'Swept by title'))
 
   /* ── 7. the cascade reaches every linked column ──────────────────── */

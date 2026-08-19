@@ -2,7 +2,7 @@
 --
 -- ⚠️ THIS RE-OPENS A PRIVACY HOLE. It restores 002's state: the chat-attachments
 -- bucket goes back to public = true, which means every object in it is served off
--- the Storage CDN with NO authentication and NO RLS — anyone holding or guessing a
+-- the Storage CDN with NO authentication and NO RLS - anyone holding or guessing a
 -- URL can read a direct-message attachment. It also restores the blanket
 -- "Users can view all chat attachments" policy, letting any authenticated user read
 -- and list every chat attachment rather than only their own conversations.
@@ -83,7 +83,7 @@ BEGIN
     RAISE EXCEPTION 'attachment_path still present after rollback. Aborting.';
   END IF;
 
-  RAISE NOTICE '092 rolled back: chat-attachments is PUBLIC again — this is a privacy regression, re-apply 092 as soon as the blocking issue is resolved.';
+  RAISE NOTICE '092 rolled back: chat-attachments is PUBLIC again - this is a privacy regression, re-apply 092 as soon as the blocking issue is resolved.';
 END $$;
 
 COMMIT;

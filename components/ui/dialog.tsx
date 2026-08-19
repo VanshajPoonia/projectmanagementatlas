@@ -14,7 +14,7 @@ import { useDialogFocusRestore } from '@/components/shell/use-focus-restore'
  * when the dialog opened, which fails throughout this codebase because dialogs are driven by
  * host `open` state rather than by a `DialogTrigger`: opening one re-renders the host, the
  * trigger button becomes a new node, and focusing the stale one silently does nothing. Focus
- * ended up on `document.body` after closing *any* dialog in the app — verified in a real
+ * ended up on `document.body` after closing *any* dialog in the app - verified in a real
  * browser. See components/shell/use-focus-restore.ts for the full reasoning.
  *
  * Applied here rather than at each call site so every dialog gets it, including ones added

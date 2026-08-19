@@ -1,11 +1,11 @@
-// Recently viewed records — the shell's "where was I?" memory.
+// Recently viewed records - the shell's "where was I?" memory.
 //
 // The sidebar has always had a Recent section, but nothing ever fed it: every host
 // passed the default empty array, so the block silently never rendered. This module is
 // the missing half.
 //
 // Pure, framework-free logic (use-recent-records.ts wraps it with localStorage + SSR
-// guards) so the ordering and de-duplication rules are unit-testable without a DOM —
+// guards) so the ordering and de-duplication rules are unit-testable without a DOM -
 // same split as sidebar-state.ts.
 
 export type RecentKind = 'board' | 'task' | 'view'
@@ -41,8 +41,8 @@ function isRecord(value: unknown): value is RecentRecord {
 }
 
 /**
- * Parse persisted JSON defensively. Anything malformed — a hand-edited value, a shape
- * from an older build — degrades to "no history" rather than throwing inside the shell,
+ * Parse persisted JSON defensively. Anything malformed - a hand-edited value, a shape
+ * from an older build - degrades to "no history" rather than throwing inside the shell,
  * which would take the whole sidebar down with it.
  */
 export function parseRecentRecords(raw: string | null): RecentRecord[] {
@@ -64,7 +64,7 @@ export function serializeRecentRecords(records: RecentRecord[]): string {
  * Add a visit, newest first.
  *
  * Re-visiting an existing record moves it to the top and refreshes its label rather
- * than appending a duplicate — a renamed board should not appear twice under two names.
+ * than appending a duplicate - a renamed board should not appear twice under two names.
  */
 export function rememberRecord(
   records: RecentRecord[],
@@ -76,7 +76,7 @@ export function rememberRecord(
   return [next, ...records.filter((r) => r.key !== entry.key)].slice(0, limit)
 }
 
-/** Drop a record — e.g. after its board is archived and the link would 404. */
+/** Drop a record - e.g. after its board is archived and the link would 404. */
 export function forgetRecord(records: RecentRecord[], key: string): RecentRecord[] {
   return records.filter((r) => r.key !== key)
 }

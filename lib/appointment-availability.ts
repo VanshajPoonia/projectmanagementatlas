@@ -7,7 +7,7 @@
  * gives the same answer on any machine.
  *
  * Dates are 'YYYY-MM-DD' keys handled in UTC, matching the convention already used
- * by components/marketing/marketing-calendar-state.ts — calculating in UTC avoids
+ * by components/marketing/marketing-calendar-state.ts - calculating in UTC avoids
  * the local-midnight drift that shifts a day either side of a DST boundary.
  *
  * Times are wall clock, expressed as minutes since midnight. A restriction means
@@ -93,7 +93,7 @@ export function parseTimeToMinutes(time: string | null | undefined): number | nu
   return hours * 60 + minutes
 }
 
-/** '05:00 AM', '11:45 PM', '12:45 AM' — the format the source design displays. */
+/** '05:00 AM', '11:45 PM', '12:45 AM' - the format the source design displays. */
 export function formatTimeLabel(minutesSinceMidnight: number): string {
   const clamped = Math.max(0, Math.min(MINUTES_IN_DAY - 1, Math.round(minutesSinceMidnight)))
   const hours24 = Math.floor(clamped / 60)
@@ -119,8 +119,8 @@ export function restrictionInterval(restriction: AppointmentRestriction): TimeIn
 }
 
 /**
- * Whether a restriction applies on a given date: inside its range, and — when it
- * repeats — on a matching weekday. An empty `weekdays` covers every day in range,
+ * Whether a restriction applies on a given date: inside its range, and - when it
+ * repeats - on a matching weekday. An empty `weekdays` covers every day in range,
  * which is how a one-time restriction is stored.
  */
 export function restrictionCoversDate(
@@ -264,7 +264,7 @@ export function hasOverlapCapacity(
 /**
  * Client-side mirror of migration 080's CHECK constraints, so the dialog can
  * explain a problem instead of surfacing a raw constraint violation. The database
- * remains the authority — this never replaces it.
+ * remains the authority - this never replaces it.
  */
 export function validateRestrictionDraft(draft: {
   reason: string
@@ -297,7 +297,7 @@ export function validateRestrictionDraft(draft: {
   }
 
   // A repeating rule whose weekdays never occur inside its own range would be
-  // stored happily and then block nothing — catch it while it can still be fixed.
+  // stored happily and then block nothing - catch it while it can still be fixed.
   if (draft.weekdays.length > 0) {
     const covered = expandRestrictionDates({
       starts_on: draft.starts_on,

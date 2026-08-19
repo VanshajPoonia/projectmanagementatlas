@@ -3,12 +3,12 @@
 _Prompt 2 deliverable. Reflects the owner decision: **shared shell in place, tabs → routes
 incrementally.** The nav source of truth is [`components/shell/nav-model.ts`](../../components/shell/nav-model.ts)._
 
-## 1. Principle — calm by default, power on demand
+## 1. Principle - calm by default, power on demand
 
 A brand-new user should land on a calm product: **Projects, My Work, Inbox, Search**. Advanced
 capability (Strategy, Agile, Planning, Time, Cost, Clients, Automation) is **module-activated**, not
 shown by default. Module gating is already modelled (`isNavItemVisible` / `visibleGroups` +
-`enabledModules`), but the advanced modules themselves arrive with tenancy in Prompt 3 — until then
+`enabledModules`), but the advanced modules themselves arrive with tenancy in Prompt 3 - until then
 only the calm defaults + today's existing surfaces are wired.
 
 ## 2. Navigation groups (current slice)
@@ -64,7 +64,7 @@ when it gets its own PR; `nav-model.ts` flips that item from `?tab=…`/`planned
 
 | Breakpoint | Sidebar | Topbar | Bottom nav |
 |---|---|---|---|
-| `< md` (mobile) | hidden | breadcrumbs + search + account | **shown** — essential (core) items only, as routed links |
+| `< md` (mobile) | hidden | breadcrumbs + search + account | **shown** - essential (core) items only, as routed links |
 | `≥ md` (desktop) | shown (expanded/collapsed) | breadcrumbs + search + theme + account | hidden |
 
 Essential mobile actions = the **core** group (My Work / Projects / Inbox), matching "mobile
@@ -84,7 +84,7 @@ navigation exposes only essential actions."
 
 ## 7. What this slice deliberately does NOT do
 
-- No workspace/team switcher (needs tenancy — Prompt 3).
+- No workspace/team switcher (needs tenancy - Prompt 3).
 - No real module-activation UI (the mechanism exists; the toggles + advanced modules are Prompt 3+).
-- Does not yet replace the two dashboard components — the shell is additive here and is **adopted**
+- Does not yet replace the two dashboard components - the shell is additive here and is **adopted**
   in the next slice, per the incremental decision.

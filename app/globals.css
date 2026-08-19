@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* cal.com-inspired palette — white canvas, near-black ink/CTAs, light-gray surfaces */
+  /* cal.com-inspired palette - white canvas, near-black ink/CTAs, light-gray surfaces */
   --background: #ffffff;
   --foreground: #111111;
   --card: #ffffff;
@@ -42,7 +42,7 @@
   /* Marketing-calendar chrome. These used to be inlined as literal hex in the component
      (bg-[#070707], text-[#fff842], bg-[#fffef0]) under a .force-light-theme wrapper that
      pinned the whole subtree to the light palette. That wrapper also re-declared --primary,
-     which silently overrode the accent picker's inline custom properties — so no colour the
+     which silently overrode the accent picker's inline custom properties - so no colour the
      user chose ever reached the calendar. These tokens replace it: the band stays deliberately
      dark in both themes because it is brand chrome, everything else flips. */
   --brand-band: #070707;
@@ -176,7 +176,7 @@
       which was wrong in both directions. It hit every `<a>`, so an inline link inside a
       sentence became a 44px-tall block and broke the line it sat in, and it forced 44px of
       width onto icon buttons that then pushed out of their own cards. Meanwhile it never
-      matched `input`, `select` or `textarea` — the controls a finger most needs to hit.
+      matched `input`, `select` or `textarea` - the controls a finger most needs to hit.
 
       So: height only, on real controls. Width comes from the control's own padding.
     */
@@ -203,8 +203,8 @@
 
   /*
     Dialog sizing used to be clamped here with `max-height: 90vh !important` and nothing said
-    about overflow, so any dialog taller than the viewport was simply cut off — submit button
-    included — and the `!important` meant no dialog could opt out. It lives on the primitive
+    about overflow, so any dialog taller than the viewport was simply cut off - submit button
+    included - and the `!important` meant no dialog could opt out. It lives on the primitive
     now (components/ui/dialog.tsx), where it can also scroll.
   */
   @media (max-width: 768px) {

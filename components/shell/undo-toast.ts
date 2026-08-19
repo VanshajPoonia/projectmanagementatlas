@@ -2,12 +2,12 @@
 //
 // ATLAS_02 Prompt M: "Use undo where safe: archive, simple state change, drag/move, simple
 // bulk edits. Use confirmation for truly destructive actions." Before this, the app had
-// neither — a personal task and a bookmark were both deleted by a single unconfirmed click,
+// neither - a personal task and a bookmark were both deleted by a single unconfirmed click,
 // with no toast at all, so the only feedback that anything had happened was the row
 // vanishing.
 //
-// THE MODEL IS ACT-THEN-OFFER-TO-REVERSE, not defer-then-commit. The alternative — hold the
-// delete until the toast expires — reads better in theory and fails in practice: closing the
+// THE MODEL IS ACT-THEN-OFFER-TO-REVERSE, not defer-then-commit. The alternative - hold the
+// delete until the toast expires - reads better in theory and fails in practice: closing the
 // tab, navigating away, or a crash all leave the action half-done, and the user is told it
 // happened when it did not. Acting immediately means the database and the screen always
 // agree; undo is then a second, ordinary write.
@@ -15,7 +15,7 @@
 // That only works where the reverse is genuinely exact. For a row delete it is: the caller
 // captures the whole row first and restores it *with its original id*, so nothing that
 // referenced it is left dangling and the restored row is not a lookalike copy. Anything
-// where the reverse is approximate does not belong here — it belongs behind a confirmation.
+// where the reverse is approximate does not belong here - it belongs behind a confirmation.
 //
 // The runner below is pure and takes its toast surface as an argument, so the once-only rule
 // and the failure path are unit-testable without a DOM.
@@ -50,7 +50,7 @@ export interface UndoableToastOptions {
   /**
    * Reverse it. Resolves `{ ok: true }` when the original state is back.
    *
-   * Must be exact, not approximate — see the module header.
+   * Must be exact, not approximate - see the module header.
    */
   onUndo: () => Promise<UndoableResult> | UndoableResult
   /** Announced after a successful undo. Defaults to "Restored". */
@@ -106,7 +106,7 @@ export function showUndoableToast(toast: ToastSurface, options: UndoableToastOpt
     durationMs = UNDO_DURATION_MS,
   } = options
 
-  // Built once, here — building it inside onClick would hand every click a fresh closure
+  // Built once, here - building it inside onClick would hand every click a fresh closure
   // with its own `used` flag, which is exactly the guard this is supposed to provide.
   const undo = createUndoHandler(toast, options)
 

@@ -111,7 +111,7 @@ export default function StatusManagement() {
     //   1. Matching on TITLE only reached columns that still read exactly like the OLD label.
     //      A board whose "To Do" column had been renamed "Tasks" stopped tracking the status
     //      silently, and every board then disagreed about the name of the same thing. The RPC
-    //      matches on columns.status_key — what the column IS, not what it currently reads.
+    //      matches on columns.status_key - what the column IS, not what it currently reads.
     //   2. It skipped every private board. RLS applies SELECT policies to an UPDATE that has
     //      to read rows to find them, and 099 hid private boards' columns from non-members, so
     //      an admin's sweep matched zero rows there and reported no error.
@@ -188,7 +188,7 @@ export default function StatusManagement() {
       <CardHeader>
         <CardTitle>Task Statuses</CardTitle>
         <CardDescription>
-          Create or archive the statuses used across tasks. Archived statuses stay on existing tasks and remain searchable in reports — they just can&apos;t be picked for new work.
+          Create or archive the statuses used across tasks. Archived statuses stay on existing tasks and remain searchable in reports - they just can&apos;t be picked for new work.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">

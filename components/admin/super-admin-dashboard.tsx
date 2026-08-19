@@ -54,7 +54,7 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
 
       <main className="container mx-auto px-3 py-5 sm:px-4 sm:py-8">
         <Tabs defaultValue="companies" className="space-y-6">
-          {/* Five equal columns cannot hold five icon-and-word labels on a 390px screen — at
+          {/* Five equal columns cannot hold five icon-and-word labels on a 390px screen - at
               12px text they collided with their own icons. Below `sm` the strip scrolls
               sideways at its natural width instead, which is the one place horizontal scroll
               is the right answer: the row is the control. */}

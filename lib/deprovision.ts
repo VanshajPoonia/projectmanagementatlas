@@ -4,7 +4,7 @@
 // `tasks.created_by` were NOT NULL with an ON DELETE SET NULL rule, a straight
 // contradiction that made deleting any account that had ever created a board impossible.
 //
-// With that fixed, the database's own foreign keys do almost all the work — tasks, comments
+// With that fixed, the database's own foreign keys do almost all the work - tasks, comments
 // and company bookmarks keep their content and lose their author, memberships and personal
 // data go. Exactly one thing cannot be left to a foreign key, and this module is about that
 // one thing.
@@ -28,7 +28,7 @@ export interface DeletionCandidate {
  * Decide whether a deletion may proceed.
  *
  * The last-super-admin rule is the one that matters. Every management surface in this app
- * is gated on `is_super_admin_user()` — teams, statuses, companies, user administration — so
+ * is gated on `is_super_admin_user()` - teams, statuses, companies, user administration - so
  * removing the final super admin would leave a running system that nobody can administer,
  * recoverable only through direct database access. Blocking it is cheaper than the recovery.
  */
@@ -47,7 +47,7 @@ export function checkDeletion(
  * Boards owned by the departing account, reassigned to whoever is performing the deletion.
  *
  * This is the single case where NULL is not good enough. `boards.created_by` is not
- * attribution — migration 061 makes it the sole authority over a private board's membership
+ * attribution - migration 061 makes it the sole authority over a private board's membership
  * list, with no admin bypass, deliberately. A board left with a NULL creator could never
  * have its members changed again by anybody, which turns "remove a departing employee" into
  * "permanently freeze the access list of every board they made".
@@ -63,7 +63,7 @@ export const REASSIGNED_ON_DELETE = ['boards'] as const
  *
  * Deleting yourself is obviously wrong and obviously irreversible. Deactivating yourself
  * looks harmless right up until the page reloads and there is no longer an account that can
- * undo it — the recovery is a database edit either way. The count passed in must be of
+ * undo it - the recovery is a database edit either way. The count passed in must be of
  * *active* super admins: a second super admin who is already switched off is not a way back
  * in.
  */
@@ -100,7 +100,7 @@ export function describeDeletion(name: string, boardCount: number): string {
   return (
     `Delete ${name}'s account permanently?\n\n` +
     `This cannot be undone. If you only need to remove their access, close this and use ` +
-    `"Switch off access" instead — that is reversible and keeps their name on their work.\n\n` +
+    `"Switch off access" instead - that is reversible and keeps their name on their work.\n\n` +
     `Kept: their tasks, comments and shared bookmarks, but no longer under their name.` +
     boards +
     `\nDestroyed: their personal tasks, private messages and personal bookmarks.`

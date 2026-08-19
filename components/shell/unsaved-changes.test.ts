@@ -102,7 +102,7 @@ describe('guardedOpenChange', () => {
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
-  // Opening is never the destructive direction, so it must never be blocked — a guard that
+  // Opening is never the destructive direction, so it must never be blocked - a guard that
   // fires on open would make a dirty dialog impossible to reopen.
   it('never guards opening', () => {
     const onOpenChange = vi.fn()

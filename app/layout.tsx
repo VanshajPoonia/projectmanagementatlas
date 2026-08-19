@@ -32,7 +32,7 @@ export default function RootLayout({
             changes for an existing user who has never opened the picker. */}
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           {/* Wraps everything, including the Toaster, because the accent is written to
-              document.documentElement — portaled overlays are outside the app tree but still
+              document.documentElement - portaled overlays are outside the app tree but still
               inherit from :root. */}
           <AccentBoot>
             {children}

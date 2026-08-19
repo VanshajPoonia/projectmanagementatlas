@@ -10,7 +10,7 @@ const HISTORY_LIMIT = 20
 const MAX_MESSAGE_LENGTH = 4000
 
 // Uploads travel as base64 inside the JSON body, and Vercel caps that body at
-// ~4.5MB — base64 inflates ~33%, so keep the raw total to ~3MB. Anything larger
+// ~4.5MB - base64 inflates ~33%, so keep the raw total to ~3MB. Anything larger
 // (long videos) should be shared as a YouTube link, which needs no upload.
 const MAX_ATTACHMENTS = 4
 const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024
@@ -43,7 +43,7 @@ function parseAttachments(raw: unknown): { attachments: ChatAttachment[] } | { e
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(data.slice(0, 128))) return { error: 'A file is not valid base64.' }
 
     const bytes = base64Bytes(data)
-    if (bytes > MAX_ATTACHMENT_BYTES) return { error: 'A file is too large (max 3 MB — link a YouTube URL for long videos).' }
+    if (bytes > MAX_ATTACHMENT_BYTES) return { error: 'A file is too large (max 3 MB - link a YouTube URL for long videos).' }
     total += bytes
     if (total > MAX_TOTAL_ATTACHMENT_BYTES) return { error: 'Attachments total too large (max 3 MB).' }
 
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
 
     // Overall hourly cap (all modes).
     if (!checkRateLimit(`ai-chat:${user.id}`, 15, 60 * 60 * 1000)) {
-      return NextResponse.json({ error: "You've hit the hourly message limit — try again in a bit." }, { status: 429 })
+      return NextResponse.json({ error: "You've hit the hourly message limit - try again in a bit." }, { status: 429 })
     }
 
     const body = await request.json()
@@ -85,10 +85,10 @@ export async function POST(request: Request) {
     // Tighter, separate caps on the expensive paths so the shared free quota
     // (Tavily searches, multimodal tokens) can't be drained from one account.
     if (mode === 'web' && !checkRateLimit(`ai-chat-web:${user.id}`, 25, 60 * 60 * 1000)) {
-      return NextResponse.json({ error: "You've hit the hourly limit for Ask-anything mode — try again in a bit." }, { status: 429 })
+      return NextResponse.json({ error: "You've hit the hourly limit for Ask-anything mode - try again in a bit." }, { status: 429 })
     }
     if (attachments.length > 0 && !checkRateLimit(`ai-chat-media:${user.id}`, 15, 60 * 60 * 1000)) {
-      return NextResponse.json({ error: "You've hit the hourly file/attachment limit — try again in a bit." }, { status: 429 })
+      return NextResponse.json({ error: "You've hit the hourly file/attachment limit - try again in a bit." }, { status: 429 })
     }
 
     const { data: recent } = await supabase
@@ -113,8 +113,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: isQuota
-            ? 'The assistant has hit its shared daily limit — try again tomorrow.'
-            : 'The assistant is unavailable right now — try again shortly.',
+            ? 'The assistant has hit its shared daily limit - try again tomorrow.'
+            : 'The assistant is unavailable right now - try again shortly.',
         },
         { status: 502 }
       )

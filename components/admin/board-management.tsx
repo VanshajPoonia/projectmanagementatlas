@@ -26,7 +26,7 @@ import {
 interface BoardManagementProps {
   boards: any[]
   isSuperAdmin?: boolean
-  /** Needed to tell whether this admin created the board — see canManageMembership. */
+  /** Needed to tell whether this admin created the board - see canManageMembership. */
   currentUserId?: string | null
 }
 
@@ -44,7 +44,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
   const [isPrivate, setIsPrivate] = useState(false)
   const [members, setMembers] = useState<MembershipRow[]>([])
   // What was actually in the database when the edit dialog opened. Kept separately from
-  // `members` so the save can diff against it instead of rewriting every row — see
+  // `members` so the save can diff against it instead of rewriting every row - see
   // lib/board-membership.ts for why rewriting was a privilege-escalation bug.
   const [loadedMembers, setLoadedMembers] = useState<MembershipRow[]>([])
   const [allUsers, setAllUsers] = useState<{ id: string; full_name: string | null; email: string | null }[]>([])
@@ -99,8 +99,8 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
 
       // Seed the columns from the admin-managed status list, one column per ACTIVE status,
       // in the order Super Admin -> Statuses puts them. This used to ask for four specific
-      // keys by name, so a status the company had added — the whole point of that screen
-      // being editable — appeared in every dropdown and on no new board, and an archived
+      // keys by name, so a status the company had added - the whole point of that screen
+      // being editable - appeared in every dropdown and on no new board, and an archived
       // one kept being seeded onto boards forever. Column order is the status order because
       // that list is already arranged left-to-right in the same left-to-right sense.
       const { data: activeStatuses } = await supabase
@@ -167,7 +167,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
 
   // ⚠️ No preventDefault here, deliberately. Radix reads a prevented default on a menu item
   // as "keep the menu open", so this handler used to leave the actions menu hanging open
-  // behind the dialog — and because that menu is modal, `body { pointer-events: none }` was
+  // behind the dialog - and because that menu is modal, `body { pointer-events: none }` was
   // left in place after saving, making the whole page unclickable until the user dismissed
   // the menu by hand. The preventDefault looked necessary because these cards wrap their
   // content in a <Link>, but DropdownMenuContent is portaled out of that subtree, so a menu
@@ -194,7 +194,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
    * Apply a membership plan, returning a human-readable failure or null.
    *
    * Every write asks for its rows back and checks the count, because PostgREST does not
-   * treat a zero-row DELETE or UPDATE as an error — under RLS those simply match nothing
+   * treat a zero-row DELETE or UPDATE as an error - under RLS those simply match nothing
    * and report success. That is precisely how the previous version told a non-creator
    * admin their changes had been saved when the database had rejected all of them.
    */
@@ -202,7 +202,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
     boardId: string,
     plan: ReturnType<typeof planMembershipChanges>,
   ): Promise<string | null> => {
-    const REJECTED = 'The access list was not saved — only the board’s creator can change it.'
+    const REJECTED = 'The access list was not saved - only the board’s creator can change it.'
 
     if (plan.remove.length > 0) {
       const { data, error } = await supabase
@@ -332,7 +332,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
     e.stopPropagation()
 
     const confirmed = window.confirm(
-      `Archive "${boardTitle}"?\n\nThe board and all its data are kept — it's just hidden from everyone except super admins. Only a super admin can restore it.`
+      `Archive "${boardTitle}"?\n\nThe board and all its data are kept - it's just hidden from everyone except super admins. Only a super admin can restore it.`
     )
     if (!confirmed) return
 
@@ -460,7 +460,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
                   <Lock className="w-4 h-4" /> Private
                 </button>
               </div>
-              {/* Shown for public boards too — a Guest/Client row restricts someone who
+              {/* Shown for public boards too - a Guest/Client row restricts someone who
                   would otherwise have full access, which only exists on open boards. */}
               <BoardMemberPicker
                 users={allUsers}
@@ -757,7 +757,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
           >
             {showArchived ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             <Archive className="w-4 h-4" />
-            Archived boards ({archivedBoards.length}) — only super admins can see these
+            Archived boards ({archivedBoards.length}) - only super admins can see these
           </button>
           {showArchived && (
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">

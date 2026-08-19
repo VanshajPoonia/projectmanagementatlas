@@ -32,7 +32,7 @@ interface ContactDraft {
 const UNASSIGNED = '__unassigned__'
 
 // ⚠️ Sequential, not random. These keys become DOM `id` attributes, and crypto.randomUUID()
-// produces a different value on the server than on the client — so every field hydrated with a
+// produces a different value on the server than on the client - so every field hydrated with a
 // mismatched id and React discarded the form. A counter is deterministic: the first contact is
 // `c0` in both passes, and every later one is created by a click, which only happens on the
 // client where any value is safe.
@@ -171,7 +171,7 @@ export function CrmIntakeForm({
 
     setSaving(false)
     if (contactError) {
-      // The client exists but has no contacts. Say so plainly rather than claiming success —
+      // The client exists but has no contacts. Say so plainly rather than claiming success -
       // the record is reachable and can be completed from the client list.
       toast.error(`Client ${ref} was created, but its contacts were not saved: ${contactError.message}`)
     } else {

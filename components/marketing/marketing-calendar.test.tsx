@@ -191,7 +191,7 @@ describe('MarketingCalendar controls', () => {
     rpcMock.mockReset()
     scrollTo.mockReset()
     // The view toggle persists to localStorage, which jsdom keeps for the whole
-    // file — without this, one test switching to the channel grid would silently
+    // file - without this, one test switching to the channel grid would silently
     // start every later test there.
     try { localStorage.clear() } catch { /* ignore */ }
     vi.restoreAllMocks()
@@ -241,7 +241,7 @@ describe('MarketingCalendar controls', () => {
   // Checks are stored per (item_id, user_id), but a calendar is shared: what one member
   // marks posted has to read as posted for everyone else looking at the same item.
   // Before this, the load query filtered to the viewer's own rows, so a member who had
-  // ticked nothing saw an empty check set — and every past item fell through to
+  // ticked nothing saw an empty check set - and every past item fell through to
   // auto-missed, which is how Bobby saw "all missed" while Kayla saw "all done".
   it('shows an item another member marked posted as posted', async () => {
     checkRows = [
@@ -402,7 +402,7 @@ describe('MarketingCalendar controls', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Social' }))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Weekly' }))
 
-    // A 3rd date input now exists — the "add a specific date" field in the
+    // A 3rd date input now exists - the "add a specific date" field in the
     // skip/add schedule editor, which renders whenever a repeat is active.
     const dateInputs = dialog.querySelectorAll<HTMLInputElement>('input[type="date"]')
     expect(dateInputs).toHaveLength(3)
@@ -530,7 +530,7 @@ describe('MarketingCalendar controls', () => {
     expect(within(dialog).getByRole('button', { name: 'Save event' })).toBeInTheDocument()
   })
 
-  // The edit dialog used to expose only date/time/companies/channel/content — a file
+  // The edit dialog used to expose only date/time/companies/channel/content - a file
   // could be attached at create time or through the separate file dialog, but never
   // from the pane you land in when you click the event.
   it('lets an existing event gain, replace and drop a file from the edit dialog', async () => {
@@ -597,7 +597,7 @@ describe('MarketingCalendar controls', () => {
     const dialog = await screen.findByRole('dialog', { name: /Edit Marketing Event/i })
     expect(within(dialog).getByText('Dates in this series (3)')).toBeInTheDocument()
 
-    // The occurrence being edited has no remove control — the dialog's Delete
+    // The occurrence being edited has no remove control - the dialog's Delete
     // button is what removes that one, and it has to close the dialog.
     expect(within(dialog).queryByLabelText(`Remove ${today} from the series`)).not.toBeInTheDocument()
     fireEvent.click(within(dialog).getByLabelText(`Remove ${nextWeek} from the series`))
@@ -657,7 +657,7 @@ describe('MarketingCalendar controls', () => {
   })
 
   // Column order lives in marketing_channels.position, which the whole calendar
-  // reads — rearranging is a write for everyone, not a local view preference. It
+  // reads - rearranging is a write for everyone, not a local view preference. It
   // goes through the reorder RPC because a direct UPDATE is admin-only and, read
   // literally, excludes the super_admins who actually use this calendar.
   describe('channel grid column order', () => {
@@ -706,7 +706,7 @@ describe('MarketingCalendar controls', () => {
       expect(headerOrder()).toEqual(['Date', 'Email', 'Social'])
     })
 
-    // The optimistic move must not outlive a rejected write — the likeliest
+    // The optimistic move must not outlive a rejected write - the likeliest
     // rejection is a stale list, and leaving the new order on screen would show
     // every other member an order the database never accepted.
     it('puts the columns back when the order cannot be saved', async () => {

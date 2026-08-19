@@ -146,7 +146,7 @@ try {
   }
   console.log(`${labels.includes('My Work') ? '  ok  ' : ' FAIL '} My Work is reachable from /admin`)
   const strayDashboard = navLinks.filter(l => (l.href || '').startsWith('/dashboard'))
-  console.log(`${strayDashboard.length === 0 ? '  ok  ' : ' FAIL '} no /dashboard links in an admin's nav${strayDashboard.length ? ` — ${strayDashboard.map(l => l.href).join(', ')}` : ''}`)
+  console.log(`${strayDashboard.length === 0 ? '  ok  ' : ' FAIL '} no /dashboard links in an admin's nav${strayDashboard.length ? ` - ${strayDashboard.map(l => l.href).join(', ')}` : ''}`)
 
   // ── First paint, proved with JavaScript switched off ───────────────────────────────
   //
@@ -167,7 +167,7 @@ try {
     const has = l => links.includes(l)
     const wanted = enabled.includes('crm') ? ['CRM', 'My Work'] : ['My Work']
     const missing = wanted.filter(l => !has(l))
-    console.log(`${missing.length === 0 ? '  ok  ' : ' FAIL '} ${label} renders ${wanted.join(' + ')} server-side${missing.length ? ` — missing ${missing.join(', ')}` : ''}`)
+    console.log(`${missing.length === 0 ? '  ok  ' : ' FAIL '} ${label} renders ${wanted.join(' + ')} server-side${missing.length ? ` - missing ${missing.join(', ')}` : ''}`)
   }
   await noJs.close()
 

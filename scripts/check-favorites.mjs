@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Favourites access-control harness — the pass/fail gate for migration 097.
+// Favourites access-control harness - the pass/fail gate for migration 097.
 //
 // A favourites list is private data: it says which boards a person cares about, which is a
 // small but real signal about what they work on. 097's policies scope every row to its owner
@@ -8,7 +8,7 @@
 //   - owner        : stars, reads back, unstars
 //   - another user : cannot read the owner's stars, cannot write into the owner's list,
 //                    cannot delete the owner's row
-//   - an admin     : same as another user — deliberately NOT exempted
+//   - an admin     : same as another user - deliberately NOT exempted
 //   - signed-out   : sees nothing, writes nothing
 //
 // It also pins the two structural guarantees the migration asserts: the unique index makes a
@@ -43,7 +43,7 @@ const createdBoardIds = []
 let failures = 0
 
 function check(label, condition, extra = '') {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}${extra ? ` (${extra})` : ''}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}${extra ? ` (${extra})` : ''}`)
   if (!condition) failures++
 }
 
@@ -71,7 +71,7 @@ try {
     admin: await makeUser(ACCOUNTS.admin),
   }
 
-  // A real board to star, plus a private one nobody in this harness is a member of — the
+  // A real board to star, plus a private one nobody in this harness is a member of - the
   // second is what proves a favourite is a pointer and not a grant.
   const { data: boards, error: boardErr } = await admin
     .from('boards')
@@ -124,7 +124,7 @@ try {
   check('another user cannot write into the owner’s list', !!forgeErr, forgeErr?.message ?? 'insert succeeded')
 
   // PostgREST reports a zero-row DELETE as success, so assert on what survived rather than
-  // on the absence of an error — the exact trap CLAUDE.md records for zero-row UPDATE.
+  // on the absence of an error - the exact trap CLAUDE.md records for zero-row UPDATE.
   await asOther.from('user_favorites').delete().eq('entity_id', openBoard.id)
   const { data: afterForeignDelete } = await asOwner.from('user_favorites').select('entity_id')
   check(
@@ -224,14 +224,14 @@ try {
     console.log(`${failures} check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All checks passed — favourites are private to their owner, and a star grants nothing.')
+    console.log('All checks passed - favourites are private to their owner, and a star grants nothing.')
   }
 } catch (e) {
   console.error('favourites harness error:', e.message)
   process.exitCode = 1
 } finally {
   // ORDER MATTERS, and getting it wrong is silent. boards.created_by references profiles,
-  // so deleting an account that still owns a board fails the cascade — and Supabase reports
+  // so deleting an account that still owns a board fails the cascade - and Supabase reports
   // that as a failed deleteUser, which an ignored .catch() would swallow. The harness then
   // "cleans up" while leaving real profiles behind, and the next run of check:teams fails
   // with "not every profile is in a team" pointing at accounts nobody can explain.
@@ -249,7 +249,7 @@ try {
   }
 
   if (problems.length > 0) {
-    console.error('\n⚠️  cleanup left fixtures behind — these will break other harnesses:')
+    console.error('\n⚠️  cleanup left fixtures behind - these will break other harnesses:')
     for (const p of problems) console.error('   ' + p)
     process.exitCode = 1
   } else {

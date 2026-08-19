@@ -2,8 +2,8 @@
 //
 // Extracted from lib/marketing-assets.ts when task attachments gained their own
 // admin-only large-file path (migration 091) and needed the identical allowlist.
-// Both features accept the same set — the office/design/video/archive formats a
-// PM tool actually receives — and both back it with a matching MIME CHECK
+// Both features accept the same set - the office/design/video/archive formats a
+// PM tool actually receives - and both back it with a matching MIME CHECK
 // constraint and Storage bucket allowlist in SQL, so the list must stay in ONE
 // place: `079_expand_marketing_event_files.sql` and `091_task_large_attachments.sql`
 // both enumerate it, and a type added here must be added there too or the object

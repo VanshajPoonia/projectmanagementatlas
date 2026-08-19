@@ -9,7 +9,7 @@ import {
   statusesForPicker,
 } from './task-status'
 
-describe('getNormalizedTaskStatus — FK first (columns.status_key)', () => {
+describe('getNormalizedTaskStatus - FK first (columns.status_key)', () => {
   it('trusts an explicit status_key even when the column title is unconventional', () => {
     // The whole point of Phase 1B: a board naming its column "WIP" must not be misread.
     expect(getNormalizedTaskStatus({ column: { title: 'WIP', status_key: 'in_progress' } })).toBe('in_progress')
@@ -25,7 +25,7 @@ describe('getNormalizedTaskStatus — FK first (columns.status_key)', () => {
   })
 })
 
-describe('getNormalizedTaskStatus — legacy fallback (no status_key)', () => {
+describe('getNormalizedTaskStatus - legacy fallback (no status_key)', () => {
   it('still classifies by conventional column titles', () => {
     expect(getNormalizedTaskStatus({ column: { title: 'In Progress' } })).toBe('in_progress')
     expect(getNormalizedTaskStatus({ column: { title: 'Completed' } })).toBe('done')
@@ -55,7 +55,7 @@ describe('getTaskStatusLabel', () => {
   })
 })
 
-describe('getEffectiveStatusKey — FK first', () => {
+describe('getEffectiveStatusKey - FK first', () => {
   const columns = [
     { id: 'c1', title: 'WIP', status_key: 'in_progress' },
     { id: 'c2', title: 'Backlog', status_key: 'to_do' },
@@ -75,7 +75,7 @@ describe('getEffectiveStatusKey — FK first', () => {
   })
 })
 
-describe('findColumnForStatus — FK first', () => {
+describe('findColumnForStatus - FK first', () => {
   const columns = [
     { id: 'c1', title: 'WIP', status_key: 'in_progress' },
     { id: 'c2', title: 'Backlog', status_key: 'to_do' },
@@ -94,8 +94,8 @@ describe('findColumnForStatus — FK first', () => {
 
 /**
  * Regression cover for a real report: picking a status the board had no column for filled in
- * the whole create-task form and then refused it on submit, telling the user — who was often
- * the admin — to "ask an admin". The pickers now offer only what the board can accept.
+ * the whole create-task form and then refused it on submit, telling the user - who was often
+ * the admin - to "ask an admin". The pickers now offer only what the board can accept.
  */
 describe('status pickers are scoped to what the board can accept', () => {
   const statuses = [
@@ -141,7 +141,7 @@ describe('status pickers are scoped to what the board can accept', () => {
   })
 
   describe('fail-open vs fail-closed on unknown columns', () => {
-    it('offers everything when the columns are not loaded — an empty picker reads as broken', () => {
+    it('offers everything when the columns are not loaded - an empty picker reads as broken', () => {
       expect(statusesAvailableOnBoard(statuses, null)).toEqual(statuses)
       expect(statusesAvailableOnBoard(statuses, undefined)).toEqual(statuses)
     })

@@ -30,7 +30,7 @@ interface Company {
  * How many upcoming numbers to look ahead. Nothing is reserved, so this exists only to
  * answer two questions: what is the next number ("Next available"), and is the month full
  * (an empty list disables the grab button). It used to also render a 12-tile "Ready to use"
- * board taking the left half of the screen — removed, because a list of numbers nobody has
+ * board taking the left half of the screen - removed, because a list of numbers nobody has
  * claimed is not information anyone acts on, and it pushed the one control on this page
  * that people actually use into a narrow column beside it.
  */
@@ -71,7 +71,7 @@ export default function ProjectIdsView({ userId, userName }: { userId: string; u
   }, [])
 
   // The prefix rolls over on Central midnight, not this browser's midnight, and it is only ever
-  // a display value — claim_project_id() computes its own server-side.
+  // a display value - claim_project_id() computes its own server-side.
   const yearMonth = centralYearMonth()
 
   const load = useCallback(async () => {
@@ -140,7 +140,7 @@ export default function ProjectIdsView({ userId, userName }: { userId: string; u
     setClientName('')
     setCompanyId(null)
 
-    // The number is always needed somewhere else the moment it exists — a folder name, an
+    // The number is always needed somewhere else the moment it exists - a folder name, an
     // estimate, an email. Put it on the clipboard without being asked, and say so, so nobody
     // has to wonder whether it happened. `silent` because the confirmation belongs in the one
     // toast below, not two stacked on top of each other.
@@ -206,9 +206,9 @@ export default function ProjectIdsView({ userId, userName }: { userId: string; u
       {/* Two across on a phone; see task-overview.tsx for why. */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatTile label="Current prefix" value={yearMonth} />
-        <StatTile label="Used this month" value={loading ? '—' : String(monthCount)} />
-        <StatTile label="Total IDs used" value={loading ? '—' : String(rows.length)} />
-        <StatTile label="Next available" value={loading ? '—' : preview[0] ?? 'Month full'} />
+        <StatTile label="Used this month" value={loading ? '-' : String(monthCount)} />
+        <StatTile label="Total IDs used" value={loading ? '-' : String(rows.length)} />
+        <StatTile label="Next available" value={loading ? '-' : preview[0] ?? 'Month full'} />
       </div>
 
       <div className="grid gap-6">
@@ -216,7 +216,7 @@ export default function ProjectIdsView({ userId, userName }: { userId: string; u
           <CardHeader>
             <CardTitle>Grab a number</CardTitle>
             <CardDescription>
-              Claimed as <span className="font-medium text-foreground">{userName}</span> — taken from
+              Claimed as <span className="font-medium text-foreground">{userName}</span> - taken from
               your sign-in, so the record always matches who actually took it.
             </CardDescription>
           </CardHeader>
@@ -432,7 +432,7 @@ export default function ProjectIdsView({ userId, userName }: { userId: string; u
                               {company.code}
                             </span>
                           ) : (
-                            <span className="text-muted-foreground">—</span>
+                            <span className="text-muted-foreground">-</span>
                           )}
                         </td>
                         <td className="py-2 pr-4">{row.grabbed_by_name}</td>

@@ -68,7 +68,7 @@ export default function PersonalTasks({ userId }: PersonalTasksProps) {
     }
   }
 
-  // Deleting used to be a single unconfirmed click with no feedback at all — the row simply
+  // Deleting used to be a single unconfirmed click with no feedback at all - the row simply
   // vanished and there was no way back. It stays one click (a confirmation on every private
   // to-do would be heavier than the mistake it prevents), but the whole row is captured
   // first and the toast offers to put it back exactly as it was, original id included.
@@ -110,7 +110,7 @@ export default function PersonalTasks({ userId }: PersonalTasksProps) {
           <Lock className="w-4 h-4 text-muted-foreground" />
           Personal Tasks
         </CardTitle>
-        <CardDescription>Private — only visible to you</CardDescription>
+        <CardDescription>Private: only visible to you</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <form onSubmit={handleAdd} className="flex flex-wrap gap-2">
@@ -163,7 +163,7 @@ export default function PersonalTasks({ userId }: PersonalTasksProps) {
               )}
 
               {/* Named explicitly: a bare X reads as nothing to a screen reader, and
-                  opacity-0 until hover means it is keyboard-reachable but invisible — so
+                  opacity-0 until hover means it is keyboard-reachable but invisible - so
                   focus-visible has to bring it back or a keyboard user tabs into a control
                   they cannot see. */}
               <button
@@ -178,7 +178,7 @@ export default function PersonalTasks({ userId }: PersonalTasksProps) {
           ))}
           {tasks.length === 0 && (
             <div className="text-center py-6 text-sm text-muted-foreground">
-              No personal tasks yet — add one above.
+              No personal tasks yet - add one above.
             </div>
           )}
         </div>

@@ -34,7 +34,7 @@ describe('selectableBoards', () => {
     expect(selectableBoards([], 'b-live')).toEqual([])
   })
 
-  it('keeps private boards — RLS already decided which ones the caller can see', () => {
+  it('keeps private boards - RLS already decided which ones the caller can see', () => {
     const secret: BoardOption = { id: 'b-secret', title: 'Acquisitions', is_private: true }
     expect(selectableBoards([secret], null).map((b) => b.id)).toEqual(['b-secret'])
   })

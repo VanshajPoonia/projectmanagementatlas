@@ -10,8 +10,8 @@ import type { CapabilityDecision } from '@/lib/capabilities'
 // "Never leave a user wondering whether a feature is broken, disabled, or simply not
 // theirs." Two shapes, matching the two presentations a CapabilityDecision can ask for:
 //
-//   hide    — the action is irrelevant to this role; rendering it is noise
-//   explain — the user can see the thing, so the restriction is worth stating
+//   hide    - the action is irrelevant to this role; rendering it is noise
+//   explain - the user can see the thing, so the restriction is worth stating
 //
 // A disabled control swallows pointer events, so the tooltip has to hang off a wrapper
 // rather than the control itself; the wrapper is focusable so keyboard users reach the
@@ -51,7 +51,7 @@ export function ActionGuard({ decision, children, fallback = null, className }: 
 /**
  * The visible variant: a short inline sentence for a whole region that has been put into
  * read-only mode. A tooltip is too easy to miss when *every* field on a screen is
- * disabled — at that point the user needs to be told once, plainly, why.
+ * disabled - at that point the user needs to be told once, plainly, why.
  */
 export function RestrictionNote({
   decision,
@@ -80,7 +80,7 @@ export function RestrictionNote({
  * (a stale render, a keyboard path around `disabled`, a command fired from the palette).
  * Returns undefined when denied, which also leaves the control genuinely inert.
  *
- * This is a UX backstop, not a security control — RLS is what actually refuses the write.
+ * This is a UX backstop, not a security control - RLS is what actually refuses the write.
  */
 export function guardAction<T extends (...args: never[]) => unknown>(
   decision: CapabilityDecision,

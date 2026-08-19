@@ -2,7 +2,7 @@
 --
 -- ⚠️ THIS DESTROYS EVERY CRM RECORD: clients, contacts, orders, notes, documents, and the
 -- entire order status history. The history is the one part that cannot be reconstructed from
--- anywhere else — it is the only record of when each order entered and left each status, so
+-- anywhere else - it is the only record of when each order entered and left each status, so
 -- every cycle-time and bottleneck report ever produced becomes unreproducible.
 --
 -- If the intent is "roll back the code, keep the data", dump first:
@@ -48,7 +48,7 @@ BEGIN
              WHERE table_schema = 'public' AND table_name LIKE 'crm\_%') THEN
     RAISE EXCEPTION '103 revert: a crm_* table survived the rollback';
   END IF;
-  RAISE NOTICE '103 reverted — crm schema removed';
+  RAISE NOTICE '103 reverted - crm schema removed';
 END
 $post$;
 

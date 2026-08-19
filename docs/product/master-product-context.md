@@ -1,31 +1,31 @@
-# Master Product Context — the governing charter above PROMPT 1–10
+# Master Product Context - the governing charter above PROMPT 1–10
 
 This is the **full** framework the repository owner supplied on 2026-07-23/24, stored **verbatim**.
 It is the layer above [`master-prompt.md`](./master-prompt.md): that file holds PROMPT 1–10 (the
 capability-by-capability index); this file holds the charter and sections A–F that govern *how*
-every prompt is approached. Previously only PROMPT 1–10 were persisted to the repo — sections A–F
+every prompt is approached. Previously only PROMPT 1–10 were persisted to the repo - sections A–F
 existed only as paraphrase in `FEATURES.md` / ADR-001 / memory. This file closes that gap.
 
-> **Reconciliation banner — two places this charter is deliberately overridden by owner ruling,
+> **Reconciliation banner - two places this charter is deliberately overridden by owner ruling,
 > read before applying anything below:**
 >
 > 1. **Section A assumes a Plane Community Edition foundation** ("Plane CE is the preferred initial
 >    work-management foundation," "Use current Plane `work-items` APIs"). The repository audit
->    (PROMPT 1) proved there is **no Plane in this repository** — it is a greenfield Next.js 16 +
+>    (PROMPT 1) proved there is **no Plane in this repository** - it is a greenfield Next.js 16 +
 >    React 19 + Supabase app. `docs/architecture/adr-001-extension-strategy.md` scored the four
 >    options against the real repo and the owner accepted **Option 4: continue building on the
 >    existing app, no Plane** (46/50 vs. 24/25/16 for the Plane-based options). Treat every
 >    Plane/fork/sidecar/upstream-boundary/licensing-exposure sentence below as *already resolved* by
->    that ADR — do not re-open it.
+>    that ADR - do not re-open it.
 > 2. **Section C's canonical hierarchy starts with "Organization" and PROMPT 3 (in `master-prompt.md`)
->    is titled "Organizations, Workspaces, Teams, Roles, and Feature Modules" — both read as
+>    is titled "Organizations, Workspaces, Teams, Roles, and Feature Modules" - both read as
 >    multi-tenant SaaS scaffolding** (multiple organizations, workspace switching, bulk member
 >    import for onboarding new tenants, invite-expiration flows). **Owner ruling, 2026-07-24: this
 >    product is being built for exactly one organization, permanently. It is not a multi-tenant SaaS
 >    product and is not being sold to other companies.** Wherever this document or PROMPT 3 describes
 >    "Organizations" (plural) or tenant-isolation work, read it as **N/A** for this build. What
 >    *does* still apply, reinterpreted for one org: Teams, Members, Guests, Clients, workspace-level
->    and project-level roles, custom roles, the permission matrix, and module activation — all
+>    and project-level roles, custom roles, the permission matrix, and module activation - all
 >    scoped **within** the single existing organization, never between organizations. See
 >    `CLAUDE.md` for the concrete, single-org-reinterpreted plan this produces.
 
@@ -151,19 +151,19 @@ Supported work-item types should eventually include:
 
 ## D. UX principles
 
-1. **Progressive disclosure** — Show only essential fields during quick creation. Reveal advanced planning, cost, risk, estimation, and governance fields when needed.
+1. **Progressive disclosure** - Show only essential fields during quick creation. Reveal advanced planning, cost, risk, estimation, and governance fields when needed.
 
-2. **One source of truth** — The same work item must appear consistently in list, table, board, calendar, timeline, Gantt, backlog, sprint, dashboard, and personal views.
+2. **One source of truth** - The same work item must appear consistently in list, table, board, calendar, timeline, Gantt, backlog, sprint, dashboard, and personal views.
 
-3. **Speed** — Support: Inline editing; Optimistic updates with safe rollback; Keyboard navigation; Command palette; Quick creation; Bulk selection; Bulk editing; Drag and drop; Autosave; Undo; Recently viewed records.
+3. **Speed** - Support: Inline editing; Optimistic updates with safe rollback; Keyboard navigation; Command palette; Quick creation; Bulk selection; Bulk editing; Drag and drop; Autosave; Undo; Recently viewed records.
 
-4. **Role-sensitive information** — Individual contributors see personal work and blockers. Project managers see progress, milestones, risks, workload, and approvals. Executives see goals, portfolio health, outcomes, cost, and major risks. Clients see deliverables, updates, files, decisions, requests, and approvals.
+4. **Role-sensitive information** - Individual contributors see personal work and blockers. Project managers see progress, milestones, risks, workload, and approvals. Executives see goals, portfolio health, outcomes, cost, and major risks. Clients see deliverables, updates, files, decisions, requests, and approvals.
 
-5. **Accessible by default** — Meet WCAG 2.2 AA where applicable. Do not communicate status using color alone. Support keyboard-only operation, screen readers, reduced motion, visible focus states, sufficient contrast, and zoom.
+5. **Accessible by default** - Meet WCAG 2.2 AA where applicable. Do not communicate status using color alone. Support keyboard-only operation, screen readers, reduced motion, visible focus states, sufficient contrast, and zoom.
 
-6. **Calm rather than crowded** — Advanced modules are disabled until a workspace or project activates them.
+6. **Calm rather than crowded** - Advanced modules are disabled until a workspace or project activates them.
 
-7. **Explain metrics** — Every chart must expose: What is being measured; How it is calculated; Which records are included; When it last updated; What changes the result.
+7. **Explain metrics** - Every chart must expose: What is being measured; How it is calculated; Which records are included; When it last updated; What changes the result.
 
 ## E. Engineering rules
 
@@ -214,6 +214,6 @@ Do not implement features outside the current prompt's scope.
 ---
 
 **Note on calibration (see `FEATURES.md`):** the owner has directed that this 16-section format be
-applied *proportionally to each change's risk*, not as a big-bang requirement on every commit —
+applied *proportionally to each change's risk*, not as a big-bang requirement on every commit -
 skip sections that genuinely don't apply, and say so. This is a deliberate calibration of section F,
 not a deviation discovered by drift.

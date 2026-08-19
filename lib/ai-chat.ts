@@ -2,7 +2,7 @@ import { AI_CHAT_TOOLS, executeTool, toolsForMode, type ToolContext, type ChatMo
 
 // Gemini free tier: this key is shared across every user of the app, and the
 // daily request cap is shared too (not per-user). We don't pre-track that quota
-// ourselves — Gemini's own 429 is the source of truth; see the 429 handling in
+// ourselves - Gemini's own 429 is the source of truth; see the 429 handling in
 // app/api/ai-chat/route.ts, which turns it into a friendly "try again" message.
 //
 // Model naming: Google regularly sunsets older model versions for new API keys
@@ -11,22 +11,22 @@ import { AI_CHAT_TOOLS, executeTool, toolsForMode, type ToolContext, type ChatMo
 // are env-overridable (GEMINI_MODEL / GEMINI_MULTIMODAL_MODEL) so a rename can be
 // fixed without a deploy, and callGemini falls back automatically on a 404.
 export const AI_CHAT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite'
-// Used only when a turn carries files/images/video — flash-lite is cheap for text
+// Used only when a turn carries files/images/video - flash-lite is cheap for text
 // but the fuller flash model is the reliable multimodal path. Both the default and
 // the fallback are verified present in the current models list (gemini-3.1-flash,
-// notably, is NOT — don't use it); if this 404s, check the live lineup.
+// notably, is NOT - don't use it); if this 404s, check the live lineup.
 export const AI_CHAT_MULTIMODAL_MODEL = process.env.GEMINI_MULTIMODAL_MODEL || 'gemini-3.5-flash'
 const MULTIMODAL_FALLBACK = 'gemini-2.5-flash'
 
 export const AI_CHAT_SYSTEM_PROMPT = `You are the built-in assistant for "Project Manager," an internal project management web app. It has: Kanban-style task boards with customizable columns/statuses, a shared team calendar (task due dates), a marketing content calendar (channels, companies, recurring events), private personal tasks, direct chat between teammates, bookmarks, and reports.
 
-You have tools to look up the current user's real data: get_tasks (Kanban tasks across boards), get_boards, get_personal_tasks (their private to-do list), and get_marketing_calendar. Use them whenever a question is about actual tasks, due dates, boards, or the marketing calendar — don't guess or make up data. If a tool comes back empty or with an error, say so plainly rather than inventing an answer. For anything else, help with general questions and how to use the app. Keep answers concise.`
+You have tools to look up the current user's real data: get_tasks (Kanban tasks across boards), get_boards, get_personal_tasks (their private to-do list), and get_marketing_calendar. Use them whenever a question is about actual tasks, due dates, boards, or the marketing calendar - don't guess or make up data. If a tool comes back empty or with an error, say so plainly rather than inventing an answer. For anything else, help with general questions and how to use the app. Keep answers concise.`
 
 export const AI_CHAT_SYSTEM_PROMPT_WEB = `You are a helpful general-purpose assistant embedded in the "Project Manager" web app, currently in "Ask anything" mode. Answer questions on any topic, not just this app.
 
-You can use web_search to look things up on the public internet and fetch_url to read a specific page the user links. Prefer searching whenever the answer depends on current events, real-world facts, prices, or anything you're unsure about, rather than guessing — and cite the source links you used. Keep answers concise and well-structured.`
+You can use web_search to look things up on the public internet and fetch_url to read a specific page the user links. Prefer searching whenever the answer depends on current events, real-world facts, prices, or anything you're unsure about, rather than guessing - and cite the source links you used. Keep answers concise and well-structured.`
 
-const ATTACHMENT_NOTE = `\n\nThe user may attach images, PDFs, audio, or link a video — these arrive as input parts; read them directly and refer to what they actually contain.`
+const ATTACHMENT_NOTE = `\n\nThe user may attach images, PDFs, audio, or link a video - these arrive as input parts; read them directly and refer to what they actually contain.`
 
 export interface ChatTurn {
   role: 'user' | 'assistant'
@@ -61,7 +61,7 @@ function extractYouTubeUrls(text: string): string[] {
 // Gemini's function-calling contract (verified against the live API, not just
 // docs): a functionCall part can carry a `thoughtSignature` sibling field, and
 // omitting it on the follow-up request is a hard 400 ("missing thought_signature"),
-// not a silent degradation — so we always echo the model's turn back verbatim
+// not a silent degradation - so we always echo the model's turn back verbatim
 // (parts, ids, signatures and all) rather than reconstructing it. Multiple
 // functionCall parts can arrive in one turn (parallel calls); their responses
 // all go back together in a single `role: 'function'` turn.
@@ -145,7 +145,7 @@ export async function callGemini(
     const functionCalls = parts.filter((part: any) => part.functionCall)
 
     if (functionCalls.length === 0) {
-      // Skip any `thought: true` parts — thinking models can return an internal
+      // Skip any `thought: true` parts - thinking models can return an internal
       // reasoning trace alongside (or instead of, part-by-part) the real answer.
       const text = parts
         .filter((part: any) => !part.thought && typeof part.text === 'string')

@@ -21,7 +21,7 @@ interface MetricsViewProps {
 }
 
 function fmtDuration(ms: number): string {
-  if (!isFinite(ms) || ms < 0) return '—'
+  if (!isFinite(ms) || ms < 0) return '-'
   const days = ms / 86400000
   if (days >= 1) return `${days.toFixed(days >= 10 ? 0 : 1)}d`
   const hours = ms / 3600000
@@ -205,7 +205,7 @@ export default function MetricsView({ tasks, users, boards }: MetricsViewProps) 
         </CardHeader>
         <CardContent>
           {timeInStatus.length === 0 ? (
-            <p className="py-4 text-sm text-muted-foreground">Not enough status-change history yet — this fills in as tasks move between statuses.</p>
+            <p className="py-4 text-sm text-muted-foreground">Not enough status-change history yet. This fills in as tasks move between statuses.</p>
           ) : (
             <div className="space-y-3">
               {timeInStatus.map((s) => (
@@ -258,7 +258,7 @@ export default function MetricsView({ tasks, users, boards }: MetricsViewProps) 
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base"><CheckCircle2 className="h-4 w-4" /> Recently completed — entry to close</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base"><CheckCircle2 className="h-4 w-4" /> Recently completed: entry to close</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {recentCompleted.length === 0 ? (
@@ -278,9 +278,9 @@ export default function MetricsView({ tasks, users, boards }: MetricsViewProps) 
                 {recentCompleted.map(({ task, created, closedAt, cycleMs }) => (
                   <tr key={task.id} className="border-b last:border-0">
                     <td className="max-w-[16rem] truncate py-2 pr-4">{task.title}</td>
-                    <td className="px-4 py-2 text-muted-foreground">{boardTitleById[task.board_id] || boardTitleById[task.column?.board_id] || '—'}</td>
-                    <td className="px-4 py-2">{isFinite(created) ? new Date(created).toLocaleDateString('en-US') : '—'}</td>
-                    <td className="px-4 py-2">{closedAt ? new Date(closedAt).toLocaleDateString('en-US') : '—'}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{boardTitleById[task.board_id] || boardTitleById[task.column?.board_id] || '-'}</td>
+                    <td className="px-4 py-2">{isFinite(created) ? new Date(created).toLocaleDateString('en-US') : '-'}</td>
+                    <td className="px-4 py-2">{closedAt ? new Date(closedAt).toLocaleDateString('en-US') : '-'}</td>
                     <td className="py-2 pl-4 font-medium">{fmtDuration(cycleMs as number)}</td>
                   </tr>
                 ))}

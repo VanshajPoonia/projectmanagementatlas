@@ -5,7 +5,7 @@
 --
 -- ⚠️ This deliberately RE-OPENS the gap 095 closed. RLS still stands behind it (every public
 -- table has RLS enabled and no policy admits a NULL auth.uid()), which is why the gap was
--- latent rather than live — but there is no good reason to run this except to unblock a
+-- latent rather than live - but there is no good reason to run this except to unblock a
 -- regression you have actually observed and can name.
 --
 -- If something broke after 095, prefer a targeted GRANT for the specific object over this

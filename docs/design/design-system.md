@@ -1,7 +1,7 @@
 # Design System
 
 _Prompt 2 deliverable. The system **extends** the existing Cal.com-inspired foundation in
-[`DESIGN.md`](../../DESIGN.md) and `app/globals.css` — it does not replace established components
+[`DESIGN.md`](../../DESIGN.md) and `app/globals.css` - it does not replace established components
 (no measured reason to). New shell primitives were added alongside the existing shadcn set._
 
 ## 1. Design tokens (source: `app/globals.css`, Tailwind v4 CSS-first)
@@ -18,7 +18,7 @@ themes are fully defined; the shell uses semantic tokens only (never hard-coded 
 | `--destructive` | `#ef4444` | `#ef4444` | errors/danger |
 | `--border` / `--input` / `--ring` | `#e5e7eb` / … / `#111` | `#27272a` / … / `#fafafa` | hairlines, focus ring |
 | `--sidebar*` | white family | `#141414` family | shell chrome (already present) |
-| `--radius` | `0.625rem` | — | corner rounding base |
+| `--radius` | `0.625rem` | - | corner rounding base |
 
 Richer brand values (status colours, badge palette, dark navy surfaces) are catalogued in
 `DESIGN.md`; promote them into `globals.css` as semantic tokens when a feature needs them.
@@ -43,18 +43,18 @@ Richer brand values (status colours, badge palette, dark navy surfaces) are cata
   show a "soon" label; active items set `aria-current` + background; empty/permission states are
   icon + heading + description.
 - When status colour is introduced for work items (Phase 1+), each state must also carry a shape or
-  glyph, and be announced to assistive tech — not conveyed by hue alone.
+  glyph, and be announced to assistive tech - not conveyed by hue alone.
 
 ## 5. Accessibility rules (baseline for all shell work)
 
 1. Keyboard operability for every interactive element; visible focus ring (`--ring`, `ring-2`).
 2. `aria-current`, `aria-expanded`, `aria-label` on nav controls; a Skip-to-content link.
-3. Respect `prefers-reduced-motion` — animations are `motion-safe:` only.
+3. Respect `prefers-reduced-motion` - animations are `motion-safe:` only.
 4. Never communicate meaning by colour alone (§4).
-5. Layout must remain usable at 200%/320% zoom — use relative units, `truncate`, flex/grid; no fixed
+5. Layout must remain usable at 200%/320% zoom - use relative units, `truncate`, flex/grid; no fixed
    pixel widths on text containers.
 6. Theme-aware: light + dark both styled; the viewer's theme wins.
-7. Automated checks (RTL + axe over primary nav) — follow-up under R-01.
+7. Automated checks (RTL + axe over primary nav) - follow-up under R-01.
 
 ## 6. Component inventory
 
@@ -62,24 +62,24 @@ Richer brand values (status colours, badge palette, dark navy surfaces) are cata
 card, dialog, drawer, dropdown-menu, input, label, popover, scroll-area, select, tabs, textarea.
 
 **Added in this slice** (`components/ui/`):
-- `tooltip` — Radix tooltip (used for collapsed-sidebar labels).
-- `skeleton` — reduced-motion-aware loading placeholder.
-- `breadcrumb` — location trail primitive.
-- `command` — cmdk wrapper (`CommandDialog`, input/list/group/item…).
+- `tooltip` - Radix tooltip (used for collapsed-sidebar labels).
+- `skeleton` - reduced-motion-aware loading placeholder.
+- `breadcrumb` - location trail primitive.
+- `command` - cmdk wrapper (`CommandDialog`, input/list/group/item…).
 
 **Shell composition** (`components/shell/`):
-- `nav-model.ts` — IA/route map + pure helpers (`visibleGroups`, `activeNavId`) · **unit-tested**.
-- `sidebar-state.ts` + `use-sidebar-state.ts` — persisted collapse state · pure part **unit-tested**.
-- `nav-icons.tsx` — icon-key → lucide map.
+- `nav-model.ts` - IA/route map + pure helpers (`visibleGroups`, `activeNavId`) · **unit-tested**.
+- `sidebar-state.ts` + `use-sidebar-state.ts` - persisted collapse state · pure part **unit-tested**.
+- `nav-icons.tsx` - icon-key → lucide map.
 - `app-sidebar.tsx` · `app-topbar.tsx` · `breadcrumbs.tsx` · `command-palette.tsx` · `states.tsx`
   (`EmptyState`, `PermissionDenied`).
-- `app-shell.tsx` — composes sidebar + topbar + palette + mobile bottom nav; skip link; a11y.
+- `app-shell.tsx` - composes sidebar + topbar + palette + mobile bottom nav; skip link; a11y.
 
 ## 7. Adoption plan (incremental, per owner decision)
 
-1. **This slice** — foundation only (primitives + shell components + tests + docs); nothing in the
+1. **This slice** - foundation only (primitives + shell components + tests + docs); nothing in the
    live dashboards changes. Zero regression risk.
-2. **Next slice** — wrap `/dashboard` and `/admin` in `AppShell`, mapping today's tabs to the nav
+2. **Next slice** - wrap `/dashboard` and `/admin` in `AppShell`, mapping today's tabs to the nav
    model (the shell reads `?tab=` for active state already).
-3. **Following slices** — promote `My Work`, `Projects`, `Inbox` from tabs to real routes, one PR
+3. **Following slices** - promote `My Work`, `Projects`, `Inbox` from tabs to real routes, one PR
    each, flipping their `nav-model` status from `planned` to `live`.

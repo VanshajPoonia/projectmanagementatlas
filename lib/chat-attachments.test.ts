@@ -7,7 +7,7 @@ import {
 } from './chat-attachments'
 
 describe('chat attachment limits', () => {
-  it('allows up to 50 MB — the Supabase Free per-file ceiling (migration 093)', () => {
+  it('allows up to 50 MB - the Supabase Free per-file ceiling (migration 093)', () => {
     expect(MAX_CHAT_ATTACHMENT_BYTES).toBe(50 * 1024 * 1024)
     expect(validateChatAttachment({
       name: 'clip.mp4', type: 'video/mp4', size: MAX_CHAT_ATTACHMENT_BYTES,

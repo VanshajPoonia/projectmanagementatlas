@@ -4,12 +4,12 @@ import { Lock } from 'lucide-react'
 import { isBookingLinkActive, isValidBookingToken } from '@/lib/appointment-booking'
 import BookingForm from '@/components/appointments/booking-form'
 
-// Public, unauthenticated view — always fetch fresh, never cache availability.
+// Public, unauthenticated view - always fetch fresh, never cache availability.
 export const dynamic = 'force-dynamic'
 
 // Service-role client: this route is the ONLY place a host's settings/restrictions
 // are read without a session, and only ever for the single host a validated
-// booking token points at — mirrors app/share/[token]/page.tsx exactly.
+// booking token points at - mirrors app/share/[token]/page.tsx exactly.
 function adminDb() {
   return createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,13 +58,13 @@ export default async function BookPage({ params }: { params: Promise<{ token: st
       .select('min_duration_minutes, max_duration_minutes, required_lead_time_hours, allow_same_day, allow_overlaps, max_overlaps, timezone')
       .eq('user_id', link.host_user_id)
       .maybeSingle(),
-    // 'reason' is deliberately excluded — a public visitor should never learn
+    // 'reason' is deliberately excluded - a public visitor should never learn
     // WHY the host is unavailable, only that they are.
     db
       .from('appointment_restrictions')
       .select('starts_on, ends_on, is_all_day, starts_at_time, ends_at_time, weekdays')
       .eq('user_id', link.host_user_id),
-    // Only start/end for confirmed appointments in the near future — no guest
+    // Only start/end for confirmed appointments in the near future - no guest
     // details are ever sent to the public page.
     db
       .from('appointments')

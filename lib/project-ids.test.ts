@@ -76,7 +76,7 @@ describe('the upcoming-numbers preview', () => {
 
 describe('the Central-time prefix', () => {
   it('uses Central time, not UTC, at the month boundary', () => {
-    // 2026-09-01T02:00Z is 2026-08-31 21:00 in Chicago — still August's prefix.
+    // 2026-09-01T02:00Z is 2026-08-31 21:00 in Chicago - still August's prefix.
     expect(centralYearMonth(new Date('2026-09-01T02:00:00Z'))).toBe('2608')
     // Six hours later it is genuinely September in Chicago too.
     expect(centralYearMonth(new Date('2026-09-01T08:00:00Z'))).toBe('2609')
@@ -93,7 +93,7 @@ describe('the Central-time prefix', () => {
   })
 
   it('does not crash on an unreadable timestamp', () => {
-    expect(formatClaimedAt('not-a-date')).toBe('—')
+    expect(formatClaimedAt('not-a-date')).toBe('-')
   })
 })
 

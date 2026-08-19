@@ -61,7 +61,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: REFUSAL_MESSAGES[refusal] }, { status: 409 })
     }
 
-    // Transfer board ownership BEFORE the delete, not after — after would be too late, the
+    // Transfer board ownership BEFORE the delete, not after - after would be too late, the
     // rows would already carry NULL. `created_by` on a board is not a byline: migration 061
     // makes it the only authority over a private board's membership list, with no admin
     // bypass. A NULL creator would freeze that list permanently for everyone.
@@ -84,7 +84,7 @@ export async function DELETE(request: Request) {
 
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId)
     if (authError) {
-      // The transfer already happened. Say so rather than reporting a clean failure — the
+      // The transfer already happened. Say so rather than reporting a clean failure - the
       // boards genuinely changed hands and the operator needs to know that.
       return NextResponse.json(
         {

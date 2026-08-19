@@ -151,7 +151,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
     a.click()
   }
 
-  // Open a clean, printable table in a new window — no file download required.
+  // Open a clean, printable table in a new window - no file download required.
   const printReport = () => {
     const escapeHtml = (value: string) =>
       value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -304,7 +304,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
               </div>
             </div>
 
-            {/* Status Filter — includes archived statuses so older tasks stay searchable */}
+            {/* Status Filter - includes archived statuses so older tasks stay searchable */}
             <div>
               <label className="text-sm font-medium mb-2 block">Status</label>
               <div className="flex flex-wrap gap-2">

@@ -4,7 +4,7 @@
 //
 // It replaces a pair of separate buttons (ThemeToggle + AccentThemePicker) that only ever
 // appeared together on the user dashboard. Collapsing them into a single popover is what
-// makes "customisable from any page" affordable — one 32px control fits in a board header,
+// makes "customisable from any page" affordable - one 32px control fits in a board header,
 // two plus a label did not.
 
 import { useEffect, useState } from 'react'
@@ -19,7 +19,7 @@ import { useAccent } from './accent-provider'
 
 /**
  * Deliberately excludes near-black. The old picker offered #111111 as a swatch, which is the
- * light theme's own --primary — choosing it in dark mode produced a near-black button on a
+ * light theme's own --primary - choosing it in dark mode produced a near-black button on a
  * near-black page. "Default" below is the correct way to ask for that, because it restores
  * whichever primary the active theme ships (#111111 light, #fafafa dark) instead of pinning
  * one of them. Every hue here clears 3:1 against both #ffffff and #0a0a0a.

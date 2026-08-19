@@ -44,8 +44,8 @@ export function AppTopbar({ user, breadcrumbs, onOpenCommand, actions }: AppTopb
   }
 
   return (
-    // Tighter gaps and padding below `sm`. At a 320px viewport — the WCAG 1.4.10 reflow
-    // target, equivalent to 320% zoom on a 1024px screen — the full-size spacing pushed the
+    // Tighter gaps and padding below `sm`. At a 320px viewport - the WCAG 1.4.10 reflow
+    // target, equivalent to 320% zoom on a 1024px screen - the full-size spacing pushed the
     // action cluster 76px past the viewport and made the whole page scroll sideways.
     <header className="bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40 flex h-14 items-center gap-1.5 border-b px-2 backdrop-blur sm:gap-3 sm:px-4">
       <div className="min-w-0 flex-1">

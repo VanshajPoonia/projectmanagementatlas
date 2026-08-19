@@ -40,7 +40,7 @@ const DEFAULT_SETTINGS: SettingsRow = {
   timezone: 'America/Chicago',
 }
 
-/** Blank input means "no limit", which the schema stores as NULL — not 0. */
+/** Blank input means "no limit", which the schema stores as NULL - not 0. */
 function toNullableInt(value: string): number | null {
   const trimmed = value.trim()
   if (!trimmed) return null
@@ -71,7 +71,7 @@ export default function AppointmentsView({ userId }: { userId: string }) {
         .order('starts_on', { ascending: true }),
     ])
 
-    // No settings row yet is the normal first-run state, not an error — the
+    // No settings row yet is the normal first-run state, not an error - the
     // defaults below mirror the column defaults in migration 080.
     if (settingsResult.data) setSettings({ ...DEFAULT_SETTINGS, ...settingsResult.data })
 

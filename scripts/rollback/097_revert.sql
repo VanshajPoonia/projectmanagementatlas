@@ -23,7 +23,7 @@ BEGIN
   IF to_regclass('public.user_favorites') IS NOT NULL THEN
     RAISE EXCEPTION '097 rollback: user_favorites still exists';
   END IF;
-  RAISE NOTICE '097 rollback OK — user_favorites dropped';
+  RAISE NOTICE '097 rollback OK - user_favorites dropped';
 END
 $post$;
 

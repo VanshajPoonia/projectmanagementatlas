@@ -35,7 +35,7 @@ let storagePathA
 let failures = 0
 
 function check(label, condition) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}`)
   if (!condition) failures++
 }
 
@@ -205,8 +205,8 @@ try {
 
   /* ── shared check-offs (migration 087) ──────────────────────────
      A calendar is a shared plan, so "was this posted?" is a fact about the item.
-     Before 087 a fellow member saw zero check rows and the client — which infers
-     "missed" from the absence of a row — painted every past item red even though a
+     Before 087 a fellow member saw zero check rows and the client - which infers
+     "missed" from the absence of a row - painted every past item red even though a
      teammate had already marked it posted. These four assertions are that bug. */
   const { data: bSeesACheck } = await userB
     .from('marketing_calendar_checks').select('id,user_id,status').eq('item_id', itemAId)
@@ -214,7 +214,7 @@ try {
     (bSeesACheck?.length ?? 0) === 1 && bSeesACheck[0].user_id === userAId && bSeesACheck[0].status === 'posted')
 
   // A member may clear a shared mark (un-ticking must actually delete), but may not
-  // forge one under someone else's name — INSERT/UPDATE stay user_id = auth.uid().
+  // forge one under someone else's name - INSERT/UPDATE stay user_id = auth.uid().
   const { error: bForgeError } = await userB
     .from('marketing_calendar_checks')
     .insert({ item_id: itemAId, user_id: userAId, status: 'missed' })
@@ -271,7 +271,7 @@ try {
   if (itemBId) {
     try { await admin.from('marketing_calendar_items').delete().eq('id', itemBId) } catch {}
   }
-  // calendar_id is ON DELETE RESTRICT — calendars can only be removed once no item
+  // calendar_id is ON DELETE RESTRICT - calendars can only be removed once no item
   // references them anymore, i.e. after the item deletes above.
   if (calendarAId) {
     try { await admin.from('marketing_calendars').delete().eq('id', calendarAId) } catch {}

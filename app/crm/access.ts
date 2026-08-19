@@ -6,8 +6,8 @@ import { loadShellData, type ShellData } from '@/lib/shell-data'
  * The one gate every CRM route calls.
  *
  * It answers two questions the RLS policies cannot: is there a session at all, and is the CRM
- * module switched on. RLS is still the authority on *rows* — nothing here re-implements
- * visibility — but a disabled module should not render a shell and then show empty tables, and
+ * module switched on. RLS is still the authority on *rows* - nothing here re-implements
+ * visibility - but a disabled module should not render a shell and then show empty tables, and
  * a signed-out visitor should be sent to /login rather than shown a 403-shaped page.
  *
  * Returns null when access is refused so the caller can choose where to redirect.
@@ -40,7 +40,7 @@ export async function requireCrmAccess(supabase: SupabaseClient): Promise<{
   const shell = await loadShellData(supabase)
   const module = shell.modules.find(m => m.module_key === 'crm')
 
-  // No row, or an unreadable table, is treated as off — deliberately STRICTER than
+  // No row, or an unreadable table, is treated as off - deliberately STRICTER than
   // lib/modules.ts's generic fallback, where an unknown key stays available so a failure to
   // read app_modules never hides working features. Both paths land on refused: a missing row
   // makes `find` undefined, and an unreadable table makes loadShellData return

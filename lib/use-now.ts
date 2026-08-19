@@ -3,8 +3,8 @@
 // A clock that does not break hydration.
 //
 // Any view that renders "3.4 days old" or "48 min in this status" is reading the current time
-// during render. On a server-rendered page that is evaluated twice — once on the server, once
-// on the client a moment later — and the two answers differ, so React reports a hydration
+// during render. On a server-rendered page that is evaluated twice - once on the server, once
+// on the client a moment later - and the two answers differ, so React reports a hydration
 // mismatch and throws away the subtree. The CRM tables hit this on every row.
 //
 // The fix is to make the first client render agree with the server by construction: the server

@@ -1,4 +1,4 @@
--- Revert 104_crm_integrity_fixes.sql — back to 103's behaviour.
+-- Revert 104_crm_integrity_fixes.sql - back to 103's behaviour.
 --
 -- ⚠️ This deliberately restores three defects. Only run it if 104 itself is causing a problem
 -- worse than the ones it fixes, which is unlikely: after this the status-change carriers can

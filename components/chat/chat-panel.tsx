@@ -171,7 +171,7 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
     const file = e.target.files?.[0]
     if (!file || !selectedUser) return
 
-    // The bucket enforces both of these too (migration 092) — checking here just
+    // The bucket enforces both of these too (migration 092) - checking here just
     // turns a failed upload into a readable message.
     const validationError = validateChatAttachment(file)
     if (validationError) {
@@ -181,7 +181,7 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
     }
 
     const mimeType = resolveChatAttachmentMimeType(file)!
-    // The path MUST start with the sender's id — the object policies read that back
+    // The path MUST start with the sender's id - the object policies read that back
     // to decide who may upload and delete.
     const filePath = buildChatAssetPath(currentUserId, mimeType)
 

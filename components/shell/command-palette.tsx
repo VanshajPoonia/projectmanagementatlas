@@ -60,7 +60,7 @@ const SEARCH_LIMIT = 6
  *
  * Sections follow the plan's Power-K-inspired model: Recent, Go to, Search results,
  * Create, and context actions for whatever is currently open. Search queries live work
- * through the session client, so RLS decides what a given person can find — the palette
+ * through the session client, so RLS decides what a given person can find - the palette
  * cannot surface a task its user could not already open.
  */
 export function CommandPalette({

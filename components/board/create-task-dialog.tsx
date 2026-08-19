@@ -53,7 +53,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
   const taskStatuses = useTaskStatuses()
   /**
    * Only statuses this board actually has a column for. The submit handler below refuses
-   * anything else, and used to do so *after* the whole form was filled in — with "ask an
+   * anything else, and used to do so *after* the whole form was filled in - with "ask an
    * admin" as the remedy even when the person reading it was the admin. Cancelled stays
    * excluded on top of that: it is an archive destination, reached by moving existing work
    * there, not somewhere new work is created.
@@ -64,8 +64,8 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
   )
 
   // Unsaved-change protection. Escape, the X, or a click on the overlay used to throw away
-  // everything typed here — title, description, assignees, links, tags and the first comment
-  // — with no warning at all.
+  // everything typed here - title, description, assignees, links, tags and the first comment
+  // - with no warning at all.
   //
   // The baseline is "an untouched form", not the values the dialog opened with: `status` and
   // `visibility` are pre-filled from the column and a default, so including them would make a
@@ -437,7 +437,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
               Tags
             </label>
             {allTags.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No tags yet — create one from a task&apos;s details after saving.</p>
+              <p className="text-xs text-muted-foreground">No tags yet. Create one from a task&apos;s details after saving.</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {allTags.map((tag) => {
@@ -515,7 +515,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
               {/* Scoping the list to what the board can take introduces one new way to reach a
                   dead end: a board whose only column is Cancelled now has nothing to offer. An
                   empty dropdown reads as a broken control, so say what is wrong and who fixes
-                  it — the board banner above has the one-click remedy for an admin. */}
+                  it - the board banner above has the one-click remedy for an admin. */}
               {creatableStatuses.length === 0 && (
                 <p className="text-xs text-muted-foreground">
                   This board has no column for any status a new task can start in. An admin can

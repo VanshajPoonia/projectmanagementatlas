@@ -19,7 +19,7 @@ const FEATURE_GROUPS: { title: string; items: string[] }[] = [
     items: [
       'Kanban boards with columns, subtasks, and inline edits',
       'Task detail view: assignees, due dates, priority, tags, comments, attachments',
-      'Private boards — only members can see them',
+      'Private boards - only members can see them',
       'Admin-managed statuses and an activity log on every task',
     ],
   },
@@ -74,7 +74,7 @@ export function HelpDialog() {
   return (
     <>
       {/* Hidden below `sm`. It is opened with `?`, it lists keyboard shortcuts, and on a
-          390px topbar it was the fifth icon squeezing the breadcrumb — the one control here
+          390px topbar it was the fifth icon squeezing the breadcrumb - the one control here
           that a phone has no use for. Still reachable by keyboard on any device that has one. */}
       <Button
         variant="outline"

@@ -4,8 +4,8 @@ function text(value: unknown) {
   return String(value ?? '').trim().toLowerCase()
 }
 
-// Map a single status string — a canonical status *key* ('in_progress', 'cancelled', …) or a
-// free-text column title — to one of the three coarse buckets used for overdue/open math,
+// Map a single status string - a canonical status *key* ('in_progress', 'cancelled', …) or a
+// free-text column title - to one of the three coarse buckets used for overdue/open math,
 // reports and the AI assistant. Substring matching is reliable on canonical keys; it is only
 // unreliable on arbitrary column titles, which is why callers prefer the FK (status_key) below.
 function bucketFromText(value: string): NormalizedTaskStatus {
@@ -36,7 +36,7 @@ export function getNormalizedTaskStatus(task: any): NormalizedTaskStatus {
     || columnTitle.includes('complete')
     || columnTitle.includes('cancel')
   ) {
-    // "Cancelled" is a closed/terminal state like Done — grouping it here keeps
+    // "Cancelled" is a closed/terminal state like Done - grouping it here keeps
     // cancelled work out of the "overdue" and "still open" buckets.
     return 'done'
   }
@@ -77,7 +77,7 @@ interface StatusLike { key: string; label: string }
 interface ColumnLike { id: string; title: string; status_key?: string | null; tasks?: unknown[] }
 
 /**
- * A column deliberately set up for this exact status — either linked via columns.status_key
+ * A column deliberately set up for this exact status - either linked via columns.status_key
  * (the "Link Status" column menu) or titled to match the status label precisely. Used when a
  * user explicitly picks a status from a task's dropdown: relocating the card into a column that
  * only *coincidentally* buckets the same way (see bucketFromText) would silently move the task
@@ -104,17 +104,17 @@ export function findExactColumnForStatus(
 }
 
 /**
- * The statuses this board can actually accept — the ones findExactColumnForStatus resolves to
+ * The statuses this board can actually accept - the ones findExactColumnForStatus resolves to
  * a column. Everything else would be refused at save time, so a picker must not offer it.
  *
  * Why this exists: the status pickers listed every status the org had defined regardless of
  * the board in front of you, and the check that rejects an impossible one runs on SUBMIT. So
  * you could pick "Cancelled" on a board with no Cancelled column, fill the whole form, and
- * only then be told no — with "ask an admin" as the remedy even when you were the admin.
+ * only then be told no - with "ask an admin" as the remedy even when you were the admin.
  * Filtering the list at the source turns that into an option that was never offered.
  *
- * ⚠️ Fails OPEN. When `columns` is null/undefined — not loaded yet, or a caller that has no
- * board in scope — every status is returned rather than none. An empty picker reads as a
+ * ⚠️ Fails OPEN. When `columns` is null/undefined - not loaded yet, or a caller that has no
+ * board in scope - every status is returned rather than none. An empty picker reads as a
  * broken control, and the submit-time guard is still there to catch a genuinely impossible
  * choice; a picker that is briefly too generous is strictly better than one that is empty.
  */
@@ -132,7 +132,7 @@ export function statusesAvailableOnBoard<T extends StatusLike>(
  * that offers to create the missing column, so the gap is visible to the person who can
  * close it instead of surfacing as a refusal to whoever hits it first.
  *
- * Unlike statusesAvailableOnBoard this fails CLOSED — unknown columns means nothing is
+ * Unlike statusesAvailableOnBoard this fails CLOSED - unknown columns means nothing is
  * reported missing, because prompting someone to fix a board you have not finished reading
  * is worse than staying quiet.
  */
@@ -145,7 +145,7 @@ export function statusesMissingFromBoard<T extends StatusLike>(
 }
 
 /**
- * What a status picker should offer: the statuses the board can accept, plus — always — the
+ * What a status picker should offer: the statuses the board can accept, plus - always - the
  * one the record already holds, even when no column represents it any more.
  *
  * That last part is the CRM review's lesson (CLAUDE.md): a select whose value is not among

@@ -4,7 +4,7 @@ import { AlertTriangle, Inbox, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // Shared calm-state primitives for the shell. Every major destination owes the viewer
-// four of these — loading, empty, error, permission denied — because the alternative is
+// four of these - loading, empty, error, permission denied - because the alternative is
 // a blank screen that could mean any of them.
 //
 // All of them pair an icon with text: colour is never the only cue.
@@ -65,7 +65,7 @@ export function PermissionDenied({
 
 /**
  * Something failed. Says what broke, whether the previous state is still safe, and
- * offers a retry — a bare "Something went wrong" leaves the user unable to decide
+ * offers a retry - a bare "Something went wrong" leaves the user unable to decide
  * whether to try again or stop touching it.
  */
 export function ErrorState({

@@ -7,7 +7,7 @@
 -- the bucket is removed.
 --
 -- ⚠️ DESTRUCTIVE IF LARGE FILES EXIST. Dropping storage_path orphans every object
--- in the task-assets bucket — the bytes stay in Storage, still billed against the
+-- in the task-assets bucket - the bytes stay in Storage, still billed against the
 -- 1 GB Free-plan budget, but nothing in the database points at them any more and
 -- the UI can no longer offer them for download. The guard below refuses to run
 -- while any storage-backed attachment exists, so this is safe to attempt blind:
@@ -17,7 +17,7 @@
 --     SELECT id, task_id, file_name, storage_path
 --     FROM public.task_attachments WHERE storage_path IS NOT NULL;
 --
--- The inline base64 path is not touched by 091 or by this file — those rows and
+-- The inline base64 path is not touched by 091 or by this file - those rows and
 -- 043's octet_length constraint are unaffected either way.
 --
 -- This is not a numbered migration and the runner will not pick it up. Apply it
@@ -42,7 +42,7 @@ BEGIN
   END IF;
 END $$;
 
--- Object policies first — they reference the bucket.
+-- Object policies first - they reference the bucket.
 DROP POLICY IF EXISTS "View task attachment objects" ON storage.objects;
 DROP POLICY IF EXISTS "Upload task attachment objects" ON storage.objects;
 DROP POLICY IF EXISTS "Delete task attachment objects" ON storage.objects;

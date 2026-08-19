@@ -36,7 +36,7 @@ const stamp = Date.now()
 
 let failures = 0
 function check(label, condition, detail) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}${!condition && detail ? `  (${detail})` : ''}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}${!condition && detail ? `  (${detail})` : ''}`)
   if (!condition) failures++
 }
 function section(name) {
@@ -65,7 +65,7 @@ async function makePerson(label, platformRole) {
 }
 
 // ⚠️ tasks.visibility DEFAULTs to 'assigned', not 'board'. A task left at the default is
-// invisible to anyone who is not its creator, an assignee, or an admin — regardless of board
+// invisible to anyone who is not its creator, an assignee, or an admin - regardless of board
 // membership. The first version of this harness omitted it and read the resulting "member
 // cannot see the task" as a privacy bug, when it was the visibility feature working exactly
 // as designed. Fixture tasks are board-visible so that membership is the variable under
@@ -108,7 +108,7 @@ const dropMembership = async (boardId, userId) => {
   await admin.from('board_members').delete().eq('board_id', boardId).eq('user_id', userId)
 }
 
-/** Every write below goes straight at PostgREST — this IS the "mutation without UI" case. */
+/** Every write below goes straight at PostgREST - this IS the "mutation without UI" case. */
 async function canRead(client, taskId) {
   const { data } = await client.from('tasks').select('id').eq('id', taskId)
   return (data ?? []).length === 1
@@ -188,7 +188,7 @@ try {
     !(await canRead(people.super.client, secret.taskId)))
 
   // An admin who holds a restricted role is restricted. task_restricted_by_board_role is
-  // ANDed on top of can_manage_task, so it can only ever remove access — including theirs.
+  // ANDed on top of can_manage_task, so it can only ever remove access - including theirs.
   await setRole(open.id, people.admin.id, 'guest')
   check('admin marked as a guest: loses write access on that board',
     !(await canCreate(people.admin.client, open.columnId, people.admin.id)))
@@ -203,7 +203,7 @@ try {
   check('outsider: cannot fetch the private board itself by id', (boardByUrl ?? []).length === 0)
   // Migration 099. Before it, `columns` still carried 001's "any signed-in user" SELECT
   // policy, so the titles and order of a private board's columns were readable by anyone
-  // with the board id — the structure of private work, if not its contents.
+  // with the board id - the structure of private work, if not its contents.
   const { data: colByUrl } = await people.outsider.client.from('columns').select('id').eq('board_id', secret.id)
   check('outsider: cannot enumerate the private board\'s columns', (colByUrl ?? []).length === 0)
   check('admin: also cannot enumerate them, since role alone grants nothing on a private board',
@@ -369,7 +369,7 @@ try {
     console.log(`${failures} check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All checks passed — the access matrix and audit trail behave as specified.')
+    console.log('All checks passed - the access matrix and audit trail behave as specified.')
   }
 } catch (e) {
   console.error('access-matrix harness error:', e.message)
@@ -377,7 +377,7 @@ try {
 } finally {
   // Order matters: tasks and columns reference boards, and boards reference profiles, so a
   // user deleted too early makes the board delete fail and leaves fixtures behind. A failure
-  // here is reported loudly rather than swallowed — a silent cleanup failure is how the
+  // here is reported loudly rather than swallowed - a silent cleanup failure is how the
   // teams harness ended up with four orphaned accounts.
   const cleanup = async (label, fn) => {
     try { const { error } = await fn(); if (error) console.error(`  cleanup ${label}: ${error.message}`) }

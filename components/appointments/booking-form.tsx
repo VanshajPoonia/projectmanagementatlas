@@ -30,7 +30,7 @@ export default function BookingForm({ token, hostName, settings, restrictions, e
   const [error, setError] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState<{ startsAt: string; endsAt: string; cancelToken: string } | null>(null)
 
-  // All times shown are the HOST's timezone, never the visitor's browser zone —
+  // All times shown are the HOST's timezone, never the visitor's browser zone -
   // showing two zones side by side invites exactly the kind of off-by-one-hour
   // confusion this form exists to avoid.
   const { startMs, endMs } = useMemo(() => {
@@ -41,7 +41,7 @@ export default function BookingForm({ token, hostName, settings, restrictions, e
 
   const preview = useMemo(() => {
     if (!Number.isFinite(startMs)) return null
-    // Convenience only — book_appointment() re-validates everything server-side.
+    // Convenience only - book_appointment() re-validates everything server-side.
     return describeSlotProblem({ settings, restrictions, existing, startMs, endMs })
   }, [settings, restrictions, existing, startMs, endMs])
 

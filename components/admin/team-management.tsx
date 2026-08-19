@@ -26,7 +26,7 @@ import {
 
 // Super-admin-only team management. The route already gates on super_admin
 // (app/admin/super-admin/page.tsx redirects everyone else) and migration 094's RLS enforces it
-// again in Postgres, so this component does no permission checking of its own — it would be a
+// again in Postgres, so this component does no permission checking of its own - it would be a
 // third copy of a rule that is already stated twice.
 //
 // Membership is a people x teams grid rather than a per-team member picker: the owner asked to

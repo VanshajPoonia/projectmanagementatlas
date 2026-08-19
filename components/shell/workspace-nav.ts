@@ -4,12 +4,12 @@
 // destination had to be added there *and* kept consistent with nav-model.ts's north-star
 // map. Now the user dashboard, the admin dashboard, and the standalone routes (/my-work,
 // /crm) all call this, so a module a super_admin switches on or off appears and
-// disappears everywhere at once — sidebar, mobile bar, and ⌘K palette included.
+// disappears everywhere at once - sidebar, mobile bar, and ⌘K palette included.
 //
 // ⚠️ admin-dashboard.tsx used to keep its own hand-written copy of this list, and it was
 // never updated when `appointments` (080) or `crm` (103) were added. Switching either on
-// in Super Admin → Modules changed /dashboard, /my-work and /crm but left /admin — the
-// screen an admin actually lands on — with no way to reach the module at all.
+// in Super Admin → Modules changed /dashboard, /my-work and /crm but left /admin - the
+// screen an admin actually lands on - with no way to reach the module at all.
 //
 // Pure data (no React, no icons) so it stays unit-testable; hosts attach badges.
 
@@ -25,7 +25,7 @@ export interface WorkspaceNavOptions {
    */
   canUseMarketingCalendar: boolean
   /**
-   * `audit.view` (migration 098) — admin + super_admin. Passed in for the same reason as
+   * `audit.view` (migration 098) - admin + super_admin. Passed in for the same reason as
    * marketing: the caller already resolved it against lib/capabilities.ts. Not a module,
    * deliberately: a log you can switch off is not a log.
    */
@@ -93,7 +93,7 @@ export function buildWorkspaceNav({
   if (on('project_ids')) {
     items.push({ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: tab('project-ids'), status: 'live' })
   }
-  // Same host rule as reports — the access log only renders inside the admin dashboard.
+  // Same host rule as reports - the access log only renders inside the admin dashboard.
   if (isAdmin && canViewAudit) {
     items.push({ id: 'access-log', label: 'Access log', icon: 'history', href: tab('access-log'), status: 'live' })
   }
@@ -102,7 +102,7 @@ export function buildWorkspaceNav({
 
   // No 'admin-home' item: for an admin, Home *is* /admin. It used to sit here pointing at
   // '/admin' next to a Home pointing at '/dashboard?tab=tasks' that redirected to the same
-  // screen — two entries, one destination.
+  // screen - two entries, one destination.
   if (role === 'super_admin') {
     groups.push({
       id: 'admin',
@@ -117,7 +117,7 @@ export function buildWorkspaceNav({
 }
 
 /**
- * Which tabs `?tab=` may address on this viewer's dashboard — the tab-hosted items only,
+ * Which tabs `?tab=` may address on this viewer's dashboard - the tab-hosted items only,
  * dropping standalone routes like /my-work and /crm.
  *
  * Hosts feed this straight to resolveActiveTab so the set of reachable tabs and the set of

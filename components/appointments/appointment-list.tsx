@@ -50,7 +50,7 @@ export default function AppointmentList({ userId, timezone }: { userId: string; 
   const upcoming = appointments.filter(a => a.status === 'confirmed' && new Date(a.starts_at).getTime() >= nowMs)
   const past = appointments.filter(a => a.status !== 'confirmed' || new Date(a.starts_at).getTime() < nowMs)
 
-  // Host cancellation reuses the SAME RPC the public cancel page calls — the
+  // Host cancellation reuses the SAME RPC the public cancel page calls - the
   // host can read their own row's cancel_token (the SELECT policy has no
   // column restriction), so no separate host-cancel RPC is needed.
   const cancel = async (row: AppointmentRow) => {

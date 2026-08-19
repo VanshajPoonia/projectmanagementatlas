@@ -5,7 +5,7 @@ import { requireCrmAccess } from './access'
 
 /**
  * CRM dashboard: the operating picture. Everything on it is derived from crm_orders and
- * crm_order_status_history — nothing is stored pre-aggregated, so the numbers cannot drift
+ * crm_order_status_history - nothing is stored pre-aggregated, so the numbers cannot drift
  * away from the records they claim to summarise.
  */
 export default async function CrmPage() {
@@ -16,7 +16,7 @@ export default async function CrmPage() {
   const [{ data: statuses }, { data: orders }, { data: history }, { data: clients }] =
     await Promise.all([
       // Every status, archived included. An order can still be sitting in an archived one, and
-      // a status missing from the lookup map reads as "not terminal" — which would have counted
+      // a status missing from the lookup map reads as "not terminal" - which would have counted
       // every won order as live pipeline the day someone archived Won. Pickers filter, queries
       // do not. See activeStatuses() in lib/crm.ts.
       supabase.from('crm_statuses').select('*').order('position'),

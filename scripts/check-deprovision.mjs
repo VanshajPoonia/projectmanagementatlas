@@ -3,7 +3,7 @@
 //
 // Before 100 this was impossible twice over: `boards.created_by` and `tasks.created_by` were
 // NOT NULL with an ON DELETE SET NULL rule, so Postgres aborted every delete of anyone who
-// had created a board — which, since only admins create boards here, meant no admin could
+// had created a board - which, since only admins create boards here, meant no admin could
 // ever be deprovisioned. And where a delete did succeed, CASCADE quietly took the person's
 // comments and any company-wide bookmarks they had made with them.
 //
@@ -29,7 +29,7 @@ const stamp = Date.now()
 
 let failures = 0
 const check = (label, ok, detail) => {
-  console.log(`${ok ? 'PASS' : 'FAIL'} — ${label}${!ok && detail ? `  (${detail})` : ''}`)
+  console.log(`${ok ? 'PASS' : 'FAIL'} - ${label}${!ok && detail ? `  (${detail})` : ''}`)
   if (!ok) failures++
 }
 const section = (n) => console.log(`\n── ${n} ${'─'.repeat(Math.max(0, 62 - n.length))}`)
@@ -157,7 +157,7 @@ try {
     console.log(`${failures} check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All checks passed — the account goes, the work stays.')
+    console.log('All checks passed - the account goes, the work stays.')
   }
 } catch (e) {
   console.error('deprovision harness error:', e.message)

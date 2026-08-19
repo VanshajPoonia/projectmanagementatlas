@@ -112,11 +112,11 @@ export default function GlobalSearch({ isAdmin }: GlobalSearchProps) {
             if (e.key === 'Escape') setOpen(false)
           }}
           // "Search tasks... (multiple words = match all)" is 44 characters and a phone
-          // shows about 32, so the rule it was teaching got cut mid-word — "= matc" — on
+          // shows about 32, so the rule it was teaching got cut mid-word - "= matc" - on
           // every narrow screen. The hint now appears where it is actually actionable: in
           // the empty result, at the moment a search has come back with nothing.
           placeholder="Search tasks"
-          title="Multiple words match all — a task must contain every one"
+          title="Multiple words match all - a task must contain every one"
           className="pl-8 pr-8"
         />
         {query && (

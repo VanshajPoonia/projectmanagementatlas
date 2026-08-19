@@ -40,7 +40,7 @@ const claimedIds = []
 let failures = 0
 
 function check(label, condition) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}`)
   if (!condition) failures++
 }
 
@@ -64,7 +64,7 @@ async function signIn(credentials) {
   return client
 }
 
-// The prefix the function should be producing — Central time, not this machine's zone and not
+// The prefix the function should be producing - Central time, not this machine's zone and not
 // UTC, so a run at 11pm CT on the last of the month still agrees with the database.
 function centralYearMonth() {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -108,7 +108,7 @@ try {
   check('the claimer\'s name is snapshotted onto the row', first?.grabbed_by_name === 'Ledger Owner')
   check('the claim is timestamped', Boolean(first?.grabbed_at))
 
-  // There is no parameter to claim on someone else's behalf — passing one finds no overload.
+  // There is no parameter to claim on someone else's behalf - passing one finds no overload.
   const { error: spoofError } = await owner.rpc('claim_project_id', {
     p_client_name: 'Spoofed', p_company_id: null, p_grabbed_by: ownerId,
   })
@@ -156,7 +156,7 @@ try {
     check(`a ${who} cannot delete a used project ID`, stillThere?.project_id === first.project_id)
   }
 
-  // The number itself, its claimer and its timestamp are not rewritable by anyone — the column
+  // The number itself, its claimer and its timestamp are not rewritable by anyone - the column
   // grant stops it before any policy is consulted.
   for (const [column, value] of [
     ['project_id', `${expectedPrefix}1000`],

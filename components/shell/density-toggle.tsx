@@ -23,7 +23,7 @@ const ICONS: Record<Density, typeof Rows2> = {
  * Per-user view density. Sits in the topbar next to the theme controls because it is
  * the same kind of setting: presentation, chosen by the viewer, affecting nobody else.
  *
- * The active option is marked with a checkmark glyph as well as accent styling — a
+ * The active option is marked with a checkmark glyph as well as accent styling - a
  * colour alone is not an accessible state cue.
  */
 export function DensityToggle({

@@ -2,7 +2,7 @@
 --
 -- ⚠️ This REOPENS the leak: every signed-in user regains the ability to read the column
 -- titles, order and status keys of every private board. Only run it if 099 is actively
--- breaking something, and prefer diagnosing that instead — the fix is one policy and its
+-- breaking something, and prefer diagnosing that instead - the fix is one policy and its
 -- helper has been in use on tasks since 061.
 
 BEGIN;

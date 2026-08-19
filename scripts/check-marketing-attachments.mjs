@@ -39,7 +39,7 @@ let storagePath
 let failures = 0
 
 function check(label, condition) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}`)
   if (!condition) failures++
 }
 
@@ -76,7 +76,7 @@ try {
   if (ownerSignInError) throw new Error(`owner sign-in: ${ownerSignInError.message}`)
   if (outsiderSignInError) throw new Error(`outsider sign-in: ${outsiderSignInError.message}`)
 
-  // Items now belong to a named calendar (migration 085) with its own explicit member list —
+  // Items now belong to a named calendar (migration 085) with its own explicit member list -
   // the owner must be seeded as a member before their own anon-key insert can pass RLS.
   const { data: calendar, error: calendarError } = await admin
     .from('marketing_calendars')
@@ -183,7 +183,7 @@ try {
   if (itemId) {
     try { await admin.from('marketing_calendar_items').delete().eq('id', itemId) } catch {}
   }
-  // calendar_id is ON DELETE RESTRICT — the calendar can only be removed once no item
+  // calendar_id is ON DELETE RESTRICT - the calendar can only be removed once no item
   // references it anymore, i.e. after the item delete above.
   if (calendarId) {
     try { await admin.from('marketing_calendars').delete().eq('id', calendarId) } catch {}

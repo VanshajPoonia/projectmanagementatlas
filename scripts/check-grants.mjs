@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Grant-posture harness — the pass/fail gate for migration 095.
+// Grant-posture harness - the pass/fail gate for migration 095.
 //
 // 095 asserts the *catalog* state in its own post-conditions. This harness asserts the
 // *behaviour* through real clients, which is the part that would actually break the app:
@@ -38,7 +38,7 @@ const createdUserIds = []
 let failures = 0
 
 function check(label, condition, extra = '') {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}${extra ? ` (${extra})` : ''}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}${extra ? ` (${extra})` : ''}`)
   if (!condition) failures++
 }
 
@@ -64,7 +64,7 @@ try {
 
   // Writes must be refused too, not merely filtered.
   const { error: writeErr } = await signedOut.from('tasks').insert({ title: 'anon write', position: 0 })
-  check('signed-out cannot write', Boolean(writeErr), writeErr?.message ?? 'NO ERROR — insert was accepted')
+  check('signed-out cannot write', Boolean(writeErr), writeErr?.message ?? 'NO ERROR - insert was accepted')
 
   // --- The SECURITY DEFINER helper anon could previously call ---------------------------------
   const { error: helperErr } = await signedOut.rpc('is_board_member', {
@@ -92,7 +92,7 @@ try {
   // --- A new account still gets its profiles row -----------------------------------------------
   // This is the on_auth_user_created trigger (restored by 096) firing handle_new_user, whose
   // implicit EXECUTE TO PUBLIC 095 revoked. Trigger functions do not have EXECUTE re-checked
-  // when they fire, but that is exactly the kind of claim worth proving rather than assuming —
+  // when they fire, but that is exactly the kind of claim worth proving rather than assuming -
   // and this check is what caught the trigger being missing from the sandbox in the first place.
   //
   // Deliberately uses the admin createUser path rather than the public signUp: the trigger is on
@@ -155,7 +155,7 @@ try {
     console.log(`${failures} check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All checks passed — anon is shut out, public booking still works, signed-in users unaffected.')
+    console.log('All checks passed - anon is shut out, public booking still works, signed-in users unaffected.')
   }
 } catch (e) {
   console.error('grants harness error:', e.message)

@@ -1,7 +1,7 @@
 /**
  * Pure helpers for the public booking flow (migration 082). Token validation
- * mirrors lib/public-share.ts's isValidShareToken — same token shape (two
- * UUIDv4s, hyphens stripped, 64 hex chars) — kept as a separate, duplicated
+ * mirrors lib/public-share.ts's isValidShareToken - same token shape (two
+ * UUIDv4s, hyphens stripped, 64 hex chars) - kept as a separate, duplicated
  * function rather than imported, so the two capability systems (share links,
  * booking links) stay decoupled and one can change shape without touching
  * the other.
@@ -24,7 +24,7 @@ import {
 
 /**
  * The host's local calendar date and minutes-since-midnight for an instant, in
- * their configured timezone — mirrors book_appointment()'s
+ * their configured timezone - mirrors book_appointment()'s
  * `timezone(settings.timezone, p_starts_at)` conversion in SQL. Restrictions
  * are wall-clock, so comparing against the visitor's browser timezone (or
  * UTC) would check the wrong calendar day whenever it differs from the host's.
@@ -47,18 +47,18 @@ function zonedDateAndMinutes(ms: number, timeZone: string): { dateKey: string; m
 
 /**
  * Converts a wall-clock date+time in an arbitrary IANA zone to the epoch ms
- * instant it represents — the reverse of zonedDateAndMinutes above. Used by
+ * instant it represents - the reverse of zonedDateAndMinutes above. Used by
  * the booking form to turn "2026-08-01, 14:00, America/Chicago" (what the
  * visitor picks, always shown in the HOST's zone to avoid a confusing double
  * conversion) into the UTC instant the API and database expect.
  *
  * Standard offset-probing trick (no timezone library): format the same instant
  * in both the target zone and UTC, then use the difference between those two
- * wall-clock readings as the zone's offset at that specific date — this is
+ * wall-clock readings as the zone's offset at that specific date - this is
  * DST-correct because the offset is derived from the real date in question,
  * not a fixed constant. Both readings are parsed back through the same `Date`
  * constructor, so whatever implicit local-timezone bias that introduces is
- * identical on both sides and cancels out in the subtraction — correctness
+ * identical on both sides and cancels out in the subtraction - correctness
  * does not depend on the host machine's own timezone.
  */
 export function zonedTimeToUtcMs(dateStr: string, timeStr: string, timeZone: string): number {
@@ -111,7 +111,7 @@ export function countOverlappingAppointments(
  * Client-side pre-check so the booking form can show a reason before the
  * visitor submits, instead of only after the server rejects it. Requires the
  * requested instants to fall on the same local calendar day in the host's
- * timezone — appointments spanning midnight are out of scope (matches the
+ * timezone - appointments spanning midnight are out of scope (matches the
  * server-side rule), so any UI built on this should not let a visitor pick a
  * range that crosses midnight in the first place.
  */
@@ -152,7 +152,7 @@ export function describeSlotProblem(params: {
     restrictionBlocksInterval(r, startParts.dateKey, { start: startParts.minutes, end: endParts.minutes }),
   )
   // Deliberately generic: a public visitor should never learn WHY a host is
-  // unavailable, only that they are — mirrors the server-side RPC.
+  // unavailable, only that they are - mirrors the server-side RPC.
   if (blocked) return 'That time is not available.'
 
   const overlapCount = countOverlappingAppointments(existing, startMs, endMs)

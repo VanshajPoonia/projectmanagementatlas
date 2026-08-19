@@ -1,16 +1,16 @@
 /**
- * Booking confirmation email — deliberately NOT in lib/email.ts.
+ * Booking confirmation email - deliberately NOT in lib/email.ts.
  *
  * Every exported function in lib/email.ts is a Server Action (that file starts
  * with 'use server'), which Next.js makes directly callable from the client
  * regardless of what imports it. lib/email.ts's own functions guard against
  * that by requiring requireSession() on every call. A booking confirmation is
- * sent to an UNAUTHENTICATED visitor, so it cannot use that gate — and adding
+ * sent to an UNAUTHENTICATED visitor, so it cannot use that gate - and adding
  * an ungated exception to lib/email.ts would create a new public, unguarded
  * "send an email" endpoint.
  *
  * This module is a plain (non-Server-Action) file, imported only by
- * app/api/book/[token]/route.ts — a Route Handler, not a Server Action, so it
+ * app/api/book/[token]/route.ts - a Route Handler, not a Server Action, so it
  * is never independently invocable the way an exported 'use server' function
  * would be. The route itself never trusts a client-supplied email address:
  * it always re-reads guest_email from the appointment row it just inserted,
@@ -24,7 +24,7 @@ import { Resend } from 'resend'
 const FROM = process.env.EMAIL_FROM || 'Project Manager <onboarding@resend.dev>'
 
 // Constructed lazily, only once RESEND_API_KEY is confirmed present (see
-// send() below) — Resend's constructor throws immediately when the key is
+// send() below) - Resend's constructor throws immediately when the key is
 // missing/empty, and unlike lib/email.ts (a 'use server' file, whose
 // top-level code Next.js does not eagerly evaluate the same way), this
 // module is imported by a plain Route Handler, which Next DOES fully load
@@ -124,7 +124,7 @@ export async function sendBookingConfirmationEmails(params: {
 /**
  * Only fired for a GUEST-initiated cancellation (the public /book/cancel/[token]
  * route). A host cancelling their own appointment from the in-app list already
- * knows it happened, so that path deliberately does not call this — sending
+ * knows it happened, so that path deliberately does not call this - sending
  * someone an email about their own just-completed action would be noise, not
  * information.
  */

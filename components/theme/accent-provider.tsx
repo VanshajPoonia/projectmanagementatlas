@@ -48,7 +48,7 @@ export function accentStorageKey(userId: string): string {
  * records it as deliberately kept: it is a cosmetic default, explicitly *not* access control,
  * and out of scope for the de-hardcoding work that removed the marketing-module email gate.
  * It moved here rather than being dropped because the dashboard is no longer where the accent
- * is decided — but the person still expects her dashboard to come up pink.
+ * is decided - but the person still expects her dashboard to come up pink.
  */
 export function accountDefaultAccent(email: string | null | undefined): string {
   return String(email ?? '').trim().toLowerCase() === 'kayla@goatlasgo.us'
@@ -59,7 +59,7 @@ export function accountDefaultAccent(email: string | null | undefined): string {
 /**
  * The custom properties an accent overrides.
  *
- * Deliberately only the *action* tokens — background, foreground, card and border are left
+ * Deliberately only the *action* tokens - background, foreground, card and border are left
  * alone. An accent is the colour of the primary button and the focus ring, not a re-skin of
  * every surface, and tinting surfaces here would fight the light/dark palette rather than sit
  * on top of it.
@@ -109,7 +109,7 @@ export function AccentProvider({
   /**
    * The accent to use when the user has stored none. Carries the one personalization the repo
    * keeps deliberately (see accountDefaultAccent), so Reset restores that colour rather than
-   * dropping the person to plain black — which is how the old useAccentTheme behaved.
+   * dropping the person to plain black - which is how the old useAccentTheme behaved.
    */
   defaultColor?: string
   children: ReactNode
@@ -147,7 +147,7 @@ export function AccentProvider({
       try {
         localStorage.setItem(accentStorageKey(userId), next)
       } catch {
-        /* private mode / quota — the colour still applies for this session */
+        /* private mode / quota - the colour still applies for this session */
       }
     },
     [userId],
@@ -179,7 +179,7 @@ export function AccentProvider({
 }
 
 /**
- * Read the accent. Safe to call outside an AccentProvider — a shell that has not been wrapped
+ * Read the accent. Safe to call outside an AccentProvider - a shell that has not been wrapped
  * yet gets the default and inert setters rather than a crash, so adding the picker to a new
  * surface is never a two-step change.
  */

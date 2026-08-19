@@ -1,4 +1,4 @@
-// Favourites — the per-user starred list behind the sidebar's Favourites block, the star on
+// Favourites - the per-user starred list behind the sidebar's Favourites block, the star on
 // each board card, and the palette's Favourites group.
 //
 // Pure logic only (the React hook lives in use-favorites.ts) so ordering, de-duplication and
@@ -6,7 +6,7 @@
 // split as recent-records.ts / use-recent-records.ts.
 //
 // Storage is `public.user_favorites` (migration 097), not localStorage. Recents and density
-// are per browser on purpose — they are cheap to lose. A curated star list is not.
+// are per browser on purpose - they are cheap to lose. A curated star list is not.
 
 export type FavoriteEntityType = 'board' | 'view'
 
@@ -75,7 +75,7 @@ export function setFavorite(
   )
   if (!shouldBeFavorite) return without
   if (without.length === favorites.length) {
-    // Not present — add it. The id is a placeholder until the insert returns; nothing keys
+    // Not present - add it. The id is a placeholder until the insert returns; nothing keys
     // off it, and the next refetch replaces the row wholesale.
     return [
       ...without,
@@ -88,7 +88,7 @@ export function setFavorite(
       },
     ]
   }
-  // Already present and asked to stay — return the original list untouched so React can skip
+  // Already present and asked to stay - return the original list untouched so React can skip
   // the re-render.
   return [...favorites]
 }
@@ -104,14 +104,14 @@ export function sortFavorites(favorites: readonly FavoriteRow[]): FavoriteRow[] 
  * Match favourites back to real, visible things.
  *
  * This is the load-bearing function. `user_favorites` rows carry a bare uuid with no foreign
- * key (entity_id is polymorphic) and no visibility check in their RLS policy — deliberately,
+ * key (entity_id is polymorphic) and no visibility check in their RLS policy - deliberately,
  * see 097's header. So a favourite can outlive its target three ways: the board was deleted,
  * the board was archived out of the caller's query, or the board went private and the caller
  * is no longer a member. All three arrive here identically, as "the id isn't in the targets
  * map", and all three are handled by dropping it.
  *
  * That means a stale star renders as nothing rather than as a broken link, and a user whose
- * access was revoked stops seeing the name of the board they lost — the favourite row still
+ * access was revoked stops seeing the name of the board they lost - the favourite row still
  * exists in their list, but it is inert. Silence is the correct failure here, so this
  * deliberately does not surface an "unavailable" placeholder.
  */

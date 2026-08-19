@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Gate for "is this column empty?" — the question a client cannot answer (migration 108).
+// Gate for "is this column empty?" - the question a client cannot answer (migration 108).
 //
 // board-view.tsx used to answer it from `column.tasks`, which is RLS-filtered.
 // private.can_view_task hides ARCHIVED tasks from everyone except a super_admin, while
@@ -8,7 +8,7 @@
 // refused by 074's trigger with a message contradicting the screen.
 //
 // This pins all three halves: the filtered view really is short, the honest count really is
-// complete, and 074 really does refuse — because the count is only advice, and the trigger is
+// complete, and 074 really does refuse - because the count is only advice, and the trigger is
 // what makes losing the work impossible.
 
 import { createClient } from '@supabase/supabase-js'
@@ -35,7 +35,7 @@ let boardId
 const userIds = []
 let failures = 0
 
-const check = (label, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'} — ${label}`); if (!ok) failures++ }
+const check = (label, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'} - ${label}`); if (!ok) failures++ }
 
 async function makeUser(email, role) {
   const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true })

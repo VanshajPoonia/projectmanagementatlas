@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     // This used to be a bare .update().eq(), which silently depends on the on_auth_user_created
     // trigger having already inserted the row. An UPDATE matching zero rows is NOT an error in
     // PostgREST, so if the trigger were ever missing this route would report success while
-    // leaving the account with no profile at all — and since profiles.role drives every
+    // leaving the account with no profile at all - and since profiles.role drives every
     // permission check, that user would be broken on arrival with nothing to show why.
     // (The dev sandbox was in exactly that state: the trigger lives on auth.users, outside the
     // `public` schema, so a public-only clone dropped it. Migration 096 restores it.)

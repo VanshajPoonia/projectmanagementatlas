@@ -12,7 +12,7 @@ import {
 
 /**
  * Per-user, persisted "recently viewed" list. SSR-safe: renders empty on the server and
- * first paint, then hydrates from localStorage after mount — same pattern as
+ * first paint, then hydrates from localStorage after mount - same pattern as
  * useSidebarState, and the reason the Recent block can't cause a hydration mismatch.
  */
 export function useRecentRecords(userId: string) {
@@ -74,7 +74,7 @@ export function useRememberRecord(userId: string, entry: Omit<RecentRecord, 'at'
         serializeRecentRecords(rememberRecord(current, { key, label, href, kind })),
       )
     } catch {
-      // Storage unavailable — recents are a convenience, never a hard requirement.
+      // Storage unavailable - recents are a convenience, never a hard requirement.
     }
   }, [userId, key, label, href, kind])
 }

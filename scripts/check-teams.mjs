@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Teams access-control harness — the pass/fail gate for migration 094.
+// Teams access-control harness - the pass/fail gate for migration 094.
 //
 // 094 narrows team management from is_admin_user() (admin + super_admin) to
 // is_super_admin_user(). That narrowing is the whole point, so the harness proves all three
@@ -40,7 +40,7 @@ const createdTeamIds = []
 let failures = 0
 
 function check(label, condition, extra = '') {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}${extra ? ` (${extra})` : ''}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}${extra ? ` (${extra})` : ''}`)
   if (!condition) failures++
 }
 
@@ -122,7 +122,7 @@ try {
     check(`${label}: cannot remove a team member`, (removed ?? []).length === 0)
   }
 
-  // --- Super admin CAN manage — the capability the owner actually asked for -----------------
+  // --- Super admin CAN manage - the capability the owner actually asked for -----------------
   const { data: superMade } = await asSuper
     .from('teams').insert({ name: `harness-team-c-${stamp}`, position: 92 }).select('id')
   check('super_admin: CAN create a team', (superMade ?? []).length === 1)
@@ -154,7 +154,7 @@ try {
   // "Add everyone" sends an upsert with ignoreDuplicates so a member added between computing
   // the batch and sending it doesn't fail the whole insert. 094 grants team_members
   // SELECT/INSERT/DELETE but deliberately NOT UPDATE, so this pins that ON CONFLICT DO NOTHING
-  // really does take the no-UPDATE path — if it ever needs UPDATE, the grant is wrong.
+  // really does take the no-UPDATE path - if it ever needs UPDATE, the grant is wrong.
   const batch = [
     { team_id: teamA.id, user_id: ids.subject }, // already a member -> the conflicting row
     { team_id: teamA.id, user_id: ids.user },    // genuinely new
@@ -183,7 +183,7 @@ try {
     (seeded ?? []).map((t) => t.name).join(', '))
 
   // 094 backfilled every profile that existed WHEN IT RAN. Anyone who signed up afterwards is
-  // deliberately in no team — joining is a super-admin decision, not something a signup
+  // deliberately in no team - joining is a super-admin decision, not something a signup
   // silently performs (see `unassigned` below).
   //
   // The cutoff is read from the migration ledger rather than approximated by "everyone except
@@ -235,7 +235,7 @@ try {
     console.log(`${failures} check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All checks passed — only super admins manage teams; everyone signed in can read them.')
+    console.log('All checks passed - only super admins manage teams; everyone signed in can read them.')
   }
 } catch (e) {
   console.error('teams harness error:', e.message)

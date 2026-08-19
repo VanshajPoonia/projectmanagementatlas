@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Guest/client board-role verification harness — the pass/fail gate for migration 065
+// Guest/client board-role verification harness - the pass/fail gate for migration 065
 // (board_members.role). Creates one throwaway user + one throwaway board/column/task via the
 // service role, gives the user each restricted role in turn, and asserts through a REAL anon-key
 // session (exactly like the app) that they can view but cannot create/update/delete tasks on it.
@@ -28,7 +28,7 @@ let userId, boardId, columnId, taskId
 let failures = 0
 
 function check(label, condition) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}`)
   if (!condition) failures++
 }
 
@@ -40,7 +40,7 @@ try {
   userId = created.user.id
 
   // boards.created_by -> profiles(id), not auth.users(id) directly. The on_auth_user_created
-  // trigger creates the profiles row, but don't race it — upsert explicitly so this harness
+  // trigger creates the profiles row, but don't race it - upsert explicitly so this harness
   // doesn't depend on trigger timing.
   const { error: profileErr } = await admin
     .from('profiles')
@@ -106,7 +106,7 @@ try {
     check(`${role}: cannot delete the task`, (deleted ?? []).length === 0)
   }
 
-  // Control: a plain 'member' CAN still update — proves the restriction is role-specific.
+  // Control: a plain 'member' CAN still update - proves the restriction is role-specific.
   await setRole('member')
   await resetTitle()
   const { data: memberUpdated } = await userClient.from('tasks').update({ title: 'member edit' }).eq('id', taskId).select('title')
@@ -117,13 +117,13 @@ try {
     console.log(`${failures} check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All checks passed — guest/client roles are read-only, member is unaffected.')
+    console.log('All checks passed - guest/client roles are read-only, member is unaffected.')
   }
 } catch (e) {
   console.error('board-role harness error:', e.message)
   process.exitCode = 1
 } finally {
-  // The postgrest query builder isn't a real Promise (no .catch()) — use try/catch instead.
+  // The postgrest query builder isn't a real Promise (no .catch()) - use try/catch instead.
   if (taskId) { try { await admin.from('tasks').delete().eq('id', taskId) } catch {} }
   if (columnId) { try { await admin.from('columns').delete().eq('id', columnId) } catch {} }
   if (boardId) { try { await admin.from('boards').delete().eq('id', boardId) } catch {} }

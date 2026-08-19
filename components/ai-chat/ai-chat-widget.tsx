@@ -108,7 +108,7 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
         continue
       }
       if (f.size > MAX_BYTES) {
-        toast.error(`${f.name} is over 3 MB — paste a YouTube link for long videos.`)
+        toast.error(`${f.name} is over 3 MB. Paste a YouTube link for long videos.`)
         continue
       }
       total += f.size
@@ -247,8 +247,8 @@ export default function AiChatWidget({ userId }: AiChatWidgetProps) {
             {!loadingHistory && messages.length === 0 && (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
                 {mode === 'web'
-                  ? 'Ask me anything — I can search the web, read a link, or look at a file or YouTube video you share.'
-                  : "Ask about your work — what's due this week, what's on a board, or your marketing calendar."}
+                  ? 'Ask me anything - I can search the web, read a link, or look at a file or YouTube video you share.'
+                  : "Ask about your work - what's due this week, what's on a board, or your marketing calendar."}
               </div>
             )}
             {messages.map((m) => (

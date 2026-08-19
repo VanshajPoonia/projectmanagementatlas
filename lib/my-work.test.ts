@@ -73,7 +73,7 @@ describe('buildMyWork sections', () => {
     expect(section(result, 'this-week')?.tasks.map((t) => t.id)).toEqual(['week', 'started'])
   })
 
-  // A far-future or undated task is real work, but it is not urgent — it must not leak
+  // A far-future or undated task is real work, but it is not urgent - it must not leak
   // into a section that the user reads as "act on this now".
   it('keeps far-future and undated work out of every urgency section', () => {
     const result = buildMyWork(mine, mine, ME, NOW)
@@ -121,7 +121,7 @@ describe('the delegated section', () => {
   })
 
   // Work I created *and* still own belongs in my own urgency sections, not in a list
-  // headed "waiting on someone else" — I am the someone else.
+  // headed "waiting on someone else" - I am the someone else.
   it('excludes work I both created and still hold', () => {
     const result = buildMyWork([alsoMine], [alsoMine], ME, NOW)
     expect(section(result, 'delegated')).toBeUndefined()
@@ -192,7 +192,7 @@ describe('myWorkSummary', () => {
 describe('unanswered questions', () => {
   // These are declared rather than approximated on purpose. If a future slice adds
   // dependencies or approvals, the corresponding entry should be removed here and a real
-  // section added — this test is the reminder that the list is load-bearing.
+  // section added - this test is the reminder that the list is load-bearing.
   it('names each gap and what would close it', () => {
     expect(UNANSWERED_QUESTIONS.length).toBeGreaterThan(0)
     for (const entry of UNANSWERED_QUESTIONS) {

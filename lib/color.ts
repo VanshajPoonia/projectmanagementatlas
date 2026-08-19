@@ -52,7 +52,7 @@ function rgbToHex(r: number, g: number, b: number): string {
  *
  * Needed because these surfaces are tinted rather than filled: a channel chip is the company
  * colour at 8% over the card, so the colour a label actually sits on is neither the company
- * colour nor the card. Measuring contrast against either one gets the wrong answer — which is
+ * colour nor the card. Measuring contrast against either one gets the wrong answer - which is
  * exactly how a 4.19:1 label read as "fine" for so long.
  */
 export function compositeOver(foreground: string, alpha: number, background: string): string {
@@ -65,7 +65,7 @@ export function compositeOver(foreground: string, alpha: number, background: str
 /**
  * The same colour, lightened or darkened just enough to be readable on `background`.
  *
- * Hue and saturation are preserved — the point is that SRG still looks like SRG — and only
+ * Hue and saturation are preserved - the point is that SRG still looks like SRG - and only
  * lightness moves, one step at a time toward whichever end of the scale the background is
  * not. Returns the input unchanged when it already passes, and gives up gracefully at pure
  * white/black rather than looping.

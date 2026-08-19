@@ -27,12 +27,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Source spreadsheets with sensitive business data — never commit
+# Source spreadsheets with sensitive business data - never commit
 *.xlsx
 *.xls
 *.csv
 
-# Local Claude Code permission grants — machine-specific, not shared config.
+# Local Claude Code permission grants - machine-specific, not shared config.
 .claude/
 
 # macOS Finder metadata.

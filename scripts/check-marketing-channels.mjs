@@ -2,7 +2,7 @@
 // Write gate for marketing channel column ordering (migration 088).
 //
 // The bug this exists to prevent: marketing_channels' UPDATE policy is gated on
-// `profiles.role = 'admin'` LITERALLY, which excludes super_admin — so the two people
+// `profiles.role = 'admin'` LITERALLY, which excludes super_admin - so the two people
 // who actually run this calendar (both super_admin) would have silently failed every
 // reorder. The RPC is what makes ordering writable without also handing out renaming,
 // which would orphan events (marketing_calendar_items.channel is TEXT, no FK).
@@ -40,7 +40,7 @@ let seededChannelIds = []
 let failures = 0
 
 function check(label, condition) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}`)
   if (!condition) failures++
 }
 
@@ -114,7 +114,7 @@ try {
   /* ── 2. the order is shared, not per-viewer ──────────────────────── */
   check('another user reads the same order back', (await activeOrder(superAdmin)).join() === swapped.join())
 
-  /* ── 3. super_admin — the case that made the RPC necessary ───────── */
+  /* ── 3. super_admin - the case that made the RPC necessary ───────── */
   const superOrder = [...swapped].reverse()
   const { error: superReorderError } = await superAdmin
     .rpc('reorder_marketing_channels', { p_channel_ids: superOrder })
@@ -178,7 +178,7 @@ try {
   const { data: renameTargetRow } = await admin
     .from('marketing_channels').select('channel,label').eq('id', renameTarget).maybeSingle()
 
-  // Events referencing the channel by its TEXT value — the whole reason renaming is an RPC.
+  // Events referencing the channel by its TEXT value - the whole reason renaming is an RPC.
   // Seeded on whichever calendar exists; skipped entirely if the sandbox has none.
   const { data: someCalendar } = await admin
     .from('marketing_calendars').select('id').limit(1).maybeSingle()
@@ -207,7 +207,7 @@ try {
   if (seededItemIds.length > 0) {
     const { data: repointed } = await admin
       .from('marketing_calendar_items').select('channel').in('id', seededItemIds)
-    check('every event moved with the channel — none orphaned',
+    check('every event moved with the channel - none orphaned',
       repointed?.length === 2 && repointed.every(i => i.channel === renamedTo))
     check('the RPC reported how many events it moved', moved === 2)
     const { count: orphans } = await admin

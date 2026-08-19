@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Pass/fail gate for migration 091 — the admin-only large-file path for task attachments.
+// Pass/fail gate for migration 091 - the admin-only large-file path for task attachments.
 //
 // The client hides the "Large file" toggle from non-admins, but that is presentation.
 // What actually has to hold is the database: a non-admin must not be able to put an
@@ -9,7 +9,7 @@
 //
 // It also pins the things a future migration could quietly break: that the inline
 // base64 path still works untouched at 10 MB, that the two paths stay mutually
-// exclusive, and that a plain member can still DOWNLOAD what an admin uploaded —
+// exclusive, and that a plain member can still DOWNLOAD what an admin uploaded -
 // without which the whole feature would be useless.
 //
 // Non-destructive: every fixture is removed in `finally`. Run: pnpm check:task-attachments
@@ -43,14 +43,14 @@ const objectsToClean = []
 let failures = 0
 
 function check(label, condition) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}`)
   if (!condition) failures++
 }
 
 async function createUser({ email, password }, role) {
   const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true })
   if (error) throw new Error(`createUser ${email}: ${error.message}`)
-  // Don't race the on_auth_user_created trigger — set the role explicitly.
+  // Don't race the on_auth_user_created trigger - set the role explicitly.
   const { error: profileError } = await admin
     .from('profiles')
     .upsert({ id: data.user.id, email, role }, { onConflict: 'id' })
@@ -74,7 +74,7 @@ function pdfOfSize(bytes) {
 
 try {
   // 'admin' rather than 'super_admin' on purpose: private.is_admin_user() must be true
-  // for both (migration 047), and 'admin' is the weaker of the two — if the gate opens
+  // for both (migration 047), and 'admin' is the weaker of the two - if the gate opens
   // for this user it opens for super_admin too.
   adminId = await createUser(ADMIN_USER, 'admin')
   memberId = await createUser(MEMBER_USER, 'user')
@@ -93,7 +93,7 @@ try {
   if (colErr) throw new Error(`create column: ${colErr.message}`)
   columnId = column.id
 
-  // Created by the MEMBER so that can_manage_task passes for them — this proves the
+  // Created by the MEMBER so that can_manage_task passes for them - this proves the
   // large-file refusal below is about being a non-admin, not about lacking task access.
   const { data: task, error: taskErr } = await admin
     .from('tasks')
@@ -140,7 +140,7 @@ try {
   check('a storage-backed row carries no base64 payload', linkedRow?.file_data === null)
 
   // ---------------------------------------------------------------------------
-  // 3. The non-admin cannot take that path — at either layer.
+  // 3. The non-admin cannot take that path - at either layer.
   // ---------------------------------------------------------------------------
   const memberPath = `${taskId}/${crypto.randomUUID()}.pdf`
   const { error: memberUploadErr } = await memberClient.storage
@@ -168,7 +168,7 @@ try {
   )
 
   // ---------------------------------------------------------------------------
-  // 4. Control cases — the restriction is admin-specific, not a blanket break.
+  // 4. Control cases - the restriction is admin-specific, not a blanket break.
   // ---------------------------------------------------------------------------
   const { data: inlineRow, error: inlineErr } = await memberClient
     .from('task_attachments')
@@ -183,7 +183,7 @@ try {
     .select('id').single()
   check('non-admin CAN still use the inline base64 path (unchanged)', Boolean(inlineRow) && !inlineErr)
 
-  // Reading is deliberately NOT admin-gated — otherwise an admin could only attach
+  // Reading is deliberately NOT admin-gated - otherwise an admin could only attach
   // files nobody working the task could open.
   const { data: memberSees } = await memberClient
     .from('task_attachments')
@@ -222,12 +222,12 @@ try {
   check('a row cannot carry NEITHER a storage_path nor base64 data', Boolean(neitherErr))
 
   // ---------------------------------------------------------------------------
-  // 6. Someone with no access to the task sees nothing — can_view_task governs the
+  // 6. Someone with no access to the task sees nothing - can_view_task governs the
   //    object as well as the row, so a private board hides the bytes too.
   //
   //    This needs a genuinely unrelated third user. The member above cannot play the
   //    part: they CREATED the task, and can_view_task grants the creator access
-  //    regardless of board privacy — correctly, which is why an earlier version of
+  //    regardless of board privacy - correctly, which is why an earlier version of
   //    this check failed against a perfectly good policy.
   // ---------------------------------------------------------------------------
   outsiderId = await createUser(OUTSIDER_USER, 'user')
@@ -258,7 +258,7 @@ try {
     console.log(`${failures} task attachment check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All task attachment checks passed — large uploads are admin-only, reads are not.')
+    console.log('All task attachment checks passed - large uploads are admin-only, reads are not.')
   }
 } catch (error) {
   console.error('task attachment harness error:', error.message)

@@ -21,7 +21,7 @@ import {
 
 // The reading surface for migration 098's audit trail: who changed access to what, when.
 //
-// Read-only by construction, and not merely by convention — `authenticated` holds SELECT on
+// Read-only by construction, and not merely by convention - `authenticated` holds SELECT on
 // audit_events and nothing else, and the table has no INSERT/UPDATE/DELETE policy at all, so
 // there is no request this component could make that would alter the log. That is what makes
 // it worth reading.
@@ -69,7 +69,7 @@ export default function AccessLog({
       setError(null)
 
       // Actor names are resolved on read rather than frozen into the row, because "who did
-      // this" should follow a rename. The subject's name is frozen into `summary` instead —
+      // this" should follow a rename. The subject's name is frozen into `summary` instead -
       // that one is part of the historical statement.
       const actorIds = [...new Set(rows.map((row) => row.actor_id).filter(Boolean))] as string[]
       if (actorIds.length > 0) {
@@ -186,7 +186,7 @@ export default function AccessLog({
               const tone = toneOf(event)
               return (
                 <li key={event.id} className="flex items-start gap-3 px-3 py-2.5 text-sm">
-                  {/* Icon carries the meaning, colour only reinforces it — the same rule
+                  {/* Icon carries the meaning, colour only reinforces it - the same rule
                       the shared state primitives follow. */}
                   <span
                     className={cn(

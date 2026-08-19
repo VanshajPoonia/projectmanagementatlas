@@ -100,7 +100,7 @@ export function CrmDashboard({
         />
         <StatTile
           label="Avg. days to close"
-          value={summary.avgDaysToClose === null ? '—' : summary.avgDaysToClose.toFixed(1)}
+          value={summary.avgDaysToClose === null ? '-' : summary.avgDaysToClose.toFixed(1)}
           hint={
             summary.avgDaysToClose === null
               ? 'No orders have closed yet'
@@ -179,7 +179,7 @@ export function CrmDashboard({
                         {client ? ` · ${clientDisplayName(client)}` : ''}
                       </span>
                       <span className="text-muted-foreground block truncate text-xs">
-                        {ALERT_LABEL[alert.kind]} — {alert.detail}
+                        {ALERT_LABEL[alert.kind]} - {alert.detail}
                       </span>
                     </span>
                     <ArrowRight className="text-muted-foreground h-4 w-4 shrink-0" aria-hidden />

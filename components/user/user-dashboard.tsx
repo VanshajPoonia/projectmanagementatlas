@@ -75,7 +75,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
   const supabase = createClient()
   const isAdmin = user.role === 'admin' || user.role === 'super_admin'
   // Marketing calendars are now admin-creatable, named instances with their own member lists
-  // (migration 085) rather than one calendar hardcoded to a single owner — access is "admin, or
+  // (migration 085) rather than one calendar hardcoded to a single owner - access is "admin, or
   // a member of at least one calendar," not an email compare. See use-marketing-calendars.ts.
   const { calendars: marketingCalendars, refetch: refetchMarketingCalendars } = useMarketingCalendars(shell?.calendars)
   const canUseMarketingCalendar = isAdmin || marketingCalendars.length > 0
@@ -104,7 +104,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
   const orderedBoards = useMemo(() => withFavoritesFirst(boards, favorites), [boards, favorites])
 
   // Module activation (PROMPT 3 "1-C"): app_modules is a singleton config table (one org, no
-  // org_id) — everything defaults enabled=true, so this is a no-op until a super_admin flips a
+  // org_id) - everything defaults enabled=true, so this is a no-op until a super_admin flips a
   // module off in Super Admin. 'tasks' (Home) is core and always on, not a registered module.
   const modules = useAppModules(shell?.modules)
   const showPersonal = isModuleEnabled(modules, 'personal_tasks')
@@ -117,13 +117,13 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
   const showAppointments = isModuleEnabled(modules, 'appointments')
   const showProjectIds = isModuleEnabled(modules, 'project_ids')
   // These two render outside the tab list, so they were seeded into app_modules by 066 but
-  // never consumed — switching either off in Super Admin changed nothing. Gated here so the
+  // never consumed - switching either off in Super Admin changed nothing. Gated here so the
   // toggle means what it says.
   const showAiAssistant = isModuleEnabled(modules, 'ai_assistant')
   const showBookmarks = isModuleEnabled(modules, 'bookmarks')
 
   // Built from the shared workspace nav so this sidebar, the /my-work route, /crm and the
-  // ⌘K palette can't drift apart — a module switched on or off appears and disappears from
+  // ⌘K palette can't drift apart - a module switched on or off appears and disappears from
   // all of them at once. The chat unread badge is attached here because it is JSX, which
   // the pure builder deliberately doesn't deal in.
   const sidebarGroups: SidebarNavGroup[] = useMemo(
@@ -192,7 +192,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
   const activeLabel = sidebarGroups[0].items.find((i) => i.id === activeTab)?.label ?? 'Home'
 
   // ⌘K "Create" entries. Both are navigations to where the create affordance already
-  // lives, and each is gated on the module that owns it — a create shortcut for a
+  // lives, and each is gated on the module that owns it - a create shortcut for a
   // section a super_admin switched off would be a dead end.
   const paletteCommands: Command[] = useMemo(() => {
     const list: Command[] = []
@@ -250,7 +250,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
       {showAiAssistant && <AiChatWidget userId={user.id} />}
 
       <div className="flex min-h-0 flex-1">
-        {/* Bookmarks sidebar — hidden on mobile. The whole rail is gated, not just its
+        {/* Bookmarks sidebar - hidden on mobile. The whole rail is gated, not just its
             contents, so switching the module off doesn't leave an empty collapsible strip. */}
         {showBookmarks && <aside className={cn(
           "hidden md:flex flex-col flex-shrink-0 border-r bg-muted/10 overflow-hidden transition-[width] duration-200 ease-in-out",
@@ -526,7 +526,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
                   <EmptyState
                     icon={<Kanban />}
                     title="No boards yet"
-                    description="Boards are where work lives — a column per stage, a card per task. An admin creates them, so ask one to set up your first project board."
+                    description="Boards are where work lives - a column per stage, a card per task. An admin creates them, so ask one to set up your first project board."
                   />
                 ) : boardsViewMode === 'list' ? (
                   <div className="space-y-2">
@@ -556,7 +556,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {orderedBoards.map((board) => (
                     // `block` matters: without it the Link is inline, its Card overflows the
-                    // grid cell, and neighbouring cards overlap — which silently stole the
+                    // grid cell, and neighbouring cards overlap - which silently stole the
                     // click target from the star on the card to its left. The list view above
                     // already had it; the tile view never did. Found by the browser pass, not
                     // by looking.
@@ -564,7 +564,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
                       <Card className="h-full hover:shadow-md transition-all cursor-pointer hover:border-primary/30">
                         <CardHeader className="px-4 sm:px-6">
                           {/* min-w-0 is load-bearing. CardHeader is a CSS grid, and a grid
-                              item defaults to min-width:auto — it refuses to shrink below its
+                              item defaults to min-width:auto - it refuses to shrink below its
                               min-content width. Adding the star pushed this row's min-content
                               past the column, so the row rendered 91px wider than its own
                               card and the star landed on top of the next one. */}

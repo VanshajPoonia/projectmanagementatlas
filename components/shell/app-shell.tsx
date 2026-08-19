@@ -42,7 +42,7 @@ interface AppShellProps {
   /** Right-side topbar controls (theme, accent, account, …). */
   topbarActions?: React.ReactNode
   /**
-   * Host commands for the ⌘K palette — Create actions and context actions for whatever
+   * Host commands for the ⌘K palette - Create actions and context actions for whatever
    * is open. Each carries its own CapabilityDecision; see commands.ts.
    */
   commands?: Command[]
@@ -56,7 +56,7 @@ interface AppShellProps {
 /**
  * Unified application shell: persistent sidebar (desktop), sticky topbar with
  * breadcrumbs + command entry, keyboard command palette (⌘K), and a routed bottom
- * nav on mobile. Host-driven — pages pass their own nav groups + content.
+ * nav on mobile. Host-driven - pages pass their own nav groups + content.
  * Accessibility: skip-to-content link, keyboard-operable nav, motion-safe.
  *
  * The shell owns three per-user preferences, all persisted per user and per browser and
@@ -141,7 +141,7 @@ export function AppShell({
               aria-current={isActive ? 'page' : undefined}
               className={cn(
                 // min-w-0 so five labels share a 320px screen by truncating rather than
-                // forcing the whole page to scroll sideways — measured at the WCAG 1.4.10
+                // forcing the whole page to scroll sideways - measured at the WCAG 1.4.10
                 // reflow width, where "Marketing" alone pushed the bar 29px past the viewport.
                 'flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium sm:text-xs',
                 isActive ? 'text-primary' : 'text-muted-foreground',

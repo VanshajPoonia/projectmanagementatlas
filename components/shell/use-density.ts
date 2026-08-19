@@ -5,7 +5,7 @@ import { DEFAULT_DENSITY, densityStorageKey, parseDensity, type Density } from '
 
 /**
  * Per-user, persisted view density. SSR-safe: the default renders on the server and
- * first paint, then hydrates from localStorage after mount — same pattern as
+ * first paint, then hydrates from localStorage after mount - same pattern as
  * useSidebarState.
  *
  * `hydrated` is exposed so a surface that must not flash the wrong density (a long

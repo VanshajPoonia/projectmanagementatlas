@@ -3,9 +3,9 @@
 //
 // Two halves, because CLAUDE.md's own lesson from the guest/client work is that a green RLS
 // harness proves nothing on its own:
-//   1. ACCESS — anon sees nothing, an active member can work the pipeline, a plain member
+//   1. ACCESS - anon sees nothing, an active member can work the pipeline, a plain member
 //      cannot delete a client, and a deactivated account loses everything on the next query.
-//   2. INTEGRITY — the status history cannot be written, rewritten or deleted by the
+//   2. INTEGRITY - the status history cannot be written, rewritten or deleted by the
 //      application, and the trigger keeps it true no matter which path moves an order.
 //
 // The integrity half is the one that matters most: every report in the module is built on
@@ -36,7 +36,7 @@ let memberId, adminId, clientId, orderId
 let failures = 0
 
 function check(label, ok, extra = '') {
-  console.log(`${ok ? 'PASS' : 'FAIL'} — ${label}${extra ? `  (${extra})` : ''}`)
+  console.log(`${ok ? 'PASS' : 'FAIL'} - ${label}${extra ? `  (${extra})` : ''}`)
   if (!ok) failures++
 }
 
@@ -128,7 +128,7 @@ try {
      103 registered the trigger as BEFORE UPDATE *OF status*, so a write that set only the
      carriers never reached it, and the in-function early return skipped blanking them when
      the status was named but unchanged. Either way they persisted, and the NEXT transition
-     read them and stamped that stale disposition onto the interval it opened — the audit
+     read them and stamped that stale disposition onto the interval it opened - the audit
      trail asserting something that never happened. All three steps are pinned here. */
   await member
     .from('crm_orders')

@@ -48,7 +48,7 @@ describe('AppSidebar', () => {
 
   it('hides the group heading when collapsed (icon-only rail)', () => {
     render(<AppSidebar groups={groups} activeId="home" collapsed={true} onToggle={() => {}} />)
-    // The group heading genuinely disappears — it labels nothing focusable.
+    // The group heading genuinely disappears - it labels nothing focusable.
     expect(screen.queryByText('Work')).not.toBeInTheDocument()
     // Links still exist (icon-only), so navigation is preserved.
     expect(screen.getAllByRole('link').length).toBe(2)

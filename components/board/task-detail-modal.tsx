@@ -41,7 +41,7 @@ import {
 import SubtaskList from './subtask-list'
 
 // Mirrors the marketing calendar's custom-recurrence weekday row (and the booking
-// restriction dialog it was itself borrowed from) — 0=Sunday..6=Saturday.
+// restriction dialog it was itself borrowed from) - 0=Sunday..6=Saturday.
 const RECURRENCE_WEEKDAYS = [
   { value: 0, label: 'Sun' },
   { value: 1, label: 'Mon' },
@@ -81,7 +81,7 @@ interface TaskDetailModalProps {
   initialTab?: 'comments' | 'attachments' | 'links' | 'activity'
   /**
    * Fired when subtasks change. Separate from `onUpdate` because callers wire that to
-   * close the modal — ticking a subtask should refresh the board underneath, not
+   * close the modal - ticking a subtask should refresh the board underneath, not
    * dismiss the task you're working in.
    */
   onSubtaskChange?: () => void
@@ -137,15 +137,15 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   }, [open, taskId])
 
   // All five gates below come from lib/capabilities.ts, which is where the guest/client
-  // restriction (migrations 065/067) and the creator/assignee rules now live — one
+  // restriction (migrations 065/067) and the creator/assignee rules now live - one
   // definition shared with task-card and board-view instead of three copies.
   //
   // `platformRole` is read off the loaded profile rather than the isAdmin prop on
   // purpose: app/dashboard/board/[id]/page.tsx hardcodes isAdmin={false} so that route's
   // edit permissions stay non-admin, and passing both lets `task.attach.large` (migration
   // 091) still resolve for a real admin who opened the board from /dashboard. Both admin
-  // and super_admin count, because private.is_admin_user() — the function the RLS policy
-  // actually calls — is true for both (migration 047).
+  // and super_admin count, because private.is_admin_user() - the function the RLS policy
+  // actually calls - is true for both (migration 047).
   const actor: Actor = {
     userId: currentUserId ?? '',
     platformRole: (currentUser?.role as Actor['platformRole']) ?? 'user',
@@ -202,7 +202,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     // else only needs them on download, so skip pulling those (often large) blobs here.
     const images = data.filter((attachment: any) => attachment.file_type?.startsWith('image/'))
 
-    // Storage-backed rows (migration 091) carry no file_data at all — a thumbnail for
+    // Storage-backed rows (migration 091) carry no file_data at all - a thumbnail for
     // one comes from a short-lived signed URL instead of a base64 data URI.
     const inlineImageIds = images.filter((a: any) => !a.storage_path).map((a: any) => a.id)
     const storageImagePaths = images.filter((a: any) => a.storage_path).map((a: any) => a.storage_path)
@@ -327,7 +327,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     // Board columns are the source of truth for where a card sits, so when the
     // status changes here, relocate the card into the column that represents it
     // (same behaviour as the inline status dropdown on the tile). Only an exact
-    // column match counts — bucketing a status like "cancel" into whatever column
+    // column match counts - bucketing a status like "cancel" into whatever column
     // happens to share its done/in-progress/to-do bucket would silently move the
     // task somewhere the user didn't choose, so that's rejected instead.
     if (task?.status !== status) {
@@ -527,7 +527,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   }
 
   // The admin-only large-file path (migration 091). The object goes to Storage first;
-  // only if the metadata row then links successfully does the upload count as done —
+  // only if the metadata row then links successfully does the upload count as done -
   // otherwise the object is removed again so a failed link cannot leave bytes behind
   // eating into the 1 GB Free-plan storage budget with nothing pointing at them.
   // Mirrors uploadMarketingAssetForItem in components/marketing/marketing-calendar.tsx.
@@ -590,7 +590,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     console.log('[v0] Uploading file:', file.name, 'Size:', file.size)
 
     // Two paths (migration 091): inline base64 into the DB at 10 MB for everyone, or
-    // — when an admin explicitly ticks "Large file" — Supabase Storage at 50 MB. The
+    // - when an admin explicitly ticks "Large file" - Supabase Storage at 50 MB. The
     // limits live in lib/task-attachments.ts alongside the reason each one is what it is.
     const useLargePath = largeUpload && canUploadLargeFiles
     const validationError = validateTaskAttachment(file, {
@@ -881,7 +881,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               {/* Filing a card on the wrong board used to be unfixable: the only way out was
                   to retype it elsewhere and delete the original, losing its comments,
                   attachments, activity and subtasks. Hidden for subtasks, which have no board
-                  of their own — they live wherever their parent lives, and the RPC refuses
+                  of their own - they live wherever their parent lives, and the RPC refuses
                   them for that reason. */}
               {canEdit && task && !task.parent_task_id && (
                 <Button variant="outline" size="sm" className="gap-2" onClick={() => setMoveOpen(true)}>
@@ -967,7 +967,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                 </SelectTrigger>
                 <SelectContent>
                   {/* Scoped to what this board has a column for, keeping this task's own
-                      status listed. The save handler refuses anything else — it used to do
+                      status listed. The save handler refuses anything else - it used to do
                       that only after everything else had been typed. */}
                   {statusesForPicker(taskStatuses, columns, status).map((s) => (
                     <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
@@ -994,7 +994,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             </Select>
           </div>
 
-          {/* Due Date — only the creator (or an admin) can change it */}
+          {/* Due Date - only the creator (or an admin) can change it */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <CalendarIcon className="w-4 h-4" />
@@ -1270,7 +1270,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             )}
           </div>
 
-          {/* Subtasks — only on top-level tasks; nesting is capped at one level (060). */}
+          {/* Subtasks - only on top-level tasks; nesting is capped at one level (060). */}
           {task && !task.parent_task_id && (
             <div className="border-t pt-4">
               <SubtaskList
@@ -1431,7 +1431,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                                 className="h-8 w-8 bg-transparent"
                                 onClick={async () => {
                                   // Storage-backed attachments (migration 091) are fetched
-                                  // through a short-lived signed URL — the bucket is private,
+                                  // through a short-lived signed URL - the bucket is private,
                                   // so there is no public link to fall back on.
                                   if (attachment.storage_path) {
                                     const { data, error } = await supabase.storage
@@ -1509,7 +1509,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                 </Button>
 
                 {/* Admin-only, explicit, per-upload opt-in. Hiding it is presentation
-                    only — migration 091's INSERT policy is what actually stops a
+                    only - migration 091's INSERT policy is what actually stops a
                     non-admin taking the large path. */}
                 {canUploadLargeFiles && (
                   <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md border p-2.5">
@@ -1524,7 +1524,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                       <span className="font-medium">Large file (up to 50 MB)</span>
                       <span className="block text-muted-foreground">
                         Stores the file outside the database. Admins only, and shared storage
-                        is capped at 1 GB in total — use it for files that genuinely need it.
+                        is capped at 1 GB in total - use it for files that genuinely need it.
                       </span>
                     </span>
                   </label>

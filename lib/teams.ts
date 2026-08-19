@@ -68,7 +68,7 @@ export function personLabel(person: TeamPerson): string {
   return person.full_name?.trim() || person.email?.trim() || 'Unnamed user'
 }
 
-/** "Atlas General Contracting, Shanks Realty Group" — or the empty-state phrase. */
+/** "Atlas General Contracting, Shanks Realty Group" - or the empty-state phrase. */
 export function describeMembership(
   teams: readonly TeamRow[],
   teamIds: ReadonlySet<string> | undefined,

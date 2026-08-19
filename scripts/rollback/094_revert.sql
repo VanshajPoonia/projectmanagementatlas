@@ -2,7 +2,7 @@
 --
 -- Restores the pre-094 state exactly: 064's admin-tier management policies, 064's grants,
 -- and empty teams/team_members tables (which is what both dev and prod actually held before
--- 094 — verified 0 rows in each on 2026-08-13, so deleting the seed loses nothing that
+-- 094 - verified 0 rows in each on 2026-08-13, so deleting the seed loses nothing that
 -- predates this migration).
 --
 -- ⚠️ The DELETEs below are unconditional. If anyone has created their own teams or moved

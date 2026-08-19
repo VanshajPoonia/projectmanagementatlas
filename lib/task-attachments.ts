@@ -1,18 +1,18 @@
 // Task attachments come in two flavours, and this module is the single place that
 // decides which one a given file takes.
 //
-//   inline  — base64 data URI in task_attachments.file_data. Anyone who can manage
+//   inline  - base64 data URI in task_attachments.file_data. Anyone who can manage
 //             the task may upload one. Capped at 10 MB because every byte lands
 //             inside the Postgres database, inflated 33% by base64 encoding.
-//   large   — the bytes live in the task-assets Storage bucket and the row carries
+//   large   - the bytes live in the task-assets Storage bucket and the row carries
 //             a storage_path instead. Admin-only, and the admin has to opt in per
-//             upload. Capped at 50 MB — the Supabase Free plan's hard per-file
+//             upload. Capped at 50 MB - the Supabase Free plan's hard per-file
 //             ceiling, which no configuration can raise.
 //
 // Migration 091 enforces both halves in the database: a CHECK makes file_data and
 // storage_path mutually exclusive, and the INSERT policy rejects a storage_path
 // from anyone private.is_admin_user() is false for. Nothing here is a security
-// boundary — it exists to give a good error before the round trip.
+// boundary - it exists to give a good error before the round trip.
 
 import {
   extensionByMimeType,
@@ -54,7 +54,7 @@ export interface TaskAttachmentRow {
   uploaded_by?: { full_name?: string | null; email?: string | null } | null
 }
 
-/** A row is storage-backed iff it carries a path — the DB CHECK guarantees the XOR. */
+/** A row is storage-backed iff it carries a path - the DB CHECK guarantees the XOR. */
 export function isLargeAttachment(
   attachment: Pick<TaskAttachmentRow, 'storage_path'>,
 ): boolean {
@@ -107,7 +107,7 @@ export function validateTaskAttachment(
 }
 
 /**
- * Storage path for a large attachment. The leading segment MUST be the task id —
+ * Storage path for a large attachment. The leading segment MUST be the task id -
  * 091's object policies read it back with storage.foldername(name)[1] to decide
  * who may read, write, and delete the object.
  */

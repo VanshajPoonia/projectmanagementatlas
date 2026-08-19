@@ -34,7 +34,7 @@ let itemIds = []
 let failures = 0
 
 function check(label, condition) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}`)
   if (!condition) failures++
 }
 
@@ -70,7 +70,7 @@ try {
     throw new Error(`load companies: ${companyError?.message ?? 'none available'}`)
   }
 
-  // Items now belong to a named calendar (migration 085) with its own explicit member list —
+  // Items now belong to a named calendar (migration 085) with its own explicit member list -
   // the throwaway user must be seeded as a member before their own anon-key insert can pass RLS.
   const { data: calendar, error: calendarError } = await admin
     .from('marketing_calendars')
@@ -155,7 +155,7 @@ try {
     afterRollback?.every(row => row.time === '09:00:00'),
   )
 
-  // p_time is a new, DEFAULT NULL parameter (084) — omitted above on purpose,
+  // p_time is a new, DEFAULT NULL parameter (084) - omitted above on purpose,
   // to prove the pre-existing call shape (no p_time key) still works. This
   // second call exercises it explicitly, applied series-wide like
   // p_content/p_is_highlighted already are.
@@ -213,7 +213,7 @@ try {
   if (itemIds.length) {
     try { await admin.from('marketing_calendar_items').delete().in('id', itemIds) } catch {}
   }
-  // calendar_id is ON DELETE RESTRICT — the calendar can only be removed once no item
+  // calendar_id is ON DELETE RESTRICT - the calendar can only be removed once no item
   // references it anymore, i.e. after the item delete above.
   if (calendarId) {
     try { await admin.from('marketing_calendars').delete().eq('id', calendarId) } catch {}

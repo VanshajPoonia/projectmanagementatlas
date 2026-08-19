@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Cross-board task move harness — the pass/fail gate for migration 102.
+// Cross-board task move harness - the pass/fail gate for migration 102.
 //
 // Builds three real boards and two real users via the service role, then drives every check
 // through REAL anon-key sessions, exactly as the browser does. What it pins:
 //
 //   * a task actually moves, and its subtasks come with it;
 //   * a subtask cannot be moved on its own (it belongs to whichever board its parent is on);
-//   * the destination is enforced — a private board the mover is not a member of, and a
+//   * the destination is enforced - a private board the mover is not a member of, and a
 //     board where the mover's board_members role is guest/client, are both refused;
 //   * the refusal is an ERROR, not a silent no-op, so the UI can tell the difference;
 //   * a refused move leaves the task exactly where it was (the RPC is atomic);
@@ -40,7 +40,7 @@ let moverId, otherId, taskId, subtaskId, foreignTaskId
 let failures = 0
 
 function check(label, condition, detail) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}${condition || !detail ? '' : `\n        ${detail}`}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}${condition || !detail ? '' : `\n        ${detail}`}`)
   if (!condition) failures++
 }
 
@@ -48,7 +48,7 @@ async function makeUser({ email, password }) {
   const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true })
   if (error) throw new Error(`createUser ${email}: ${error.message}`)
   // boards.created_by -> profiles(id). The on_auth_user_created trigger writes that row, but
-  // don't race it — upsert explicitly so this harness never depends on trigger timing.
+  // don't race it - upsert explicitly so this harness never depends on trigger timing.
   const { error: profileErr } = await admin
     .from('profiles')
     .upsert({ id: data.user.id, email, role: 'user' }, { onConflict: 'id' })
@@ -112,7 +112,7 @@ try {
   if (subErr) throw new Error(`create subtask: ${subErr.message}`)
   subtaskId = subtask.id
 
-  // A task on the restricted board that the mover has no claim on at all — the source-side
+  // A task on the restricted board that the mover has no claim on at all - the source-side
   // control for "you cannot move what you cannot manage".
   const { data: foreign, error: foreignErr } = await admin
     .from('tasks')
@@ -155,7 +155,7 @@ try {
     check(
       'the private-board refusal is an error, not a silent no-op',
       (await boardOf(taskId)) === destination.boardId,
-      'the task moved anyway — the WITH CHECK is not seeing the destination column',
+      'the task moved anyway - the WITH CHECK is not seeing the destination column',
     )
   }
 
@@ -210,13 +210,13 @@ try {
     console.log(`${failures} check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All checks passed — a task moves boards with its subtasks, and only onto a board the mover may write to.')
+    console.log('All checks passed - a task moves boards with its subtasks, and only onto a board the mover may write to.')
   }
 } catch (e) {
   console.error('task-move harness error:', e.message)
   process.exitCode = 1
 } finally {
-  // The postgrest query builder isn't a real Promise (no .catch()) — use try/catch instead.
+  // The postgrest query builder isn't a real Promise (no .catch()) - use try/catch instead.
   for (const id of [subtaskId, taskId, foreignTaskId]) {
     if (id) { try { await admin.from('tasks').delete().eq('id', id) } catch {} }
   }

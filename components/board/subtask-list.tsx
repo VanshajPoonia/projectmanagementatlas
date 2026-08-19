@@ -73,7 +73,7 @@ export default function SubtaskList({
     setSubtasks(data ?? [])
   }
 
-  // Statuses are admin-managed, so the done/undone keys can't be hardcoded — resolve
+  // Statuses are admin-managed, so the done/undone keys can't be hardcoded - resolve
   // them from the live list and fall back to the well-known defaults.
   const doneKey = statuses.find((s) => getNormalizedTaskStatus({ status: s.key }) === 'done')?.key ?? 'done'
   const openKey = statuses.find((s) => getNormalizedTaskStatus({ status: s.key }) === 'to_do')?.key ?? 'to_do'
@@ -114,7 +114,7 @@ export default function SubtaskList({
   const handleToggle = async (subtask: any) => {
     const nextStatus = isDone(subtask) ? openKey : doneKey
 
-    // Optimistic — a checkbox that lags feels broken.
+    // Optimistic - a checkbox that lags feels broken.
     setSubtasks((prev) => prev.map((s) => (s.id === subtask.id ? { ...s, status: nextStatus } : s)))
 
     const { error } = await supabase.from('tasks').update({ status: nextStatus }).eq('id', subtask.id)

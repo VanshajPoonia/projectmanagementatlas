@@ -28,7 +28,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ to
   }
 
   // cancel_token is itself an unguessable 256-bit capability, same trust model
-  // share_links uses — no additional rate limiting needed on this path, only
+  // share_links uses - no additional rate limiting needed on this path, only
   // someone holding the token from their confirmation email can call this.
   const { error } = await anonDb().rpc('cancel_appointment', { p_cancel_token: token })
   if (error) {

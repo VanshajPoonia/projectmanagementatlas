@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 interface FavoriteStarProps {
   /** Starred right now. Drives both the fill and `aria-pressed`. */
   active: boolean
-  /** What is being starred, for the accessible name — e.g. a board title. */
+  /** What is being starred, for the accessible name - e.g. a board title. */
   label: string
   onToggle: (next: boolean) => void
   /** A write is in flight; the control stays interactive but stops double-firing. */
@@ -25,7 +25,7 @@ interface FavoriteStarProps {
  *    button inside a link bubbles to the link.
  *
  * 2. **It must say what it does.** A lone star icon reads to a screen reader as nothing at
- *    all, so it carries an explicit name naming the board, and `aria-pressed` for the state —
+ *    all, so it carries an explicit name naming the board, and `aria-pressed` for the state -
  *    which is also the non-colour cue the accessibility pass asks for, since "gold vs grey"
  *    is the only visual difference.
  */

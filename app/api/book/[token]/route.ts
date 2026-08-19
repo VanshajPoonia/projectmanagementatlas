@@ -4,7 +4,7 @@ import { createHmac } from 'node:crypto'
 import { isValidBookingToken } from '@/lib/appointment-booking'
 import { sendBookingConfirmationEmails } from '@/lib/appointment-email'
 
-// Rate limiting only works if this route captures the REAL client IP itself —
+// Rate limiting only works if this route captures the REAL client IP itself -
 // a browser calling the check_booking_rate_limit RPC directly could supply any
 // string as its own "IP" and trivially defeat the per-IP limit. This route is
 // the one place that IP is read from trusted request headers, hashed, and only
@@ -67,7 +67,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ tok
   })
   if (rateLimitError) {
     // The RPC's own message ("Too many attempts…" / "no longer available") is
-    // safe to surface directly — it never includes anything guest-supplied.
+    // safe to surface directly - it never includes anything guest-supplied.
     return NextResponse.json({ error: rateLimitError.message }, { status: 429 })
   }
 
@@ -121,7 +121,7 @@ async function sendConfirmationOnce(appointmentId: string, request: Request) {
     .select('host_user_id, guest_name, guest_email, starts_at, ends_at, cancel_token')
     .maybeSingle()
 
-  if (!appt) return // already sent, or the row vanished — either way, do nothing
+  if (!appt) return // already sent, or the row vanished - either way, do nothing
 
   const [{ data: host }, { data: settings }] = await Promise.all([
     db.from('profiles').select('full_name, email').eq('id', appt.host_user_id).maybeSingle(),

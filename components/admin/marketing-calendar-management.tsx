@@ -28,7 +28,7 @@ interface ProfileOption {
 
 // Admin-only: create/rename/archive marketing calendars and manage each one's member list.
 // Mirrors board-management.tsx's embedded all-profiles-checkbox member picker (this app has no
-// "invite a stranger" concept — every possible member already has a profiles row) and
+// "invite a stranger" concept - every possible member already has a profiles row) and
 // company-management.tsx's flat add-form/editable-row/soft-archive chrome.
 export default function MarketingCalendarManagement({ open, onOpenChange, calendars, onChange }: MarketingCalendarManagementProps) {
   const supabase = createClient()
@@ -133,7 +133,7 @@ export default function MarketingCalendarManagement({ open, onOpenChange, calend
   }
 
   // Sync membership with a delete-all-then-reinsert, same pattern board-management.tsx
-  // uses for board_members — simpler than diffing, and the list is small enough that
+  // uses for board_members - simpler than diffing, and the list is small enough that
   // this is never a meaningful cost.
   const saveMembers = async () => {
     if (!membersFor) return
@@ -214,7 +214,7 @@ export default function MarketingCalendarManagement({ open, onOpenChange, calend
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Users className="h-4 w-4" /> Members — {membersFor.name}
+                <Users className="h-4 w-4" /> Members - {membersFor.name}
               </DialogTitle>
               <DialogDescription>
                 Only these people (plus admins) can see and edit this calendar.

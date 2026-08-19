@@ -1,14 +1,14 @@
 # Known issues & deferred work
 
 Running list of bugs found, trade-offs accepted, and things deliberately left
-undone. Add to it rather than fixing silently — the point is that nothing gets
+undone. Add to it rather than fixing silently - the point is that nothing gets
 rediscovered from scratch six months later.
 
 Last updated: 2026-07-23
 
 ---
 
-## Open — infrastructure
+## Open - infrastructure
 
 ### No test runner, no CI
 
@@ -36,7 +36,7 @@ been applied to which database. Correct ordering depends entirely on memory.
 pnpm regenerates the `allowBuilds` block with literal
 `set this to true or false` values, which makes `pnpm install` exit 1 on
 stricter pnpm versions. Fixed in `248b33c`, reintroduced by `6bd65d2`, fixed
-again in `1c25410`. Vercel's pnpm is lenient, so **deploys never broke** — only
+again in `1c25410`. Vercel's pnpm is lenient, so **deploys never broke** - only
 local and clean-checkout builds did, which is why it went unnoticed for weeks.
 
 **Watch for:** any future `pnpm` command that rewrites this file. Check the diff
@@ -44,7 +44,7 @@ before committing.
 
 ---
 
-## Open — correctness
+## Open - correctness
 
 ### Statuses have two competing sources of truth
 
@@ -57,7 +57,7 @@ if (status.includes('progress') || columnTitle.includes('going')) return 'in_pro
 
 This works only because this team happens to name columns "In Progress" and
 "Ongoing". Admins **can** create columns, so a board with a "WIP" column has
-every task in it silently classified `to_do` — no error, just wrong numbers in
+every task in it silently classified `to_do` - no error, just wrong numbers in
 My Tasks, the overdue maths, reports, and the AI assistant's answers.
 
 **Severity:** latent today, guaranteed breakage the moment a second company
@@ -69,11 +69,11 @@ reads the FK first and keeps string matching only as a legacy fallback.
 
 ### Feature access is hardcoded to one person's email address
 
-- `components/user/user-dashboard.tsx` — `isKaylaMarketingUser` gates the whole
+- `components/user/user-dashboard.tsx` - `isKaylaMarketingUser` gates the whole
   marketing module and also sets the accent colour
-- `components/marketing/marketing-calendar.tsx` — `KAYLA_EMAIL`, hard-fails with
+- `components/marketing/marketing-calendar.tsx` - `KAYLA_EMAIL`, hard-fails with
   "Kayla profile is not ready yet."
-- `lib/display-text.ts` — strips strings specific to
+- `lib/display-text.ts` - strips strings specific to
   `Marketing Project Management.xlsx`
 
 **Fix:** the `org_modules` registry described in `../pm-platform/CLAUDE.md`.
@@ -86,14 +86,14 @@ reads the FK first and keeps string matching only as a legacy fallback.
 
 ---
 
-## Open — subtasks (shipped 2026-07-23, PR #5)
+## Open - subtasks (shipped 2026-07-23, PR #5)
 
 ### Subtasks don't follow their parent between columns
 
 A subtask copies `column_id` from its parent at creation. Dragging the parent to
 another column leaves the subtasks pointing at the old one.
 
-**Impact:** cosmetic and currently invisible — subtasks are never rendered by
+**Impact:** cosmetic and currently invisible - subtasks are never rendered by
 column, and parent and child are always on the same board either way. Left
 unfixed because syncing it means cascade logic in two separate drag paths for no
 user-visible benefit.
@@ -105,8 +105,8 @@ starts grouping by column.
 
 The To Do / In Progress / Completed tiles count everything assigned to you,
 subtasks included. If both a parent and its subtasks are assigned to the same
-person, all of them count. This is deliberate — it is "my workload" counted
-honestly — but the numbers read higher than they did before PR #5.
+person, all of them count. This is deliberate - it is "my workload" counted
+honestly - but the numbers read higher than they did before PR #5.
 
 Aggregate views (task overview, reports, calendars) deliberately stay on
 top-level tasks so historical report numbers don't move when a task gets broken
@@ -120,7 +120,7 @@ if the team starts scheduling at subtask level.
 
 ---
 
-## Open — private boards (admin lockdown, shipped 2026-07-23)
+## Open - private boards (admin lockdown, shipped 2026-07-23)
 
 Migration `061` removes admin/super_admin blanket access to private boards. A
 private board and everything in it is now visible/manageable only to its creator
@@ -140,18 +140,18 @@ blanket `is_admin_user()` bypass.
 `can_view_task`/`can_manage_task` plus a `task_hidden_by_board_privacy` join). It
 does **not** gate `public.columns`, so a non-member who already knows a private
 board's id could still read its column titles ("To Do", "In Progress"). No task
-content leaks — only the empty column labels. Left ungated because columns carry no
+content leaks - only the empty column labels. Left ungated because columns carry no
 sensitive data and gating them adds another board-privacy join to the hot board
 render path. Revisit if columns ever hold anything meaningful.
 
 ### Membership management is creator-only
 
 `board_members` INSERT/DELETE is now restricted to the board's creator (the admin
-bypass is gone — otherwise "remove admin access" was bypassable by self-adding).
+bypass is gone - otherwise "remove admin access" was bypassable by self-adding).
 The board-management edit dialog's delete-all-then-reinsert member sync therefore
 only works for the creator; other admins can't see the board to edit it anyway.
 
-## Open — marketing "missed" items (shipped 2026-07-23)
+## Open - marketing "missed" items (shipped 2026-07-23)
 
 Migration `062` adds `status` ('posted'|'missed') + `note` to
 `marketing_calendar_checks`. Any past item with no row shows as "Missed"
@@ -170,12 +170,12 @@ dates.
 
 The past/future cutoff is the browser's local date (`toDateKey(new Date())`),
 consistent with how the rest of the calendar computes "today". An item is missed
-the moment the viewer's local day rolls past its date — there is no server-side
+the moment the viewer's local day rolls past its date - there is no server-side
 grace period or timezone normalization.
 
 ---
 
-## Resolved — kept for the reasoning
+## Resolved - kept for the reasoning
 
 ### PostgREST self-referencing embeds are ambiguous *(avoided, never shipped)*
 
@@ -184,7 +184,7 @@ The first implementation resolved parent titles with
 **self-referencing** foreign key, where PostgREST's `!hint` is ambiguous between
 the parent direction (to-one, returns an object) and the children direction
 (to-many, returns an array). The wrong resolution makes `task.parent?.title`
-silently `undefined` and every breadcrumb vanish — and it could not be verified
+silently `undefined` and every breadcrumb vanish - and it could not be verified
 until the migration was live.
 
 Parent titles are now resolved from a local `Map` in `app/dashboard/page.tsx`
@@ -201,7 +201,7 @@ row's own creator's task. A cascade over a colleague's subtask raised and aborte
 the parent's delete entirely. `060` replaces the function so authority over the
 parent carries down.
 
-Found by running the migration against a real Postgres instance — code review
+Found by running the migration against a real Postgres instance - code review
 would not have caught it.
 
 ### Undo resurrected the wrong subtasks *(fixed in 060)*
@@ -228,10 +228,10 @@ this task mine". Extracted to `isTaskOwnedBy` in `lib/assignees.ts`.
 Documented so they don't get re-proposed. Each is a product rather than a
 feature, and none serves the goal of reducing time spent *managing* work.
 
-- Docs / wiki / collaborative editing — Notion exists
-- Gantt / timeline — large UI cost, low usage outside construction and agencies
-- Offline support — needs a different sync architecture entirely
-- A generic automation rules engine — start with three hardcoded rules on Vercel
+- Docs / wiki / collaborative editing - Notion exists
+- Gantt / timeline - large UI cost, low usage outside construction and agencies
+- Offline support - needs a different sync architecture entirely
+- A generic automation rules engine - start with three hardcoded rules on Vercel
   Cron instead (overdue → notify owner; all subtasks done → complete parent;
   recurring task spawn, since the `is_recurring` columns from `025` are unused)
-- More than two integrations — Google Calendar (one-way export) and Slack
+- More than two integrations - Google Calendar (one-way export) and Slack

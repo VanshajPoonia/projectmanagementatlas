@@ -1,5 +1,5 @@
 // Assignee helpers. `task_assignees` (many-to-many) is the source of truth for
-// who is assigned to a task — every assignee is equal.
+// who is assigned to a task - every assignee is equal.
 //
 // `tasks.assigned_to` is retained only as a denormalized "primary assignee"
 // mirror (kept in sync with the first assignee) so any legacy reader keeps
@@ -34,12 +34,12 @@ export function getAssigneeNames(task: any, users: any[]): string[] {
 }
 
 /**
- * Whether a task belongs in `userId`'s personal queue — the shared rule behind the
+ * Whether a task belongs in `userId`'s personal queue - the shared rule behind the
  * user dashboard, the admin dashboard, and the AI assistant's "mine" scope.
  *
  * Top-level tasks count when assigned to you *or* created by you: raising a task is a
  * claim on it. Subtasks count only when assigned, because adding a subtask to someone
- * else's task is a contribution to their work, not a claim on it — without that
+ * else's task is a contribution to their work, not a claim on it - without that
  * distinction, anyone who breaks down a colleague's task inherits all the pieces.
  */
 export function isTaskOwnedBy(task: any, userId: string): boolean {

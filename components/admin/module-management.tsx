@@ -4,7 +4,7 @@
 //
 // ⚠️ This tab exists because until it did, `app_modules` was read by four call sites and
 // written by none. Migration 066 gave the table an "Admins manage modules" policy and a full
-// DML grant, 080 seeded `appointments` disabled and 103 seeded `crm` disabled — and there was
+// DML grant, 080 seeded `appointments` disabled and 103 seeded `crm` disabled - and there was
 // no screen anywhere that could turn either of them on. Both modules were reachable only by
 // hand-written SQL, which is the same defect CLAUDE.md records against the guest/client work:
 // a capability verified at the database that no human can actually reach.
@@ -93,7 +93,7 @@ export default function ModuleManagement() {
     const next = !row.enabled
 
     // Ask for the row back and count it. A refusal by RLS comes back as zero rows and no
-    // error, so without this the UI would report success on a write that never happened —
+    // error, so without this the UI would report success on a write that never happened -
     // the exact trap CLAUDE.md records against the board membership work.
     const { data, error } = await supabase
       .from('app_modules')
@@ -155,7 +155,7 @@ export default function ModuleManagement() {
                       )}
                       {NOT_YET_WIRED.has(row.module_key) && (
                         <Badge variant="outline" className="text-muted-foreground text-[10px]">
-                          renders outside the nav — toggle not consumed yet
+                          renders outside the nav - toggle not consumed yet
                         </Badge>
                       )}
                     </div>

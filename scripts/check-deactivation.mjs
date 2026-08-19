@@ -36,7 +36,7 @@ const PASSWORD = `Deact-${stamp}-x9!`
 
 let failures = 0
 const check = (label, ok, detail) => {
-  console.log(`${ok ? 'PASS' : 'FAIL'} — ${label}${!ok && detail ? `  (${detail})` : ''}`)
+  console.log(`${ok ? 'PASS' : 'FAIL'} - ${label}${!ok && detail ? `  (${detail})` : ''}`)
   if (!ok) failures++
 }
 const section = (n) => console.log(`\n── ${n} ${'─'.repeat(Math.max(0, 60 - n.length))}`)
@@ -181,7 +181,7 @@ try {
     console.log(`${failures} check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All checks passed — deactivation genuinely revokes access, and reverses cleanly.')
+    console.log('All checks passed - deactivation genuinely revokes access, and reverses cleanly.')
   }
 } catch (e) {
   console.error('deactivation harness error:', e.message)

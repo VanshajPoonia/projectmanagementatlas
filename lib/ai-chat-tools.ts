@@ -1,7 +1,7 @@
 // Read-only data tools the AI chat assistant can call (Gemini function-calling).
 //
 // Every executor here runs on the request-scoped Supabase client (the same
-// one the rest of the app uses), never a service-role client — so RLS is
+// one the rest of the app uses), never a service-role client - so RLS is
 // always the real enforcement, not app code. That's what makes "admins see
 // everything, users see what they're allowed to" work almost for free:
 // tasks/boards RLS already grants that split, and personal_tasks RLS has no
@@ -26,7 +26,7 @@ export const AI_CHAT_TOOLS = [
   {
     name: 'get_tasks',
     description:
-      "Lists tasks from the team's Kanban boards — title, status, priority, due date, board, assignees. Use for questions about tasks, what's due, overdue work, or a specific board's contents. Subtasks are included; they carry a `parent_task` field naming the task they belong to, and should be described in relation to it.",
+      "Lists tasks from the team's Kanban boards - title, status, priority, due date, board, assignees. Use for questions about tasks, what's due, overdue work, or a specific board's contents. Subtasks are included; they carry a `parent_task` field naming the task they belong to, and should be described in relation to it.",
     parameters: {
       type: 'object',
       properties: {
@@ -65,7 +65,7 @@ export const AI_CHAT_TOOLS = [
   {
     name: 'get_marketing_calendar',
     description:
-      'Lists marketing content-calendar entries (posting date, channel, content, company, calendar name). There can be more than one named calendar — each item says which one it belongs to. Returns nothing for users with no marketing calendar access.',
+      'Lists marketing content-calendar entries (posting date, channel, content, company, calendar name). There can be more than one named calendar - each item says which one it belongs to. Returns nothing for users with no marketing calendar access.',
     parameters: {
       type: 'object',
       properties: {
@@ -80,10 +80,10 @@ export const AI_CHAT_TOOLS = [
 
 // The assistant has two modes. 'workspace' answers from the user's real data via
 // the tools above; 'web' answers general questions and can reach the public
-// internet via the tools below — kept separate so the two intents don't mix.
+// internet via the tools below - kept separate so the two intents don't mix.
 export type ChatMode = 'workspace' | 'web'
 
-// Internet tools (web mode only). These don't touch Supabase/RLS — they reach the
+// Internet tools (web mode only). These don't touch Supabase/RLS - they reach the
 // public web, so they live apart from the data tools.
 export const WEB_TOOLS = [
   {
@@ -120,7 +120,7 @@ export function toolsForMode(mode: ChatMode) {
 async function webSearch(args: any) {
   const key = process.env.TAVILY_API_KEY
   if (!key) {
-    return { error: 'Web search is not configured yet — an admin needs to add a TAVILY_API_KEY.' }
+    return { error: 'Web search is not configured yet - an admin needs to add a TAVILY_API_KEY.' }
   }
   const query = String(args?.query ?? '').trim().slice(0, 400)
   if (!query) return { error: 'No search query was provided.' }
@@ -332,7 +332,7 @@ async function getMarketingCalendar(ctx: ToolContext, args: any) {
   if (error) return { error: error.message }
 
   // Calendars are now admin-creatable, named, multiple instances (migration 085) rather than
-  // one implicit calendar — an admin's results can span more than one, so each item is labeled
+  // one implicit calendar - an admin's results can span more than one, so each item is labeled
   // with its calendar's name rather than silently pooling them together.
   const companyFilter = typeof args?.company_code === 'string' ? args.company_code.toUpperCase() : null
   const items = (data ?? [])

@@ -88,7 +88,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
     onUpdate?.()
   }
 
-  // Inline description edit on the card — same "no popup" convention Bobby asked for, mirroring
+  // Inline description edit on the card - same "no popup" convention Bobby asked for, mirroring
   // how the modal initializes (cleaned text) and logs ("updated the description").
   const handleSaveDescription = async () => {
     const trimmed = descDraft.trim()
@@ -421,7 +421,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
                       <SelectValue />
                     </SelectTrigger>
                     {/* Scoped to what this board has a column for, plus whatever this card
-                        already is — handleStatusChange refuses the rest, and a card sitting in
+                        already is - handleStatusChange refuses the rest, and a card sitting in
                         a status whose column was deleted must still say so rather than render
                         an empty control. */}
                     <SelectContent onClick={(e) => e.stopPropagation()}>

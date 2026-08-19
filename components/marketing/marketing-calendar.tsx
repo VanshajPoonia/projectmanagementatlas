@@ -83,7 +83,7 @@ export interface Channel {
   id: string
   channel: string
   label: string
-  /** Column order in the channel grid. Shared — see reorderChannels below. */
+  /** Column order in the channel grid. Shared - see reorderChannels below. */
   position: number
   /** Switched off: keeps its events, but no longer occupies a column. */
   is_archived: boolean
@@ -125,7 +125,7 @@ interface MarketingCalendarCheck {
 
 // A calendar is shared, so "was this posted?" is a fact about the item, not about
 // the viewer. Rows are still stored per (item_id, user_id), so one item can carry a
-// mark from each member — collapse them into the one state the whole calendar sees:
+// mark from each member - collapse them into the one state the whole calendar sees:
 // any 'posted' beats a 'missed' (someone did it), and within the same status the most
 // recent mark wins. Without this, a member who never ticked anything off saw an empty
 // check set and every past item fell through to auto-missed.
@@ -139,7 +139,7 @@ interface MarketingCalendarProps {
   userName?: string
   isAdmin?: boolean
   // Every calendar the caller can see (RLS: admins see all, everyone else sees only their
-  // memberships) — fetched once by the parent dashboard via useMarketingCalendars() so both the
+  // memberships) - fetched once by the parent dashboard via useMarketingCalendars() so both the
   // tab-gating check and this component's switcher share one query instead of two.
   calendars: MarketingCalendarSummary[]
   refetchCalendars: () => Promise<void>
@@ -177,7 +177,7 @@ const WEEKDAYS = [
 ]
 
 // Above this many generated dates, the interactive per-date skip checklist
-// stops rendering (perf + usability — pruning a large series one row at a
+// stops rendering (perf + usability - pruning a large series one row at a
 // time is worse than the already-solved single-occurrence-delete path).
 // Manual additions stay available either way since those are one explicit
 // action at a time, not a per-row render cost.
@@ -312,7 +312,7 @@ function EventFormFields({
             )
           })}
           {companies.length === 0 && (
-            <p className="text-xs text-muted-foreground">No companies yet — add one from the Super Admin page.</p>
+            <p className="text-xs text-muted-foreground">No companies yet. Add one from the Super Admin page.</p>
           )}
         </div>
       </div>
@@ -401,7 +401,7 @@ function EventEntry({
   const missed = state === 'missed'
   const primaryColor = item.companies[0]?.color ?? '#64748b'
   const companyLabel = item.companies.length ? item.companies.map(c => c.code).join(' + ') : 'No company'
-  // A company picks its own brand hex, and it is rendered as 10px uppercase text — the
+  // A company picks its own brand hex, and it is rendered as 10px uppercase text - the
   // strictest contrast case in the calendar. Lift it against whichever surface this card
   // actually paints rather than trusting that a colour chosen on white survives dark mode.
   const surface = useSurface()
@@ -501,7 +501,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const surface = useSurface()
   const [items,         setItems]         = useState<MarketingCalendarItem[]>([])
   // Every stored completion row (posted or missed), keyed by item id. Absence of a
-  // row means pending — or, for a past item, auto-"missed" (computed in stateOf).
+  // row means pending - or, for a past item, auto-"missed" (computed in stateOf).
   const [statusByItem,  setStatusByItem]  = useState<Map<string, MarketingCalendarCheck>>(new Map())
   const [calendarDate,  setCalendarDate]  = useState(() => new Date())
   const [loading,       setLoading]       = useState(true)
@@ -510,7 +510,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const weekBoardScrollRef = useRef<HTMLDivElement>(null)
   const [todayNavigationRequest, setTodayNavigationRequest] = useState(0)
 
-  // Which calendar instance is currently loaded (migration 085 — calendars are now admin-created,
+  // Which calendar instance is currently loaded (migration 085 - calendars are now admin-created,
   // named, multi-instance, each with its own member list, instead of one calendar hardcoded to a
   // single owner). Archived calendars are excluded from selection but not from the raw `calendars`
   // prop, so the management dialog can still list/restore them.
@@ -519,7 +519,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const [manageOpen, setManageOpen] = useState(false)
 
   // Keep the selection valid as the calendar list changes (initial load, or after an admin
-  // creates/archives one) — falls back to the first available calendar, or null if none exist.
+  // creates/archives one) - falls back to the first available calendar, or null if none exist.
   useEffect(() => {
     setSelectedCalendarId(current => {
       if (current && activeCalendars.some(c => c.id === current)) return current
@@ -529,18 +529,18 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
   const selectedCalendar = activeCalendars.find(c => c.id === selectedCalendarId) ?? null
 
-  // Companies (business units) — dynamic, managed from the Super Admin page.
+  // Companies (business units) - dynamic, managed from the Super Admin page.
   const [companies,        setCompanies]        = useState<Company[]>([])
   // Which companies are shown in the board/grid. An empty list means "All".
   const [activeCompanyIds, setActiveCompanyIds] = useState<string[]>([])
 
-  // Shared, editable channel list (loaded from marketing_channels). Flat —
+  // Shared, editable channel list (loaded from marketing_channels). Flat -
   // channels don't belong to a company; which companies an event is for is
   // decided per-event. Array order IS the column order of the channel grid.
   //
   // Every row is held, archived ones included, and only the grid filters. Fetching with
   // `.eq('is_archived', false)` instead would mean a switched-off channel has no entry in
-  // any lookup, and there would be nowhere to switch it back on — the same trap the CRM
+  // any lookup, and there would be nowhere to switch it back on - the same trap the CRM
   // review found in its status lookups (CLAUDE.md).
   const [allChannels, setAllChannels] = useState<Channel[]>([])
   const channels = useMemo(() => allChannels.filter(c => !c.is_archived), [allChannels])
@@ -594,7 +594,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const [editScope,        setEditScope]        = useState<EditScope>('single')
   const [savingEdit,       setSavingEdit]       = useState(false)
 
-  // "Add repeats" — the edit dialog's own copy of the create dialog's scheduling
+  // "Add repeats" - the edit dialog's own copy of the create dialog's scheduling
   // controls, so an existing event can gain dates (or become a series at all)
   // without deleting it and starting over. Separate from the Save button: it
   // inserts new rows, it does not edit the ones already there.
@@ -640,7 +640,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       : buildRecurringDateKeys(newDate, newRecurrence, newEndDate),
     [newDate, newEndDate, newRecurrence, newCustomWeekdays],
   )
-  // Density of the pattern itself — gates whether the interactive skip
+  // Density of the pattern itself - gates whether the interactive skip
   // checklist is even worth rendering. Distinct from what the user prunes
   // afterward (finalScheduleDates, below).
   const newScheduleDateLimitReached =
@@ -657,7 +657,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
   const newScheduledPostCount = finalScheduleDates.length * newChannels.length
   const newScheduleTooLarge = newScheduledPostCount > MAX_SCHEDULED_MARKETING_POSTS
-  // Distinguishes *why* nothing will be created — each cause needs a
+  // Distinguishes *why* nothing will be created - each cause needs a
   // different instruction, and "repeat until must be on/after the first
   // date" is actively misleading when the real problem is e.g. no weekday
   // selected on a Custom pattern.
@@ -826,7 +826,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const handleAddChannel = useCallback(async (name: string): Promise<boolean> => {
     const channel = name.trim()
     if (!channel) return false
-    // Past the highest existing position, not channels.length — seeded positions
+    // Past the highest existing position, not channels.length - seeded positions
     // have gaps, so counting would drop a new channel into the middle of the grid.
     const position = allChannels.reduce((max, c) => Math.max(max, c.position), -1) + 1
     const { error: insErr } = await supabase
@@ -845,11 +845,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
   /**
    * Persist a new channel column order. The channel list is shared, so this is a
-   * change everyone sees — the same reasoning that made check-offs shared in 087.
+   * change everyone sees - the same reasoning that made check-offs shared in 087.
    *
    * Goes through the reorder RPC (migration 088) rather than an UPDATE: direct
    * writes to marketing_channels are admin-only and, read literally, exclude
-   * super_admin — Bobby and Kayla would both have failed silently. The RPC can
+   * super_admin - Bobby and Kayla would both have failed silently. The RPC can
    * only renumber positions; renaming and switching off have their own RPCs
    * (migration 105, below) for the same reason and with the same gate.
    */
@@ -882,7 +882,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
    * which make a direct UPDATE wrong rather than merely inconvenient:
    *
    *   - marketing_channels' UPDATE policy reads `role = 'admin'` literally, which excludes
-   *     super_admin — so Bobby and Kayla, the two people who run this calendar, would have
+   *     super_admin - so Bobby and Kayla, the two people who run this calendar, would have
    *     had every rename silently do nothing (the same trap 088 hit for ordering).
    *   - marketing_calendar_items.channel is TEXT with no foreign key. Renaming the channel
    *     without re-pointing its events orphans them: they vanish from the grid, with no
@@ -939,7 +939,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     await loadChannels()
     toast.success(archived ? `Turned off "${channel.label}"` : `Turned on "${channel.label}"`, {
       description: archived && typeof affected === 'number' && affected > 0
-        ? `${affected} scheduled post${affected === 1 ? '' : 's'} kept — turn it back on to see them.`
+        ? `${affected} scheduled post${affected === 1 ? '' : 's'} kept - turn it back on to see them.`
         : undefined,
     })
   }, [loadChannels, supabase])
@@ -958,7 +958,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
   // Where a channel sits in the (rearrangeable) column order. The week and month
   // views stack several channels in one day cell, so they sort by this instead of
-  // alphabetically — otherwise dragging a column would reorder the grid's columns
+  // alphabetically - otherwise dragging a column would reorder the grid's columns
   // and leave those two views in a contradictory order. A channel that no longer
   // exists sorts last rather than jumping to the front.
   const channelRank = useMemo(() => {
@@ -1051,7 +1051,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const editSeriesDateCount = new Set(editSeriesItems.map(item => item.date)).size
   const editSeriesChannelCount = new Set(editSeriesItems.map(item => item.channel)).size
 
-  // Occurrences on this event's own channel, one row per date, oldest first —
+  // Occurrences on this event's own channel, one row per date, oldest first -
   // what the edit dialog lists so individual dates can be dropped. Restricted to
   // the edited channel because removing "a date" from a multi-channel series
   // would otherwise mean different things depending on which row you clicked.
@@ -1132,7 +1132,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
     if (next === 'clear') {
       setStatusByItem(cur => { const n = new Map(cur); n.delete(item.id); return n })
-      // Clear every mark on the item, not just the caller's — otherwise un-ticking an
+      // Clear every mark on the item, not just the caller's - otherwise un-ticking an
       // item a teammate had marked deletes nothing and the UI silently snaps back.
       // RLS still bounds this: a non-admin can only delete their own rows.
       const { error: e } = await supabase.from('marketing_calendar_checks')
@@ -1168,7 +1168,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     setSavingReason(false)
     setReasonItem(null)
   }
-  // Remove the stored miss entirely — reverts to auto (still red if past) with no reason.
+  // Remove the stored miss entirely - reverts to auto (still red if past) with no reason.
   const handleClearReason = async () => {
     if (!reasonItem) return
     setSavingReason(true)
@@ -1234,7 +1234,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       current?.id === itemId ? { ...current, attachment } : current,
     )
     // The edit dialog now shows the file inline too, and holds its own snapshot of
-    // the item — without this it would keep rendering the pre-upload state.
+    // the item - without this it would keep rendering the pre-upload state.
     setEditItem(current =>
       current?.id === itemId ? { ...current, attachment } : current,
     )
@@ -1498,7 +1498,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       const reason = failures.find(r => r.error)?.error ?? undefined
       if (inserted.length > fanoutTargets.length) {
         toast.error('File not attached to every post', {
-          description: `Only the first ${fanoutTargets.length} posts got the file — attach it to the rest individually.`,
+          description: `Only the first ${fanoutTargets.length} posts got the file. Attach it to the rest individually.`,
         })
       } else if (failures.length > 0) {
         toast.error(
@@ -1564,7 +1564,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   /**
    * The rows an edit at this scope covers, read from `items` rather than from
    * editItem state so it is safe to call while opening the dialog. "Entire series"
-   * is every row sharing the recurrence group — which for a series created across
+   * is every row sharing the recurrence group - which for a series created across
    * several channels is several channel streams. "This event" is only the row that
    * was clicked, matching what that scope has always meant.
    */
@@ -1577,7 +1577,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     Array.from(new Set(itemsInScope(item, scope).map(i => i.channel))).sort()
 
   // Switching scope changes which rows are on the table, so the ticked channels
-  // have to be re-read for the new scope — otherwise a selection made against
+  // have to be re-read for the new scope - otherwise a selection made against
   // "this event" would be diffed against the whole series on save.
   const selectEditScope = (scope: EditScope) => {
     setEditScope(scope)
@@ -1588,7 +1588,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     setEditChannels(prev =>
       prev.includes(channel) ? prev.filter(c => c !== channel) : [...prev, channel])
 
-  // Previewed in the dialog and recomputed for real in handleSaveEdit — the save
+  // Previewed in the dialog and recomputed for real in handleSaveEdit - the save
   // path can't trust render-time values, and this can't call the save path.
   const editScopeItems = editItem ? itemsInScope(editItem, editScope) : []
   const editBaselineChannels = Array.from(new Set(editScopeItems.map(i => i.channel)))
@@ -1911,7 +1911,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
   // Adds occurrences to the event being edited. Deliberately reads from editItem
   // (the persisted content/highlight/companies), not the live
-  // editContent/editHighlighted/editCompanyIds form state — those two can
+  // editContent/editHighlighted/editCompanyIds form state - those two can
   // differ whenever the user has typed unsaved changes but hasn't clicked
   // Save yet, and this action fires independently of that button.
   //
@@ -1979,7 +1979,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     } else {
       toast.success(`Added ${inserted.length} date${inserted.length === 1 ? '' : 's'}`)
     }
-    // Keep the dialog open on the same event — the occurrence list below refreshes
+    // Keep the dialog open on the same event - the occurrence list below refreshes
     // with the new dates, which is the confirmation that this worked.
     setEditItem(current => current ? { ...current, recurrence_group_id: recurrenceGroupId } : current)
     setEditScope('series')
@@ -1992,7 +1992,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   }
 
   // Drops a single date from the series. The event currently open in the dialog is
-  // excluded in the UI — deleting that one is what the dialog's Delete button does,
+  // excluded in the UI - deleting that one is what the dialog's Delete button does,
   // and it has to close the dialog, which this deliberately does not.
   const handleRemoveOccurrence = async (occurrence: MarketingCalendarItem) => {
     if (occurrence.id === editItem?.id) return
@@ -2281,7 +2281,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Company filter — one company at a time; an empty selection means "All". */}
+            {/* Company filter - one company at a time; an empty selection means "All". */}
             <Button type="button" size="sm" variant={activeCompanyIds.length === 0 ? 'default' : 'outline'}
               aria-pressed={activeCompanyIds.length === 0}
               onClick={() => setActiveCompanyIds([])} className="min-w-14">
@@ -2308,7 +2308,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
             {/* Not admin-gated: migration 105 lets any member of a marketing calendar maintain
                 the shared channel list, which is the same set of people who can see this tab.
-                Manage Calendars stays admin-only — that one grants other people access. */}
+                Manage Calendars stays admin-only - that one grants other people access. */}
             <Button type="button" variant="outline" size="sm" className="gap-1.5"
               onClick={() => setChannelManagerOpen(true)}>
               <SlidersHorizontal className="h-4 w-4" />
@@ -2375,7 +2375,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                           {isToday && <span className="rounded-full bg-brand-accent px-1.5 text-[10px] font-bold text-brand-accent-foreground">Today</span>}
                         </div>
                         <span className={cn('text-[11px] font-medium', isToday ? 'text-brand-band-muted' : 'text-muted-foreground')}>
-                          {dayItems.length ? `${dayDone}/${dayItems.length} posted` : '—'}
+                          {dayItems.length ? `${dayDone}/${dayItems.length} posted` : '-'}
                         </span>
                       </div>
 
@@ -2516,7 +2516,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                               onClick={() => { setCalendarDate(date); setViewMode('week') }}
                               className="rounded px-1.5 py-0.5 text-left text-[10px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground">
                               <span className="sm:hidden">+{hiddenCount}</span>
-                              <span className="hidden sm:inline">+{hiddenCount} more — open week</span>
+                              <span className="hidden sm:inline">+{hiddenCount} more - open week</span>
                             </button>
                           )}
 
@@ -2977,7 +2977,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                 {!newScheduleDateLimitReached && newRecurrenceDates.length > 0 && (
                   newInteractiveScheduleTooLarge ? (
                     <p className="text-xs text-muted-foreground">
-                      Too many dates to list individually — add specific extra dates below if needed.
+                      Too many dates to list individually - add specific extra dates below if needed.
                     </p>
                   ) : (
                     <div className="max-h-40 space-y-px overflow-y-auto rounded-md border p-1">
@@ -3200,7 +3200,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                 </p>
               </div>
 
-              {/* Adding dates is its own action — it inserts new rows rather than
+              {/* Adding dates is its own action - it inserts new rows rather than
                   editing this one, so it does not wait for Save. */}
               <div className="space-y-3 rounded-lg border p-3">
                 <div className="space-y-1.5">
@@ -3281,7 +3281,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                     )}
                     {editInteractiveScheduleTooLarge && (
                       <p className="text-xs text-muted-foreground">
-                        Too many dates to list individually — narrow the range to review them.
+                        Too many dates to list individually - narrow the range to review them.
                       </p>
                     )}
                   </div>

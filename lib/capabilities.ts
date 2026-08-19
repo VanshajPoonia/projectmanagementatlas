@@ -1,4 +1,4 @@
-// Canonical capability vocabulary — one place that answers "may this person do this?"
+// Canonical capability vocabulary - one place that answers "may this person do this?"
 //
 // Until now the same expression lived inline in three files (board-view's
 // `canManageTask`, task-card's `canEdit`/`canEditDueDate`, task-detail-modal's
@@ -7,7 +7,7 @@
 // model" is meant to remove: three copies of a rule is three chances for one to be
 // updated and the others not.
 //
-// ⚠️ This layer is for UX consistency only. **Postgres RLS remains authoritative** —
+// ⚠️ This layer is for UX consistency only. **Postgres RLS remains authoritative** -
 // migrations 065/067 are what actually stop a guest writing a task. Nothing here may be
 // treated as a security boundary; a denial rendered by this module must never be the
 // only thing standing between a user and a mutation.
@@ -30,7 +30,7 @@ export type Capability =
   | 'task.edit'
   | 'task.delete'
   | 'task.assign'
-  /** Changing the due date — narrower than task.edit in this product (creator/admin only). */
+  /** Changing the due date - narrower than task.edit in this product (creator/admin only). */
   | 'task.schedule'
   | 'task.attach'
   /** The admin-only Storage path from migration 091, as opposed to the inline base64 one. */
@@ -61,7 +61,7 @@ export interface Actor {
 /** Just enough of a task row to decide ownership; accepts the shapes actually in use. */
 export interface TaskSubject {
   created_by?: string | null
-  /** Sometimes a bare id, sometimes an embedded profile row — both appear in this app. */
+  /** Sometimes a bare id, sometimes an embedded profile row - both appear in this app. */
   assigned_to?: string | { id?: string | null } | null
   /** Ids from `task_assignees`, however the caller already resolved them. */
   assigneeIds?: readonly string[] | null
@@ -69,9 +69,9 @@ export interface TaskSubject {
 
 /**
  * How the UI should present an unavailable action.
- *   'allow'   — permitted, render normally
- *   'hide'    — irrelevant to this role; showing it is noise
- *   'explain' — the user can see the thing, so understanding the restriction helps
+ *   'allow'   - permitted, render normally
+ *   'hide'    - irrelevant to this role; showing it is noise
+ *   'explain' - the user can see the thing, so understanding the restriction helps
  *
  * The split is the plan's "UNAVAILABLE ACTION UX" requirement: never let a control look
  * functional and then fail silently, and never leave someone guessing whether a feature
@@ -92,7 +92,7 @@ function deny(presentation: Exclude<Presentation, 'allow'>, reason?: string): Ca
   return { allowed: false, presentation, reason }
 }
 
-/** guest/client are view-only on a board — the server-side rule from migrations 065/067. */
+/** guest/client are view-only on a board - the server-side rule from migrations 065/067. */
 function restrictedReason(role: BoardRole | null | undefined): string | null {
   if (role === 'guest') return 'Guest access can open this board but not change its work.'
   if (role === 'client') return 'You can view this project, but Client access cannot edit internal tasks.'
@@ -109,7 +109,7 @@ function isAdminActor(actor: Actor): boolean {
  *
  * Mirrors `private.is_admin_user()` (migration 047), which is what the RLS policy behind
  * large uploads actually calls. Writing `role === 'admin'` here would exclude the two
- * super_admins — the same trap that made marketing column reordering silently fail.
+ * super_admins - the same trap that made marketing column reordering silently fail.
  */
 function hasPlatformAdminRole(actor: Actor): boolean {
   return actor.platformRole === 'admin' || actor.platformRole === 'super_admin'
@@ -172,7 +172,7 @@ export function can(
 
     case 'task.attach.large': {
       if (restricted) return deny('explain', restricted)
-      // Deliberately platform role, not the isAdmin override — see hasPlatformAdminRole.
+      // Deliberately platform role, not the isAdmin override - see hasPlatformAdminRole.
       if (hasPlatformAdminRole(actor)) return ALLOW
       // Hidden rather than explained: a non-admin has no route to this and telling them
       // about an admin-only upload path is noise, not help.

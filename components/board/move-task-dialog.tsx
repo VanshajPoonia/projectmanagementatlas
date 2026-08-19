@@ -162,7 +162,7 @@ export function MoveTaskDialog({
         <DialogHeader>
           <DialogTitle>Move to another board</DialogTitle>
           <DialogDescription>
-            The task keeps its comments, attachments, links, activity history and subtasks — only
+            The task keeps its comments, attachments, links, activity history and subtasks - only
             the board it sits on changes.
           </DialogDescription>
         </DialogHeader>

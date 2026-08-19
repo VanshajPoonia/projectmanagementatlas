@@ -1,4 +1,4 @@
-// My Work — the personal cockpit.
+// My Work - the personal cockpit.
 //
 // The plan is explicit that "My Work" is not a synonym for "assigned to me". It should
 // answer:
@@ -7,15 +7,15 @@
 //   What is urgent?            → overdue, due today, due this week
 //   What should I do next?     → the ranked shortlist, with its reasons (work-next.ts)
 //   What is waiting on someone → delegated: I created it, someone else owns it
-//   What blocks others?        → NOT ANSWERABLE YET — needs task dependencies
-//   What requires approval?    → NOT ANSWERABLE YET — needs an approvals module
+//   What blocks others?        → NOT ANSWERABLE YET - needs task dependencies
+//   What requires approval?    → NOT ANSWERABLE YET - needs an approvals module
 //
 // The last two are deliberately absent rather than approximated. A section that quietly
 // guesses at "blocked" is worse than no section: people would rely on it, and the first
 // time it was wrong they would stop trusting every other number on the page. See
 // UNANSWERED_QUESTIONS, which the view renders as an explicit note.
 //
-// Pure functions over task rows the page already fetches — no schema, no extra query.
+// Pure functions over task rows the page already fetches - no schema, no extra query.
 
 import { getNormalizedTaskStatus } from './task-status'
 import { getWorkNext, type WorkNextItem } from './work-next'
@@ -23,7 +23,7 @@ import { getWorkNext, type WorkNextItem } from './work-next'
 export interface MyWorkSection {
   id: string
   title: string
-  /** Why this section exists — rendered as the section's own explanation. */
+  /** Why this section exists - rendered as the section's own explanation. */
   description: string
   tasks: any[]
 }
@@ -58,7 +58,7 @@ export function isOpen(task: any): boolean {
 /**
  * Split a user's open work into the sections above.
  *
- * `mine` is the caller's own tasks (already narrowed by assignment — the dashboard's
+ * `mine` is the caller's own tasks (already narrowed by assignment - the dashboard's
  * `myTasks`); `all` is everything they can see, which is what makes the delegated
  * section possible. Ordering inside every section is earliest-due-first so the top of
  * each list is the thing that breaks soonest; undated work sorts last rather than

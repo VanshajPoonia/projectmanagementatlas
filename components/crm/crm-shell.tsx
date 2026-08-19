@@ -6,7 +6,7 @@
 // as a standalone prototype, but shipping a second, differently-shaped sidebar inside one
 // product would mean two navigation models and two mental maps. The mockup's OPERATIONS /
 // ADMINISTRATION split survives as a sub-nav across the top of the module, which is where it
-// belongs — it groups pages *within* CRM, not within the app.
+// belongs - it groups pages *within* CRM, not within the app.
 
 import { useCallback, useMemo } from 'react'
 import Link from 'next/link'
@@ -32,7 +32,7 @@ export interface CrmUser {
 interface CrmNavEntry {
   href: string
   label: string
-  /** Admin-only pages are hidden rather than disabled — a link you cannot use is noise. */
+  /** Admin-only pages are hidden rather than disabled - a link you cannot use is noise. */
   adminOnly?: boolean
 }
 
@@ -58,7 +58,7 @@ export function CrmShell({
   /**
    * Modules + marketing calendars from requireCrmAccess, which already had to read
    * app_modules to decide whether to let you in at all. Without it this shell painted the
-   * fallback nav — CRM itself missing from its own sidebar — until the browser re-fetched
+   * fallback nav - CRM itself missing from its own sidebar - until the browser re-fetched
    * the same table. See lib/shell-data.ts.
    */
   shell?: ShellData
@@ -105,7 +105,7 @@ export function CrmShell({
 
           Wrapping was costing a third of a 390px viewport: the OPERATIONS and ADMINISTRATION
           labels forced each pill group onto its own line, so a phone showed 300px of
-          navigation before the first word of the page. The labels are what has to go — they
+          navigation before the first word of the page. The labels are what has to go - they
           group five links, and on a screen this narrow the grouping is not worth the height.
           Their information survives as `aria-label`ed groups for a screen reader, which never
           had to see the layout in the first place.

@@ -110,7 +110,7 @@ const DAY = 24 * HOUR
 /**
  * The company runs on one clock. A target close date is a *calendar* date entered by a person
  * sitting in this timezone, so "is it past?" has to be answered in that timezone and nowhere
- * else — see `isPastTargetClose`. Migration 090 fixed the project-id month boundary to the same
+ * else - see `isPastTargetClose`. Migration 090 fixed the project-id month boundary to the same
  * zone for the same reason.
  */
 export const BUSINESS_TIME_ZONE = 'America/Chicago'
@@ -209,7 +209,7 @@ function ms(from: string | Date, to: string | Date): number {
  * Matches the Status History column in the mockup rather than inventing a second format.
  */
 export function formatDuration(milliseconds: number): string {
-  if (!Number.isFinite(milliseconds) || milliseconds < 0) return '—'
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return '-'
   if (milliseconds < HOUR) {
     const mins = Math.round(milliseconds / 60_000)
     return `${mins} min`
@@ -237,7 +237,7 @@ export function orderAgeDays(order: CrmOrder, now: Date = new Date()): number {
 /**
  * Whether an order has been in its current status longer than that status allows.
  *
- * Terminal statuses and statuses with no `sla_hours` never breach — "Hold" is a deliberate
+ * Terminal statuses and statuses with no `sla_hours` never breach - "Hold" is a deliberate
  * parking state and flagging it as late every time would train people to ignore the panel.
  */
 export function isPastSla(
@@ -257,7 +257,7 @@ export function isPastSla(
  *
  * ⚠️ Compared as calendar dates in the business timezone, never as instants. The previous
  * version did `Date.parse(\`${date}T23:59:59\`)`, which has no zone designator and so is
- * resolved against whatever timezone the *runtime* happens to be in — UTC on the server,
+ * resolved against whatever timezone the *runtime* happens to be in - UTC on the server,
  * America/Chicago in the browser. Those are five hours apart, so for a five-hour window every
  * day the server rendered a row as late and the client re-rendered it as fine, which React 19
  * reports as a hydration mismatch. Comparing YYYY-MM-DD strings is both deterministic across
@@ -500,7 +500,7 @@ export function leadsBySource(
         source,
         current: c,
         previous: p,
-        // Growth from zero is undefined, not "+100%" — the caller renders it as "new".
+        // Growth from zero is undefined, not "+100%" - the caller renders it as "new".
         changePct: p === 0 ? null : ((c - p) / p) * 100,
       }
     })

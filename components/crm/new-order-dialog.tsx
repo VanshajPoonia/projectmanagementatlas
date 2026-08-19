@@ -70,7 +70,7 @@ export function NewOrderDialog({
       return
     }
 
-    // The opening status interval is written by the database trigger, not from here — the
+    // The opening status interval is written by the database trigger, not from here - the
     // history has to be true even for a code path that forgets to record it.
     const { data, error } = await supabase
       .from('crm_orders')

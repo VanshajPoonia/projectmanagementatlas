@@ -1,7 +1,7 @@
 /**
  * Moves the entry at `fromIndex` so it ends up at `toIndex`, returning a new
- * array. Any move that would change nothing — same index, or an index outside
- * the list — returns the ORIGINAL array by reference, so a caller can skip the
+ * array. Any move that would change nothing - same index, or an index outside
+ * the list - returns the ORIGINAL array by reference, so a caller can skip the
  * round-trip to the server with `if (next === list) return`. A stray drag can
  * never drop an entry out of the list or duplicate one.
  *

@@ -120,14 +120,14 @@ describe('describeSlotProblem', () => {
 
   // This is the case that would have caught the original bug: computing the
   // restriction date in UTC instead of the host's timezone. 2026-08-02 04:30
-  // in America/Chicago (CDT, UTC-5) is 2026-08-02 09:30 UTC — a Sunday in both
+  // in America/Chicago (CDT, UTC-5) is 2026-08-02 09:30 UTC - a Sunday in both
   // zones, BUT the boundary case below crosses midnight between the two.
   it('evaluates the restriction date in the HOST timezone, not UTC', () => {
     const restriction: AppointmentRestriction = {
       starts_on: '2026-08-01', ends_on: '2026-08-01', is_all_day: true,
       starts_at_time: null, ends_at_time: null, weekdays: [],
     }
-    // 2026-08-01 22:00 America/Chicago (CDT, UTC-5) = 2026-08-02 03:00 UTC —
+    // 2026-08-01 22:00 America/Chicago (CDT, UTC-5) = 2026-08-02 03:00 UTC -
     // still Aug 1 locally (through 23:59:59 CDT), but already Aug 2 in UTC.
     // A UTC-only check would compute dateKey '2026-08-02', miss the
     // restriction (which only covers Aug 1), and wrongly allow the booking.
@@ -146,7 +146,7 @@ describe('describeSlotProblem', () => {
   })
 
   it('rejects a slot spanning midnight in the host timezone', () => {
-    // 2026-08-05 23:45 America/Chicago through 2026-08-06 00:15 — crosses midnight locally.
+    // 2026-08-05 23:45 America/Chicago through 2026-08-06 00:15 - crosses midnight locally.
     const startMs = Date.UTC(2026, 8, 6, 4, 45)
     const endMs = Date.UTC(2026, 8, 6, 5, 15)
     expect(describeSlotProblem({ settings, restrictions: [], existing: [], startMs, endMs, nowMs: now }))

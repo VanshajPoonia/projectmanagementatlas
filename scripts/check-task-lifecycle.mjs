@@ -34,7 +34,7 @@ let shareLinkId
 let failures = 0
 
 function check(label, condition, detail = '') {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}${detail ? ` (${detail})` : ''}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}${detail ? ` (${detail})` : ''}`)
   if (!condition) failures += 1
 }
 

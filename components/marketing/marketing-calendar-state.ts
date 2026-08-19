@@ -21,7 +21,7 @@ export function reconcileCompanySelection(
   return next.length > 0 ? [next[next.length - 1]] : []
 }
 
-// Shared with the board's kanban columns, which rearrange the same way — see lib/reorder.ts.
+// Shared with the board's kanban columns, which rearrange the same way - see lib/reorder.ts.
 // Re-exported rather than moved so this module stays the one import site for calendar state.
 export { moveListItem } from '@/lib/reorder'
 
@@ -124,7 +124,7 @@ export function buildRecurringDateKeys(
  * Builds date keys for the "Custom" pattern: every date in range whose UTC
  * weekday is in `weekdays`. Unlike the appointment restriction engine (where
  * an empty weekday set means "every day, once"), an empty set here returns no
- * dates rather than defaulting to daily — "Custom" with nothing checked would
+ * dates rather than defaulting to daily - "Custom" with nothing checked would
  * otherwise be indistinguishable from the adjacent Daily button, and silently
  * over-posting on a forgotten checkbox is worse than the button staying
  * disabled. Requiring at least one weekday also bounds the day-by-day walk to

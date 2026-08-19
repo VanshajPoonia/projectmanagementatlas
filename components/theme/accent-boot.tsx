@@ -5,7 +5,7 @@
 // The layout is a server component and does not know the user, and the accent is stored per
 // account (`dashboard_accent_<id>`), so the id has to be resolved on the client. This uses
 // getSession() rather than getUser(): getSession reads the session already in local storage,
-// while getUser revalidates against the auth server — a network round-trip on every page load
+// while getUser revalidates against the auth server - a network round-trip on every page load
 // to decide a colour is not a trade worth making. onAuthStateChange then keeps it correct
 // across sign-in, sign-out and account switches without polling.
 

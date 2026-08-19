@@ -4,7 +4,7 @@
 //
 // They live together so the module reads as one system: a status means the same colour on the
 // dashboard, the client list and the order table, and a metric is laid out the same way
-// wherever it appears. The alternative — each screen styling its own pill — is how a module
+// wherever it appears. The alternative - each screen styling its own pill - is how a module
 // ends up with four slightly different greens.
 
 import { readableInk, withAlpha } from '@/lib/color'
@@ -27,7 +27,7 @@ export function StatusPill({
   className?: string
 }) {
   const surface = useSurface()
-  if (!status) return <span className="text-muted-foreground text-xs">—</span>
+  if (!status) return <span className="text-muted-foreground text-xs">-</span>
 
   const tint = surface.isDark ? 0.22 : 0.12
   return (
@@ -106,7 +106,7 @@ export function Field({ label, children }: { label: string; children: React.Reac
   return (
     <div className="min-w-0">
       <dt className="text-muted-foreground text-xs font-medium">{label}</dt>
-      <dd className="mt-0.5 truncate text-sm">{children || <span className="text-muted-foreground">—</span>}</dd>
+      <dd className="mt-0.5 truncate text-sm">{children || <span className="text-muted-foreground">-</span>}</dd>
     </div>
   )
 }

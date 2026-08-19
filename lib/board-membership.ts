@@ -1,4 +1,4 @@
-// Board membership planning — what to write when someone edits a board's access list.
+// Board membership planning - what to write when someone edits a board's access list.
 //
 // ⚠️ This replaces a `delete().eq('board_id', …)` followed by a re-insert. That pattern
 // looked harmless because membership *rows* survived it, but migration 065 added a `role`
@@ -14,7 +14,7 @@
 //
 // An edit that does not touch membership writes nothing at all, so no unrelated action can
 // ever disturb a role again. It also makes the writes minimal, which matters because
-// migration 061 made the board's CREATOR the only person who may write these rows — an
+// migration 061 made the board's CREATOR the only person who may write these rows - an
 // admin who is not the creator has their DELETE match zero rows (not an error in PostgREST)
 // and their INSERT rejected with 42501. Under delete-all-then-reinsert that combination
 // silently reported success while changing nothing; see canManageMembership below.
@@ -38,7 +38,7 @@ export interface MembershipPlan {
 
 export const BOARD_ROLES: readonly BoardRole[] = ['member', 'guest', 'client'] as const
 
-/** Default for a newly ticked person — matches the column DEFAULT in migration 065. */
+/** Default for a newly ticked person - matches the column DEFAULT in migration 065. */
 export const DEFAULT_BOARD_ROLE: BoardRole = 'member'
 
 export function isBoardRole(value: unknown): value is BoardRole {
@@ -95,7 +95,7 @@ export function isNoopPlan(plan: MembershipPlan): boolean {
  * Migration 061 deliberately removed the admin bypass that migration 049 had on
  * `board_members`: an admin who could re-add themselves to a private board made "remove
  * this admin's access" meaningless. The board's creator is the sole owner of its
- * membership list, and that is a security decision this module must not quietly widen —
+ * membership list, and that is a security decision this module must not quietly widen -
  * the UI's job is to tell the truth about it, not to route around it.
  */
 export function canManageMembership(
@@ -113,8 +113,8 @@ export const MEMBERSHIP_LOCKED_REASON =
  * What a `board_members` row actually MEANS depends on the board's visibility, and the
  * difference is easy to get backwards:
  *
- *   private board — the list is a GRANT. Nobody outside it can open the board at all.
- *   public board  — everyone can already see it, so a row can only ever RESTRICT. Listing
+ *   private board - the list is a GRANT. Nobody outside it can open the board at all.
+ *   public board  - everyone can already see it, so a row can only ever RESTRICT. Listing
  *                   someone as a full member changes nothing; listing them as a guest or
  *                   client takes write access away.
  *

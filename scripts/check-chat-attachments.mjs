@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Pass/fail gate for migration 092 — private, conversation-scoped chat attachments.
+// Pass/fail gate for migration 092 - private, conversation-scoped chat attachments.
 //
 // The thing that actually has to hold: a direct-message attachment must not be
 // readable by someone outside the conversation, and must not be readable at all
 // without a session. Before 092 the bucket was public, so the object was served off
-// the CDN with no auth — this harness proves that is closed, using REAL anon-key
+// the CDN with no auth - this harness proves that is closed, using REAL anon-key
 // sessions and an unauthenticated fetch, never the service role.
 //
 // Non-destructive: every fixture is removed in `finally`. Run: pnpm check:chat-attachments
@@ -34,7 +34,7 @@ const OUTSIDER = { email: `chat-outsider+${stamp}@example.com`, password: `Chat-
 
 let senderId, recipientId, outsiderId, messageId, objectPath
 let failures = 0
-const check = (label, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'} — ${label}`); if (!ok) failures++ }
+const check = (label, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'} - ${label}`); if (!ok) failures++ }
 
 async function createUser({ email, password }, role = 'user') {
   const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true })
@@ -65,7 +65,7 @@ try {
   // 1. The bucket is no longer a public, unlimited dumping ground.
   // ---------------------------------------------------------------------------
   const { data: bucket } = await admin.storage.getBucket(BUCKET)
-  check('chat-attachments is PRIVATE (was public — the whole point of 092)', bucket?.public === false)
+  check('chat-attachments is PRIVATE (was public - the whole point of 092)', bucket?.public === false)
   check('chat-attachments caps files at 50 MB, the plan maximum (was unlimited)', bucket?.file_size_limit === MAX_CHAT)
   check('chat-attachments has the full 23-type MIME allowlist (had none)', (bucket?.allowed_mime_types ?? []).length === 23)
 
@@ -126,7 +126,7 @@ try {
   )
 
   // ---------------------------------------------------------------------------
-  // 5. Signed URLs are how the client renders it — and only for participants.
+  // 5. Signed URLs are how the client renders it - and only for participants.
   // ---------------------------------------------------------------------------
   const { data: signed } = await recipientClient.storage.from(BUCKET).createSignedUrl(objectPath, 60)
   check('recipient can mint a signed URL', Boolean(signed?.signedUrl))
@@ -153,7 +153,7 @@ try {
     console.log(`${failures} chat attachment check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All chat attachment checks passed — DM attachments are private and conversation-scoped.')
+    console.log('All chat attachment checks passed - DM attachments are private and conversation-scoped.')
   }
 } catch (error) {
   console.error('chat attachment harness error:', error.message)

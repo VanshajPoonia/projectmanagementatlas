@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
 // The seeding half of useAppModules. The point of the seed is what the FIRST render shows:
-// before it, every shell painted lib/modules.ts's fallback — where crm and appointments are
-// off — and corrected itself once a browser fetch landed, so a module a super admin had just
+// before it, every shell painted lib/modules.ts's fallback - where crm and appointments are
+// off - and corrected itself once a browser fetch landed, so a module a super admin had just
 // switched on visibly appeared a beat after the page did.
 //
 // Fetch-on-mount is asserted here too, because "seeded hosts skip the query" is only safe if
@@ -63,7 +63,7 @@ describe('useAppModules seeding', () => {
   })
 
   // loadShellData already collapses an empty/failed read into DEFAULT_MODULES, so an empty
-  // array reaching the hook means "no seed" rather than "no modules exist" — otherwise a
+  // array reaching the hook means "no seed" rather than "no modules exist" - otherwise a
   // momentary read failure on the server would blank the entire sidebar.
   it('treats an empty seed as no seed and queries anyway', () => {
     render(<Harness initial={[]} />)

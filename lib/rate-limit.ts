@@ -3,7 +3,7 @@
 //
 // Limitation: state lives in the serverless function's own memory, so it resets on
 // cold start and isn't shared across concurrent instances. That's an acceptable
-// trade-off here — these routes already require an authenticated admin session, so
+// trade-off here - these routes already require an authenticated admin session, so
 // this is defense-in-depth (caps runaway/scripted abuse from a single warm instance),
 // not the only control. A durable limit would need a shared store (e.g. Upstash Redis).
 

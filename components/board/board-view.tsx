@@ -104,7 +104,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const { density, setDensity } = useDensity(currentUserId)
 
   // Favourites (migration 097). This page renders outside AppShell, so it gets no sidebar
-  // Favourites block — but it is the natural place to *add* one, so the star lives by the
+  // Favourites block - but it is the natural place to *add* one, so the star lives by the
   // board title here.
   const favoriteBoardHref = useCallback(
     (boardId: string) => `${isAdmin ? '/admin' : '/dashboard'}/board/${boardId}`,
@@ -158,7 +158,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
   // Delegates to lib/capabilities.ts so the board, the task tile and the detail modal
   // share one definition of "may I change this task" (they used to hold three copies).
-  // platformRole is unused on this surface — no capability read here consults it — so the
+  // platformRole is unused on this surface - no capability read here consults it - so the
   // isAdmin prop carries the whole decision, exactly as it did before.
   const createDecision = can(
     { userId: currentUserId, platformRole: 'user', boardRole, isAdmin },
@@ -224,7 +224,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
     // Two kinds of drag share this handler: a card between columns (the default type) and a
     // whole column along the board. They are told apart by the Droppable's `type`, not by
-    // guessing from the ids — a column id is a valid droppableId for both.
+    // guessing from the ids - a column id is a valid droppableId for both.
     if (result.type === COLUMN_DRAG_TYPE) {
       await moveColumn(source.index, destination.index)
       return
@@ -326,7 +326,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       })
       .select()
 
-    // This used to be `if (data && !error)` with no else — an RLS refusal (columns are
+    // This used to be `if (data && !error)` with no else - an RLS refusal (columns are
     // admin-only) closed nothing, said nothing, and left the typed title sitting in a dialog
     // that looked like it had not been submitted yet.
     if (error || !data || data.length === 0) {
@@ -350,7 +350,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
    *
    * Goes through reorder_board_columns (migration 106) rather than N separate UPDATEs: sent
    * separately they are N transactions, so a failure halfway leaves an order nobody chose,
-   * and under RLS a refusal is a zero-row response rather than an error — indistinguishable
+   * and under RLS a refusal is a zero-row response rather than an error - indistinguishable
    * from "nothing needed changing". The RPC renumbers every column in one statement and
    * raises when it is refused.
    */
@@ -367,8 +367,8 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     })
 
     if (error) {
-      // The likeliest refusal is a stale list — someone else added or removed a column
-      // since this page loaded — so put the board back and re-read it rather than leaving
+      // The likeliest refusal is a stale list - someone else added or removed a column
+      // since this page loaded - so put the board back and re-read it rather than leaving
       // the optimistic order on screen pretending to be saved.
       setColumns(previous)
       toast.error('Could not rearrange the columns', { description: error.message })
@@ -378,8 +378,8 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
   /**
    * Where a newly added column goes: past the highest position in use, not `columns.length`.
-   * Positions are not guaranteed contiguous — deleting a column leaves a gap, and production's
-   * EmpowerMe board runs 0,1,2,4,5 — so counting the columns can land a new one on top of an
+   * Positions are not guaranteed contiguous - deleting a column leaves a gap, and production's
+   * EmpowerMe board runs 0,1,2,4,5 - so counting the columns can land a new one on top of an
    * existing position and leave the order between the two decided by nothing. The marketing
    * calendar already learned this for its channel columns; boards had not.
    */
@@ -391,7 +391,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   /**
    * Active statuses this board has no column for. Picking one of these used to be possible in
    * every status dropdown and then refused on save, with "ask an admin to link a column" shown
-   * to whoever hit it — usually the admin. The pickers no longer offer them; this is the other
+   * to whoever hit it - usually the admin. The pickers no longer offer them; this is the other
    * half, so the gap is visible to the person who can close it instead of being invisible
    * until someone trips over it.
    */
@@ -427,7 +427,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
   const handleDeleteColumn = async (columnId: string) => {
     // `column.tasks` is RLS-filtered, and can_view_task hides ARCHIVED tasks from everyone
-    // except a super_admin — while deleting a column only needs is_admin_user(). So a plain
+    // except a super_admin - while deleting a column only needs is_admin_user(). So a plain
     // admin looking at a column of archived work sees an empty column, and asking the client
     // whether it is empty gets back "yes" from a list that was never complete. They would
     // then confirm "Remove this empty column?" and be refused by 074's trigger with a
@@ -494,7 +494,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     // Linking also renames the column to the status label. A column that says "WIP" while
     // claiming to be "In Progress" is the disagreement this link exists to remove, and from
     // here on Super Admin -> Statuses owns that name: renaming the status renames this column
-    // on every board (migration 107). Unlinking leaves the title alone — an unlinked column
+    // on every board (migration 107). Unlinking leaves the title alone - an unlinked column
     // is a custom one, named by the board.
     const patch: Record<string, unknown> = { status_key: resolvedKey }
     if (status?.label) patch.title = status.label
@@ -527,7 +527,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
   // Subtasks are rows in the same `tasks` table and arrive in the same column payload
   // as their parents. They're rendered nested inside the parent card, so they must be
-  // kept out of the column lists — otherwise every subtask also shows up as a loose
+  // kept out of the column lists - otherwise every subtask also shows up as a loose
   // card and inflates the per-column counts.
   const boardTasks = (column: any) =>
     (column.tasks || []).filter((task: any) => !task.deleted_at && !task.archived_at && !task.parent_task_id)
@@ -752,7 +752,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     <div className="min-h-screen bg-background">
       {/*
         This header is sticky, so every row it occupies is a row the board never gets back.
-        On a phone it was running to roughly 240 of 844 pixels — back button, title, board
+        On a phone it was running to roughly 240 of 844 pixels - back button, title, board
         description, creator byline, then eight controls wrapping onto two lines. Below `sm`
         the byline and description are dropped (reference detail, not something you need while
         moving work) and the back control becomes its icon.
@@ -777,7 +777,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                 <span className="hidden sm:inline">Back</span>
               </Button>
               {/* Persistent nav so switching sections doesn't require leaving the board first
-                  (mobile gets the equivalent via MobileBottomNav below — this page renders
+                  (mobile gets the equivalent via MobileBottomNav below - this page renders
                   outside the AppShell sidebar since kanban boards need the full viewport width). */}
               <div className="hidden items-center gap-0.5 rounded-md border p-0.5 md:flex">
                 {[...navItems, ...navMoreItems].map((item) => {
@@ -861,7 +861,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
             
             {/*
               Eight controls do not fit across 358px, and wrapping stranded the Add Column
-              button alone on a second line — a whole extra row of a sticky header for one
+              button alone on a second line - a whole extra row of a sticky header for one
               icon. Below `lg` the strip scrolls sideways at its natural width, which keeps
               the header one row tall and matches how the CRM sub-nav and the Super Admin tabs
               behave at the same width.
@@ -894,7 +894,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
               <DensityToggle density={density} onChange={setDensity} />
 
               {/* A board renders outside AppShell (kanban needs the full viewport width), so it
-                  gets none of the topbar's controls for free — including this one. Without it,
+                  gets none of the topbar's controls for free - including this one. Without it,
                   opening a board was a one-way trip out of dark mode: the only way back was to
                   navigate to a dashboard, flip it there, and come back. */}
               <ThemeControls />
@@ -1047,7 +1047,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="-mx-8 overflow-x-auto px-8 pb-6 snap-x snap-mandatory md:-mx-12 md:snap-none md:px-12 scroll-pl-8">
               {/* Columns are rearrangeable by admins: drag a column header, or use Move left /
-                  Move right in its menu (drag-and-drop is neither keyboard- nor touch-reachable —
+                  Move right in its menu (drag-and-drop is neither keyboard- nor touch-reachable -
                   the same lesson the marketing calendar's channel columns learned). The order is
                   a property of the board, so it moves for everyone. */}
               <Droppable droppableId={`board-columns-${board.id}`} type={COLUMN_DRAG_TYPE} direction="horizontal">
@@ -1604,7 +1604,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                 />
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Status (optional — a linked column is named by its status and tracks it everywhere)
+                    Status (optional - a linked column is named by its status and tracks it everywhere)
                   </label>
                   <Select value={newColumnStatusKey} onValueChange={handlePickNewColumnStatus}>
                     <SelectTrigger>
@@ -1633,7 +1633,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
               <DialogHeader>
                 <DialogTitle>Link Column to Status</DialogTitle>
                 <DialogDescription>
-                  Tasks moved into this column will reliably be tracked under the chosen status —
+                  Tasks moved into this column will reliably be tracked under the chosen status -
                   without a link, a status can be picked from a task's dropdown but won't stick.
                 </DialogDescription>
               </DialogHeader>

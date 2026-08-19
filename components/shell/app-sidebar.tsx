@@ -112,7 +112,7 @@ export function AppSidebar({
                       {/*
                         The label is always in the DOM, only visually hidden when the rail is
                         collapsed. Rendering it conditionally left every collapsed nav link
-                        with no accessible name — the icon is aria-hidden and the tooltip is
+                        with no accessible name - the icon is aria-hidden and the tooltip is
                         not mounted until hover, so a screen reader announced eight
                         indistinguishable "link"s. Caught by a11y.test.tsx.
                       */}
@@ -174,7 +174,7 @@ export function AppSidebar({
 }
 
 /**
- * The secondary sidebar lists (Favourites, Recent). Same markup, same focus treatment — one
+ * The secondary sidebar lists (Favourites, Recent). Same markup, same focus treatment - one
  * component so the two cannot drift into looking like different kinds of thing.
  */
 function SidebarLinkList({

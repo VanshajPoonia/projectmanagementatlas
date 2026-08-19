@@ -3,7 +3,7 @@
 // The database stores a stable machine verb (`action`) plus a sentence resolved at write
 // time (`summary`). This module only groups and labels; it deliberately does NOT rebuild the
 // sentence from `metadata`. Re-deriving it here would mean the log reads differently
-// depending on which build is deployed, which defeats the point of a historical record —
+// depending on which build is deployed, which defeats the point of a historical record -
 // the row must still say what it said on the day it was written, even if a person was
 // renamed or a board deleted since.
 
@@ -70,7 +70,7 @@ export function toneOf(event: Pick<AuditEvent, 'action'>): AuditTone {
 }
 
 export interface AuditDay {
-  /** ISO date, local to the reader — grouping by UTC would split a working evening in two. */
+  /** ISO date, local to the reader - grouping by UTC would split a working evening in two. */
   date: string
   label: string
   events: AuditEvent[]
@@ -113,7 +113,7 @@ export function groupByDay(events: readonly AuditEvent[], now: Date = new Date()
 }
 
 function formatDayLabel(isoDate: string): string {
-  // Parsed as local midnight, not UTC — `new Date('2026-08-13')` would be UTC and could
+  // Parsed as local midnight, not UTC - `new Date('2026-08-13')` would be UTC and could
   // render as the previous day for anyone west of Greenwich.
   const [y, m, d] = isoDate.split('-').map(Number)
   return new Date(y, m - 1, d).toLocaleDateString('en-US', {
@@ -132,7 +132,7 @@ export function formatTime(occurredAt: string): string {
 
 /**
  * Who did it. `actor_id` is null for anything done by the service role or raw SQL, and
- * saying so plainly beats inventing a name or leaving the column blank — "System" is the
+ * saying so plainly beats inventing a name or leaving the column blank - "System" is the
  * honest answer to "who ran this migration/script".
  */
 export function actorLabel(

@@ -10,13 +10,13 @@ export interface MarketingCalendarSummary {
 
 // RLS on marketing_calendars already scopes this to "every calendar for admins, only mine for
 // everyone else" (private.is_calendar_member), so no extra client-side filtering is needed here.
-// Includes archived calendars — consumers filter by is_archived for their own purpose (the
+// Includes archived calendars - consumers filter by is_archived for their own purpose (the
 // switcher shows active only, the management UI splits into active/archived sections).
 /**
  * Pass `initial` (from `loadShellData` on the server) wherever the host can.
  *
  * Membership decides whether a non-admin sees the Marketing section at all, so fetching this
- * on mount meant their sidebar rendered without it and then grew an entry — the nav visibly
+ * on mount meant their sidebar rendered without it and then grew an entry - the nav visibly
  * changing shape under the cursor a moment after the page appeared.
  *
  * The seed is the starting value only, not the truth for the lifetime of the hook: unlike
@@ -25,7 +25,7 @@ export interface MarketingCalendarSummary {
  */
 export function useMarketingCalendars(initial?: MarketingCalendarSummary[] | null) {
   const [calendars, setCalendars] = useState<MarketingCalendarSummary[]>(initial ?? [])
-  // A seeded host is not waiting on anything, so it must not report `loading` — the marketing
+  // A seeded host is not waiting on anything, so it must not report `loading` - the marketing
   // screen renders a spinner off this and would have flashed one over correct data.
   const [loading, setLoading] = useState(initial === undefined || initial === null)
 

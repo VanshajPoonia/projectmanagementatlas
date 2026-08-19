@@ -12,7 +12,7 @@ import {
   visiblePublicBoardTasks,
 } from '@/lib/public-share'
 
-// Public, unauthenticated view — always fetch fresh, never cache a shared resource's contents.
+// Public, unauthenticated view - always fetch fresh, never cache a shared resource's contents.
 export const dynamic = 'force-dynamic'
 
 // Service-role client: this route is the ONLY place a shared board/task is read without a

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Migration runner — Phase 0 safety net.
+// Migration runner - Phase 0 safety net.
 //
 // The repo has 62 hand-numbered SQL files in scripts/ that were applied to production
 // by hand, with no record of what ran where. That is exactly where a tenancy migration
@@ -8,10 +8,10 @@
 // migrations in order, each file managing its own BEGIN/COMMIT (see scripts/ convention).
 //
 // Reads POSTGRES_URL_NON_POOLING from the environment. Run via the package scripts, e.g.:
-//   pnpm migrate:status     — list applied vs pending
-//   pnpm migrate:baseline   — mark all existing files as applied WITHOUT running them
+//   pnpm migrate:status     - list applied vs pending
+//   pnpm migrate:baseline   - mark all existing files as applied WITHOUT running them
 //                             (for a DB already at that schema, e.g. the seeded dev clone)
-//   pnpm migrate            — apply all pending migrations in order
+//   pnpm migrate            - apply all pending migrations in order
 //
 // It never DROPs or rewrites; the only object it creates itself is the tracking table.
 
@@ -38,7 +38,7 @@ if (!DB_URL) {
 //   --only=NNN,NNN with --apply, run only these numbered migrations and leave every other
 //                  pending file pending. Needed when an earlier pending file is destructive and
 //                  still awaiting sign-off, but a later additive one must ship to fix a live bug.
-//                  Skipping a predecessor is the caller's responsibility — check the dependency.
+//                  Skipping a predecessor is the caller's responsibility - check the dependency.
 const ARGS = process.argv.slice(2)
 const ALLOW_PROD = ARGS.includes('--allow-prod')
 const throughArg = ARGS.find((a) => a.startsWith('--through='))
@@ -55,7 +55,7 @@ const prefixNum = (f) => Number.parseInt(f.match(/^(\d+)/)[1], 10)
 // Dev is always allowed; prod requires --allow-prod. Aborts before any psql connection.
 assertMigrationTarget({ allowProd: ALLOW_PROD })
 
-// libpq/psql is often not on the default PATH on macOS — locate it.
+// libpq/psql is often not on the default PATH on macOS - locate it.
 function findPsql() {
   const candidates = [
     'psql',
@@ -105,7 +105,7 @@ function checksum(file) {
   return createHash('sha256').update(readFileSync(join(SCRIPTS_DIR, file))).digest('hex').slice(0, 16)
 }
 
-// Filenames are our own (matched against a strict pattern) — safe to inline.
+// Filenames are our own (matched against a strict pattern) - safe to inline.
 function record(file) {
   psql(['-q', '-c',
     `insert into public.applied_migrations (filename, checksum)
@@ -127,18 +127,18 @@ if (mode === '--status') {
 if (mode === '--baseline') {
   let toRecord = files.filter((f) => !applied.has(f))
   if (THROUGH !== null) toRecord = toRecord.filter((f) => prefixNum(f) <= THROUGH)
-  if (!toRecord.length) { console.log('nothing to baseline — all files already recorded.'); process.exit(0) }
+  if (!toRecord.length) { console.log('nothing to baseline - all files already recorded.'); process.exit(0) }
   // One round-trip, not one-per-file (the DB is remote).
   const values = toRecord.map((f) => `('${f}', '${checksum(f)}')`).join(', ')
   psql(['-q', '-c',
     `insert into public.applied_migrations (filename, checksum)
      values ${values}
      on conflict (filename) do nothing;`])
-  console.log(`baselined ${toRecord.length} migration(s) as already-applied — nothing was executed.`)
+  console.log(`baselined ${toRecord.length} migration(s) as already-applied - nothing was executed.`)
   process.exit(0)
 }
 
-if (!pending.length) { console.log('up to date — no pending migrations.'); process.exit(0) }
+if (!pending.length) { console.log('up to date - no pending migrations.'); process.exit(0) }
 
 // --only runs a subset; everything it skips stays pending and is reported, so a deliberately
 // held-back migration can never be mistaken for one that already ran.

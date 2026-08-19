@@ -17,7 +17,7 @@ const mine: TaskSubject = { created_by: ME }
 const theirs: TaskSubject = { created_by: OTHER }
 const assignedToMe: TaskSubject = { created_by: OTHER, assigneeIds: [ME] }
 
-describe('task.edit — mirrors canEdit', () => {
+describe('task.edit - mirrors canEdit', () => {
   // was: !isRestrictedMember && (isAdmin || created_by === me || assigneeIds.includes(me))
   it('allows the creator', () => {
     expect(allows(actor(), 'task.edit', mine)).toBe(true)
@@ -52,7 +52,7 @@ describe('task.edit — mirrors canEdit', () => {
 
 describe('guest and client board roles', () => {
   // Migrations 065/067: guest/client may read a board's tasks but not write them. The
-  // restriction outranks every ownership rule — including the creator's own.
+  // restriction outranks every ownership rule - including the creator's own.
   for (const boardRole of ['guest', 'client'] as const) {
     it(`blocks ${boardRole} from editing even their own task`, () => {
       const decision = can(actor({ boardRole }), 'task.edit', mine)
@@ -71,7 +71,7 @@ describe('guest and client board roles', () => {
   }
 
   // The control case: a plain member with no board_members row is unaffected. This is
-  // the regression that matters most — the restriction must be role-specific, not
+  // the regression that matters most - the restriction must be role-specific, not
   // "anyone without a role".
   it('leaves a plain member with no board role fully able to work', () => {
     expect(allows(actor({ boardRole: null }), 'task.create')).toBe(true)
@@ -79,7 +79,7 @@ describe('guest and client board roles', () => {
   })
 })
 
-describe('task.schedule — mirrors canEditDueDate', () => {
+describe('task.schedule - mirrors canEditDueDate', () => {
   // was: !isRestrictedMember && (isAdmin || created_by === me)
   // Narrower than task.edit on purpose: an assignee may work the task but not move it.
   it('allows the creator but not a mere assignee', () => {
@@ -96,7 +96,7 @@ describe('task.schedule — mirrors canEditDueDate', () => {
   })
 })
 
-describe('task.attachment.delete — mirrors canDeleteAttachments', () => {
+describe('task.attachment.delete - mirrors canDeleteAttachments', () => {
   it('is creator-or-admin, not assignee', () => {
     expect(allows(actor(), 'task.attachment.delete', mine)).toBe(true)
     expect(allows(actor(), 'task.attachment.delete', assignedToMe)).toBe(false)
@@ -115,7 +115,7 @@ describe('the isAdmin override', () => {
 
   // ...but the large-upload gate reads the platform role directly, because the RLS
   // policy behind it calls private.is_admin_user(). Honouring the override here would
-  // hide the toggle from an admin who reached the board via /dashboard — the bug the
+  // hide the toggle from an admin who reached the board via /dashboard - the bug the
   // original comment in task-detail-modal.tsx was written to prevent.
   it('does not let the override hide the large-upload path from a real admin', () => {
     expect(allows(actor({ platformRole: 'admin', isAdmin: false }), 'task.attach.large')).toBe(true)

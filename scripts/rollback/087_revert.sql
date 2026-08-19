@@ -4,8 +4,8 @@
 -- marketing_calendar_checks go back to being scoped to the row's own author
 -- (plus the blanket admin policy, which 087 never touched).
 --
--- Running this re-opens the bug 087 fixed — a calendar member sees only their own
--- check-offs and every past item a teammate completed renders as "missed" — so it
+-- Running this re-opens the bug 087 fixed - a calendar member sees only their own
+-- check-offs and every past item a teammate completed renders as "missed" - so it
 -- is only worth running if 087 has to come off before the matching client change
 -- is reverted too. Applying it while the new client is deployed is the bad
 -- combination: the client stops filtering by user_id, the policy starts filtering
@@ -34,7 +34,7 @@ CREATE POLICY "Users delete own marketing calendar checks"
 
 COMMENT ON COLUMN public.marketing_calendar_checks.user_id IS
   'The user who marked this item posted/missed. No longer implies calendar ownership as of '
-  'migration 085 — access is governed by calendar_id on the parent item plus '
+  'migration 085 - access is governed by calendar_id on the parent item plus '
   'marketing_calendar_members, not by this column.';
 
 COMMIT;

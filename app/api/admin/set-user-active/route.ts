@@ -7,7 +7,7 @@ import { REFUSAL_MESSAGES, checkDeactivation } from '@/lib/deprovision'
 // Turn someone's access off, or back on.
 //
 // This route exists because the toggle it replaces did nothing. `profiles.is_active` was
-// written by the Super Admin screen and read by absolutely nothing — no RLS policy, no
+// written by the Super Admin screen and read by absolutely nothing - no RLS policy, no
 // helper, no application code. A "deactivated" person kept full access and could sign in as
 // normal, while the admin who deactivated them saw a red Inactive badge.
 //
@@ -17,12 +17,12 @@ import { REFUSAL_MESSAGES, checkDeactivation } from '@/lib/deprovision'
 //
 // Enforcement is deliberately layered, because no single layer covers everything:
 //
-//   ban      — GoTrue refuses sign-in and refresh-token exchange. The real boundary; does
+//   ban      - GoTrue refuses sign-in and refresh-token exchange. The real boundary; does
 //              not depend on any application code being correct.
-//   is_active — migration 101 folds it into is_admin_user/is_super_admin_user/can_manage_task,
+//   is_active - migration 101 folds it into is_admin_user/is_super_admin_user/can_manage_task,
 //              so elevated access dies on the very next query rather than whenever the
 //              access token in their browser happens to expire.
-//   proxy.ts  — signs them out on the next page load so the UI does not sit half-working.
+//   proxy.ts  - signs them out on the next page load so the UI does not sit half-working.
 //
 // The flag is written through the service role because 101 revoked `authenticated`'s UPDATE
 // on that column. Without that revoke a deactivated user could simply set it back.
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
   ])
 
   // Same two guards as deletion. Locking yourself out, or switching off the last super
-  // admin, leaves a system nobody can administer — and unlike deletion these would look
+  // admin, leaves a system nobody can administer - and unlike deletion these would look
   // harmless right up until the moment nobody can log in to undo them.
   const refusal = isActive ? null : checkDeactivation(target, user.id, activeSuperAdmins ?? 0)
   if (refusal) {

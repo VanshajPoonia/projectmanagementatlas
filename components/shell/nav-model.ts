@@ -1,4 +1,4 @@
-// Information architecture / route map — the single source of truth for the app
+// Information architecture / route map - the single source of truth for the app
 // shell's navigation. Kept as plain data + pure functions (no React, no lucide
 // imports) so it is trivially unit-testable and can be rendered by any surface.
 //
@@ -36,7 +36,7 @@ export interface NavGroup {
 }
 
 // The "calm default" the product should open on for a brand-new user: Projects,
-// My Work, Inbox, Search — plus the modules already built into today's app. Advanced
+// My Work, Inbox, Search - plus the modules already built into today's app. Advanced
 // modules (Strategy/Agile/Planning/Time/Cost/Clients/Automation) are NOT listed here;
 // they arrive with tenancy + module activation after Prompt 3.
 export const NAV_GROUPS: NavGroup[] = [
@@ -111,7 +111,7 @@ export function activeNavId(
     let score = -1
 
     if (query) {
-      // e.g. "/dashboard?tab=calendar" — match path AND the tab param.
+      // e.g. "/dashboard?tab=calendar" - match path AND the tab param.
       const wantTab = new URLSearchParams(query).get('tab')
       if (pathname === path && tab && wantTab === tab) score = path.length + 100
     } else if (pathname === path) {

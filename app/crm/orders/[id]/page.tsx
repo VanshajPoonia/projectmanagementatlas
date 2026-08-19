@@ -12,7 +12,7 @@ export default async function CrmOrderPage({ params }: { params: Promise<{ id: s
 
   const { data: order } = await supabase.from('crm_orders').select('*').eq('id', id).maybeSingle()
   // RLS returns nothing for a row the viewer cannot see, which is indistinguishable from a
-  // row that does not exist — and should be, so 404 is the right answer to both.
+  // row that does not exist - and should be, so 404 is the right answer to both.
   if (!order) notFound()
 
   const [{ data: client }, { data: statuses }, { data: history }, { data: profiles }] =

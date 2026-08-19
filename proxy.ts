@@ -34,7 +34,7 @@ export async function proxy(request: NextRequest) {
   // A deactivated account must not keep browsing on the token it already holds.
   //
   // The GoTrue ban applied by /api/admin/set-user-active stops them signing in or refreshing,
-  // and migration 101 strips their elevated access at the database on the next query — but an
+  // and migration 101 strips their elevated access at the database on the next query - but an
   // access token already in the browser stays valid for up to an hour, so without this they
   // would sit in a UI that renders and then fails on every write. Signing them out here turns
   // that into a clean redirect to the login page, which the ban then refuses.

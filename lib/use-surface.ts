@@ -25,8 +25,8 @@ export interface Surface {
 export function useSurface(): Surface {
   const { resolvedTheme } = useTheme()
 
-  // ⚠️ Mount-gated on purpose. next-themes cannot know the theme during SSR — it reads
-  // localStorage on the client — so a component that inks itself from `resolvedTheme` renders
+  // ⚠️ Mount-gated on purpose. next-themes cannot know the theme during SSR - it reads
+  // localStorage on the client - so a component that inks itself from `resolvedTheme` renders
   // one colour on the server and another on hydration. React 19 reports that as a hydration
   // error, and it was doing so for every StatusPill on the orders table.
   //

@@ -58,8 +58,8 @@ describe('formatDuration', () => {
   })
 
   it('renders nonsense as a dash rather than NaN', () => {
-    expect(formatDuration(Number.NaN)).toBe('—')
-    expect(formatDuration(-5)).toBe('—')
+    expect(formatDuration(Number.NaN)).toBe('-')
+    expect(formatDuration(-5)).toBe('-')
   })
 })
 
@@ -172,7 +172,7 @@ describe('isPastTargetClose', () => {
   })
 
   // The regression this replaced: the old implementation did Date.parse(`${date}T23:59:59`),
-  // which carries no zone designator and so resolved against the *runtime's* timezone — UTC on
+  // which carries no zone designator and so resolved against the *runtime's* timezone - UTC on
   // the server, America/Chicago in the browser, five hours apart. For a five-hour window each
   // day the two disagreed on the same order at the same instant, which is a hydration mismatch.
   // These instants sit inside that window: 03:00Z on the 15th is still the 14th in Chicago.
@@ -224,7 +224,7 @@ describe('activeStatuses', () => {
 })
 
 // The bug that made activeStatuses necessary: the pages filtered archived statuses out of the
-// QUERY, so an order sitting in one had no entry in the lookup map — and every consumer reads a
+// QUERY, so an order sitting in one had no entry in the lookup map - and every consumer reads a
 // missing status as "not terminal". Archiving Won would have counted every won order as live
 // pipeline. These pin the behaviour once the full list is passed, as it now is.
 describe('archived statuses stay classified correctly', () => {

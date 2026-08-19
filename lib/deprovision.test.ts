@@ -28,7 +28,7 @@ describe('checkDeletion', () => {
     expect(checkDeletion({ id: 'them', role: 'super_admin' }, 'me', 2)).toBeNull()
   })
 
-  // The count is of super admins, not of accounts — a lone super admin among ten users is
+  // The count is of super admins, not of accounts - a lone super admin among ten users is
   // still the last one.
   it('counts super admins, not accounts', () => {
     expect(checkDeletion({ id: 'them', role: 'super_admin' }, 'me', 1)).toBe('last-super-admin')
@@ -61,7 +61,7 @@ describe('describeDeletion', () => {
   })
 
   // The property that actually protects people. Deletion is irreversible and deactivation
-  // is not, so the destructive dialog has to name the reversible alternative — otherwise an
+  // is not, so the destructive dialog has to name the reversible alternative - otherwise an
   // admin who only wants to revoke access reaches for the permanent button.
   it('points at the reversible alternative', () => {
     expect(describeDeletion('Alice', 0)).toMatch(/switch off access/i)

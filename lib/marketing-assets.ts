@@ -1,7 +1,7 @@
 // Marketing event attachments. The file-type machinery moved to lib/upload-mime.ts
 // when task attachments (migration 091) needed the identical allowlist; this module
 // keeps its original public API unchanged and now only holds what is specific to
-// marketing events — the bucket name, the 50 MB cap, and the item-keyed path shape.
+// marketing events - the bucket name, the 50 MB cap, and the item-keyed path shape.
 
 import {
   extensionByMimeType,

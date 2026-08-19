@@ -30,7 +30,7 @@ describe('buildWorkspaceNav', () => {
   })
 
   // Appointments seeds disabled (migration 080) and must stay hidden until a super_admin
-  // switches it on — the nav is not allowed to reveal a module nobody enabled.
+  // switches it on - the nav is not allowed to reveal a module nobody enabled.
   it('honours the appointments module defaulting to off', () => {
     expect(ids(buildWorkspaceNav(base))).not.toContain('appointments')
     const on = DEFAULT_MODULES.map((m) =>

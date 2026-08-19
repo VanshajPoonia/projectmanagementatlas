@@ -17,12 +17,12 @@ const nextConfig = {
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       // `microphone=(self)`, NOT `microphone=()`. The dictation button
       // (components/ui/voice-input-button.tsx) drives the Web Speech API, and Chrome gates
-      // SpeechRecognition.start() on exactly this policy feature — so `microphone=()` made the
+      // SpeechRecognition.start() on exactly this policy feature - so `microphone=()` made the
       // mic button fail on every page, which is what got reported as "the mic doesn't work".
       // Measured in a real browser against this dev server: with `()`,
       // document.featurePolicy.allowsFeature('microphone') is FALSE; with `(self)` it is TRUE.
       // `(self)` still locks out every other origin, including anything framed in. Camera and
-      // geolocation stay fully disabled — nothing in this app asks for either.
+      // geolocation stay fully disabled - nothing in this app asks for either.
       { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
     ]
 
@@ -37,7 +37,7 @@ const nextConfig = {
           // the marketing calendar previews an asset by downloading it and rendering
           // URL.createObjectURL(...) (a blob: URL), and task attachments render large
           // image thumbnails straight from a signed Storage URL. Neither is covered by
-          // 'self' — verified in a real browser against this exact policy, where both
+          // 'self' - verified in a real browser against this exact policy, where both
           // were BLOCKED while data: (the inline base64 path) loaded, which is why the
           // marketing preview had been silently broken in production only.
           // Allowing the origin grants no access on its own: the buckets are private and

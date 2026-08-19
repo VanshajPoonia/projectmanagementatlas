@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Dialog behaviour — ATLAS_02 Prompt A's "dialog focus restoration" and the keyboard half of
+// Dialog behaviour - ATLAS_02 Prompt A's "dialog focus restoration" and the keyboard half of
 // the unsaved-change guard.
 //
 // ⚠️ FOCUS RESTORATION IS NOT ASSERTED HERE, deliberately. Radix returns focus to the trigger
@@ -11,7 +11,7 @@
 // instead, which is the environment that can actually observe it.
 //
 // What jsdom *can* prove, and does below: the dialog carries an accessible name and
-// description, and the unsaved-change guard intercepts the Escape key — not just the visible
+// description, and the unsaved-change guard intercepts the Escape key - not just the visible
 // close button. That second one is the real regression risk, because Escape routes through
 // the same onOpenChange and is easy to forget when adding a guard.
 //
@@ -53,7 +53,7 @@ function Harness({ dirty = false, confirm }: { dirty?: boolean; confirm?: (m: st
 }
 
 describe('dialog behaviour', () => {
-  // Focus must at least *leave* the trigger and enter the dialog — that half jsdom can see,
+  // Focus must at least *leave* the trigger and enter the dialog - that half jsdom can see,
   // and it is what stops a keyboard user tabbing around behind an open modal.
   it('moves focus into the dialog on open', async () => {
     render(<Harness />)
@@ -83,7 +83,7 @@ describe('dialog behaviour', () => {
   })
 
   // The unsaved-change guard sits on the same onOpenChange that Radix calls for Escape, so
-  // it has to intercept the key too — not only the visible close button.
+  // it has to intercept the key too - not only the visible close button.
   it('Escape does not close a dirty dialog when the user backs out of the prompt', async () => {
     render(<Harness dirty confirm={() => false} />)
     fireEvent.click(screen.getByRole('button', { name: 'Open task' }))

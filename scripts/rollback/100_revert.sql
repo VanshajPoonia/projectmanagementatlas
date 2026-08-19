@@ -4,7 +4,7 @@
 --
 -- 100 relaxed four columns to nullable so that deleting an account keeps the work. If any
 -- account HAS since been deleted, those columns now hold NULLs, and restoring NOT NULL would
--- fail — correctly, because there is no honest value to put back. The original author is
+-- fail - correctly, because there is no honest value to put back. The original author is
 -- gone; inventing one would be a lie, and deleting the rows would destroy exactly the work
 -- 100 exists to protect. The pre-check below refuses rather than doing either.
 --

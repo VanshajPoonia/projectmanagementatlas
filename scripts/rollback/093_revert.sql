@@ -2,7 +2,7 @@
 --
 -- Restores the pre-093 limits: chat-attachments back to 10 MB with the narrowed MIME
 -- list 092 gave it (no video, no Photoshop, no PostScript), and task-assets back to
--- the 50 MB / 23-type set 091 gave it — which is what it already had, since 093 only
+-- the 50 MB / 23-type set 091 gave it - which is what it already had, since 093 only
 -- re-asserted it.
 --
 -- Neither bucket's `public` flag is touched: they must stay private, and re-opening
@@ -10,7 +10,7 @@
 --
 -- ⚠️ Files already uploaded are NOT removed or shrunk. Any chat attachment larger
 -- than 10 MB, or of a type dropped from the list, stays in the bucket and keeps
--- working — only NEW uploads are constrained. Check what would become
+-- working - only NEW uploads are constrained. Check what would become
 -- non-reproducible before running:
 --     SELECT m.id, m.attachment_path, (o.metadata->>'size')::bigint AS bytes,
 --            o.metadata->>'mimetype' AS mime
@@ -64,7 +64,7 @@ BEGIN
   END IF;
 
   IF EXISTS (SELECT 1 FROM storage.buckets WHERE id IN ('chat-attachments', 'task-assets') AND public) THEN
-    RAISE EXCEPTION 'A bucket is public after rollback — 093 must never re-open one. Aborting.';
+    RAISE EXCEPTION 'A bucket is public after rollback - 093 must never re-open one. Aborting.';
   END IF;
 
   RAISE NOTICE '093 rolled back: chat-attachments returned to 10 MB / 18 mime types; both buckets still private.';

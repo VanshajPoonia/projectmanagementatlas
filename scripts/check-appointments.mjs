@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Appointment rules RLS harness — the pass/fail gate for migrations 080/081.
+// Appointment rules RLS harness - the pass/fail gate for migrations 080/081.
 // Creates two throwaway hosts via the service role, then asserts through REAL anon-key
 // sessions (exactly like the app) that each can manage only their own settings and
 // restrictions, and that an unauthenticated caller sees nothing at all.
@@ -24,7 +24,7 @@ const admin = createClient(url, service, { auth: { autoRefreshToken: false, pers
 const stamp = Date.now()
 
 // Two separate hosts. Both plain 'user' role, because the policies also allow admins to
-// read for oversight — an admin here would mask a real isolation failure.
+// read for oversight - an admin here would mask a real isolation failure.
 const HOSTS = [
   { email: `appt-a+${stamp}@example.com`, password: `ApptA-${stamp}-x9!` },
   { email: `appt-b+${stamp}@example.com`, password: `ApptB-${stamp}-x9!` },
@@ -35,7 +35,7 @@ const createdUserIds = []
 let restrictionA
 
 function check(label, condition) {
-  console.log(`${condition ? 'PASS' : 'FAIL'} — ${label}`)
+  console.log(`${condition ? 'PASS' : 'FAIL'} - ${label}`)
   if (!condition) failures++
 }
 
@@ -56,7 +56,7 @@ try {
     createdUserIds.push(host.id)
 
     // appointment_* FKs point at profiles(id). The on_auth_user_created trigger creates
-    // that row, but don't race it — upsert explicitly, as check-board-roles.mjs does.
+    // that row, but don't race it - upsert explicitly, as check-board-roles.mjs does.
     const { error: profileErr } = await admin
       .from('profiles')
       .upsert({ id: host.id, email: host.email, role: 'user' }, { onConflict: 'id' })
@@ -148,13 +148,13 @@ try {
     console.log(`${failures} check(s) FAILED.`)
     process.exitCode = 1
   } else {
-    console.log('All checks passed — appointment rules are per-host and closed to anon.')
+    console.log('All checks passed - appointment rules are per-host and closed to anon.')
   }
 } catch (e) {
   console.error('appointments harness error:', e.message)
   process.exitCode = 1
 } finally {
-  // The postgrest query builder isn't a real Promise (no .catch()) — use try/catch instead.
+  // The postgrest query builder isn't a real Promise (no .catch()) - use try/catch instead.
   if (restrictionA) { try { await admin.from('appointment_restrictions').delete().eq('id', restrictionA) } catch {} }
   for (const id of createdUserIds) {
     try { await admin.from('appointment_restrictions').delete().eq('user_id', id) } catch {}

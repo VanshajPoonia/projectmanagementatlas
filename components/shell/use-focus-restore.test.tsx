@@ -2,7 +2,7 @@
 //
 // The focus-restore hook. Unlike Radix's own restore (which jsdom cannot observe, see
 // dialog-focus.test.tsx), this one is driven by a plain interval, so fake timers can step
-// through it deterministically — including the case that made the first version useless: the
+// through it deterministically - including the case that made the first version useless: the
 // dialog content still holding focus while it animates out.
 
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
@@ -53,7 +53,7 @@ describe('useDialogFocusRestore', () => {
   })
 
   // The bug the first version shipped with: it checked once, two frames after close, saw the
-  // dialog's own input still focused, concluded all was well, and did nothing — then focus
+  // dialog's own input still focused, concluded all was well, and did nothing - then focus
   // dropped to body when the content finally unmounted.
   it('keeps waiting while the closing dialog still holds focus', () => {
     const els = setup()

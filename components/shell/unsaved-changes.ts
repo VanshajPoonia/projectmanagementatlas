@@ -11,16 +11,16 @@ import { useEffect, useMemo } from 'react'
 //
 // Two separate exits need covering and they are not the same problem:
 //
-//   1. Leaving the *page* — tab close, reload, back button. Only the browser can intercept
+//   1. Leaving the *page* - tab close, reload, back button. Only the browser can intercept
 //      this, via `beforeunload`, and modern browsers deliberately ignore any custom message
 //      and show their own. That is fine; the point is the interception, not the wording.
 //
-//   2. Closing the *dialog* — Escape, the X, a click on the overlay. The browser knows
+//   2. Closing the *dialog* - Escape, the X, a click on the overlay. The browser knows
 //      nothing about this, so the dialog has to ask.
 //
 // WHY window.confirm FOR (2). `@radix-ui/react-alert-dialog` is in package.json but no
 // `components/ui/alert-dialog.tsx` wrapper exists, so this would mean introducing a new
-// primitive — and then nesting it inside an already-open Dialog, which puts two focus traps
+// primitive - and then nesting it inside an already-open Dialog, which puts two focus traps
 // in competition. That is the well-known source of "the confirm renders behind the modal"
 // and "focus is lost when the inner one closes". A native confirm is plain, but it is modal,
 // keyboard-operable, screen-reader-announced and impossible to dismiss by accident, which is
@@ -30,7 +30,7 @@ import { useEffect, useMemo } from 'react'
 /**
  * Shallow dirty check between the current form values and the values it opened with.
  *
- * Shallow is deliberate. The alternative — a deep structural compare — quietly turns
+ * Shallow is deliberate. The alternative - a deep structural compare - quietly turns
  * "the user retyped the same word" into a change, and worse, reports a *reordered* array as
  * clean if you sort it or dirty if you don't. Arrays are compared element-wise in order,
  * which is what a list of assignees or links actually means.
@@ -78,7 +78,7 @@ export const DISCARD_PROMPT =
 /**
  * Wrap a Radix `onOpenChange` so closing while dirty asks first.
  *
- * Opening is never guarded — only the close transition is, and only when there is something
+ * Opening is never guarded - only the close transition is, and only when there is something
  * to lose. Returns the original handler untouched when the form is clean, so the common case
  * costs nothing.
  */
@@ -107,7 +107,7 @@ function defaultConfirm(message: string): boolean {
  *
  * `preventDefault()` plus a non-empty `returnValue` is the combination that still works
  * across current browsers; the string itself is discarded, so it is a marker rather than a
- * message. The listener is removed as soon as the form is clean, which matters — leaving it
+ * message. The listener is removed as soon as the form is clean, which matters - leaving it
  * attached would prompt on every navigation for the rest of the session.
  */
 export function useBeforeUnload(dirty: boolean): void {

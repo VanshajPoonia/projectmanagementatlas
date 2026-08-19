@@ -23,7 +23,7 @@ describe('relativeLuminance', () => {
 })
 
 describe('readableInk', () => {
-  // The case that prompted this. The label is NOT on the raw canvas — the chip paints the
+  // The case that prompted this. The label is NOT on the raw canvas - the chip paints the
   // company colour at 8% over the card first, and that tint is what lightens the ground and
   // drags contrast down to the 4.19:1 the browser measured.
   it('lifts SRG pink to AA on its own tinted chip', () => {
@@ -34,7 +34,7 @@ describe('readableInk', () => {
   })
 
   it('confirms the raw canvas was never the problem', () => {
-    // Measuring against #0a0a0a says "passes" and hides the defect — the regression guard.
+    // Measuring against #0a0a0a says "passes" and hides the defect - the regression guard.
     expect(contrastRatio('#e91e8c', DARK_CANVAS)).toBeGreaterThan(4.5)
   })
 

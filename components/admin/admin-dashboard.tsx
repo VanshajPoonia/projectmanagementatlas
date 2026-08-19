@@ -85,9 +85,9 @@ export default function AdminDashboard({ user, users, boards, tasks, shell }: Ad
   const tabsRef = useRef<HTMLDivElement>(null)
 
   // Module activation (PROMPT 3 "1-C"): app_modules is a singleton config table (one org, no
-  // org_id) — everything defaults enabled=true, so this is a no-op until a super_admin flips a
+  // org_id) - everything defaults enabled=true, so this is a no-op until a super_admin flips a
   // module off in Super Admin. 'overview' is a core admin function, not a registered module,
-  // so it's always on. Statuses management moved to the Super Admin page (069) — status
+  // so it's always on. Statuses management moved to the Super Admin page (069) - status
   // creation/editing is now super_admin-only, so it no longer belongs in the shared admin tabs.
   const modules = useAppModules(shell?.modules)
   const showCalendar = isModuleEnabled(modules, 'calendar')
@@ -103,7 +103,7 @@ export default function AdminDashboard({ user, users, boards, tasks, shell }: Ad
   // switched Appointments on could see the module everywhere except their own home screen.
   const showAppointments = isModuleEnabled(modules, 'appointments')
   // These two render outside the tab list, so they were seeded into app_modules by 066 but
-  // never consumed — switching either off in Super Admin changed nothing. Gated here so the
+  // never consumed - switching either off in Super Admin changed nothing. Gated here so the
   // toggle means what it says.
   const showAiAssistant = isModuleEnabled(modules, 'ai_assistant')
   const showBookmarks = isModuleEnabled(modules, 'bookmarks')
@@ -124,7 +124,7 @@ export default function AdminDashboard({ user, users, boards, tasks, shell }: Ad
         role: user.role,
         modules,
         // This route is admin-only (app/admin/page.tsx redirects everyone else), and the
-        // rule from migration 085 is "admin, or a member of at least one calendar" — so
+        // rule from migration 085 is "admin, or a member of at least one calendar" - so
         // the membership half can't change the answer here.
         canUseMarketingCalendar: true,
         canViewAudit,
@@ -221,7 +221,7 @@ export default function AdminDashboard({ user, users, boards, tasks, shell }: Ad
       {showAiAssistant && <AiChatWidget userId={user.id} />}
 
       <div className="flex min-h-0 flex-1">
-        {/* Bookmarks sidebar — hidden on mobile. The whole rail is gated, not just its
+        {/* Bookmarks sidebar - hidden on mobile. The whole rail is gated, not just its
             contents, so switching the module off doesn't leave an empty collapsible strip. */}
         {showBookmarks && <aside className={cn(
           "hidden md:flex flex-col flex-shrink-0 border-r bg-muted/10 overflow-hidden transition-[width] duration-200 ease-in-out",

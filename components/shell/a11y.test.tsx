@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Automated accessibility checks — ATLAS_02 Prompt A's "accessibility automation" item, and
+// Automated accessibility checks - ATLAS_02 Prompt A's "accessibility automation" item, and
 // the one thing on its verification list that a human pass keeps missing because the failures
 // are invisible: a control with no accessible name, a state carried only by colour, a
 // heading order that skips a level.
@@ -8,7 +8,7 @@
 // WHAT THIS CAN AND CANNOT DO. axe finds machine-checkable violations only, which is roughly
 // a third of WCAG. It cannot tell whether a label is *meaningful*, whether focus order makes
 // sense, or whether a 320px layout is usable. Those stay manual, and the browser passes in
-// this slice cover them. Nothing here should be read as "the shell is accessible" — only as
+// this slice cover them. Nothing here should be read as "the shell is accessible" - only as
 // "these specific defects are not present, and cannot come back unnoticed".
 //
 // jsdom computes no layout, so colour-contrast is skipped: axe would report every rule as
@@ -51,7 +51,7 @@ async function violationsOf(ui: React.ReactElement): Promise<string[]> {
     },
   })
   return results.violations.map(
-    (v: Result) => `${v.id}: ${v.help} — ${v.nodes.map((n) => n.html).join(' | ')}`,
+    (v: Result) => `${v.id}: ${v.help} - ${v.nodes.map((n) => n.html).join(' | ')}`,
   )
 }
 
@@ -125,8 +125,8 @@ describe('shell accessibility (axe)', () => {
 })
 
 describe('non-colour state cues', () => {
-  // axe cannot check this — "the only difference is gold vs grey" is not a machine-detectable
-  // violation — so it is asserted directly. A user who cannot distinguish the two colours
+  // axe cannot check this - "the only difference is gold vs grey" is not a machine-detectable
+  // violation - so it is asserted directly. A user who cannot distinguish the two colours
   // still needs to know whether a board is starred.
   it('FavoriteStar carries its state in aria-pressed and its name, not only in colour', () => {
     const { getByRole, rerender } = render(

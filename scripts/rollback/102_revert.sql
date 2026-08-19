@@ -9,7 +9,7 @@
 -- LEAVING, so anyone who can manage a task can move it onto a private board they are not a
 -- member of, or onto a board where they are a guest/client. Only revert alongside the client
 -- code that offers the move (components/board/move-task-dialog.tsx and its call site in
--- task-detail-modal.tsx) — with that UI still deployed and the RPC dropped, every move
+-- task-detail-modal.tsx) - with that UI still deployed and the RPC dropped, every move
 -- attempt fails with "function does not exist".
 --
 -- No rows are read or written, so nothing here can destroy data.

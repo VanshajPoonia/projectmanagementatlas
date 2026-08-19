@@ -39,7 +39,7 @@ export default async function AdminPage() {
     loadShellData(supabase),
   ])
 
-  // Resolved locally rather than via a PostgREST embed — parent_task_id is a
+  // Resolved locally rather than via a PostgREST embed - parent_task_id is a
   // self-referencing foreign key, where the `!hint` is ambiguous between the parent
   // (to-one) and children (to-many) directions, and the wrong one yields an array.
   const titleById = new Map((tasks || []).map(task => [task.id, task.title]))

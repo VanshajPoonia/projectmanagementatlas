@@ -37,7 +37,7 @@ describe('task attachment size limits', () => {
     )).toBeNull()
   })
 
-  it('stops at 50 MB — the Supabase Free plan ceiling the bucket also enforces', () => {
+  it('stops at 50 MB - the Supabase Free plan ceiling the bucket also enforces', () => {
     expect(validateTaskAttachment(
       { name: 'huge.mp4', type: 'video/mp4', size: MAX_LARGE_ATTACHMENT_BYTES + 1 },
       { large: true, isAdmin: true },

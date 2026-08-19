@@ -390,7 +390,7 @@
                         <thead><tr><th>Client ID</th><th>Name</th><th>Company</th><th>Email</th><th>Mobile Phone</th><th>Status</th><th>Sales Rep</th><th>Last Activity</th></tr></thead>
                         <tbody>
                             <tr><td>C-10482</td><td contenteditable="true">Jennifer Martin</td><td contenteditable="true">Martin Holdings</td><td contenteditable="true">jmartin@example.com</td><td contenteditable="true">314-555-0199</td><td><select><option>New</option><option selected>In Progress</option><option>Pending Operations</option><option>Hold</option><option>Ready for Estimate</option><option>Won</option><option>Closed</option><option>Cancel</option></select></td><td>A. Carter</td><td>Today</td></tr>
-                            <tr><td>C-10481</td><td contenteditable="true">David Wilson</td><td contenteditable="true">—</td><td contenteditable="true">dwilson@example.com</td><td contenteditable="true">636-555-0134</td><td><select><option selected>New</option><option>In Progress</option><option>Pending Operations</option><option>Hold</option><option>Ready for Estimate</option><option>Won</option><option>Closed</option><option>Cancel</option></select></td><td>M. Lee</td><td>Yesterday</td></tr>
+                            <tr><td>C-10481</td><td contenteditable="true">David Wilson</td><td contenteditable="true">-</td><td contenteditable="true">dwilson@example.com</td><td contenteditable="true">636-555-0134</td><td><select><option selected>New</option><option>In Progress</option><option>Pending Operations</option><option>Hold</option><option>Ready for Estimate</option><option>Won</option><option>Closed</option><option>Cancel</option></select></td><td>M. Lee</td><td>Yesterday</td></tr>
                             <tr><td>C-10479</td><td contenteditable="true">Sarah Patel</td><td contenteditable="true">Patel Group</td><td contenteditable="true">spatel@example.com</td><td contenteditable="true">314-555-0112</td><td><select><option>New</option><option>In Progress</option><option selected>Pending Operations</option><option>Hold</option><option>Ready for Estimate</option><option>Won</option><option>Closed</option><option>Cancel</option></select></td><td>A. Carter</td><td>2 days ago</td></tr>
                         </tbody>
                     </table>
@@ -398,7 +398,7 @@
                 </div>
 
                 <div class="card" style="margin-top:16px;">
-                    <h2 class="section-title">Client Workspace — Jennifer Martin</h2>
+                    <h2 class="section-title">Client Workspace - Jennifer Martin</h2>
                     <div class="grid-3">
                         <div>
                             <h3 style="font-size:14px;">Files & Documents</h3>
@@ -489,7 +489,7 @@
                     Every status change creates a timestamped history record. That status history becomes the foundation for all administrative cycle-time and bottleneck reporting.
                 </div>
                 <div class="card">
-                    <h2 class="section-title">Order ORD-260813-1187 — Status Control</h2>
+                    <h2 class="section-title">Order ORD-260813-1187 - Status Control</h2>
                     <div class="form-grid">
                         <div class="field"><label>Current Status</label><input value="In Progress" readonly></div>
                         <div class="field"><label>Change Status To</label><select onchange="toggleCancelReason(this)"><option>In Progress</option><option>Hold</option><option>Ready for Estimate</option><option>Won</option><option>Closed</option><option>Cancel</option></select></div>
@@ -584,7 +584,7 @@
                 <div class="card" style="margin-top:16px;">
                     <h2 class="section-title">Top 10 Lead Sources</h2>
                     <table>
-                        <thead><tr><th>Lead Source</th><th>Leads — Current Period</th><th>Previous Period</th><th>% Change</th></tr></thead>
+                        <thead><tr><th>Lead Source</th><th>Leads - Current Period</th><th>Previous Period</th><th>% Change</th></tr></thead>
                         <tbody>
                             <tr><td>META</td><td>75</td><td>0</td><td class="positive">+100.0%</td></tr>
                             <tr><td>Facebook</td><td>20</td><td>0</td><td class="positive">+100.0%</td></tr>
@@ -621,7 +621,7 @@
                 <div class="card" style="margin-top:16px;">
                     <h2 class="section-title">Leads Won by Source</h2>
                     <table>
-                        <thead><tr><th>Lead Source</th><th>Won — Current Period</th><th>Won — Previous Period</th><th>% Change</th></tr></thead>
+                        <thead><tr><th>Lead Source</th><th>Won - Current Period</th><th>Won - Previous Period</th><th>% Change</th></tr></thead>
                         <tbody>
                             <tr><td>Manually Created Lead</td><td>13</td><td>7</td><td class="positive">+86.0%</td></tr>
                             <tr><td>Client Referral</td><td>7</td><td>1</td><td class="positive">+600.0%</td></tr>
@@ -646,7 +646,7 @@
                     <table style="margin-top:18px;">
                         <thead><tr><th>Lead Stage</th><th># Leads</th><th>Conversion Rate</th><th>Time to Convert</th></tr></thead>
                         <tbody>
-                            <tr><td>New</td><td>179</td><td>—</td><td>—</td></tr>
+                            <tr><td>New</td><td>179</td><td>-</td><td>-</td></tr>
                             <tr><td>In Progress</td><td>165</td><td>92.2%</td><td>26 hrs</td></tr>
                             <tr><td>Pending Operations</td><td>94</td><td>52.5%</td><td>70 hrs</td></tr>
                             <tr><td>Ready for Estimate</td><td>62</td><td>34.6%</td><td>174 hrs</td></tr>
@@ -720,14 +720,14 @@
                 </div>
 
                 <div class="card" style="margin-top:16px;">
-                    <h2 class="section-title">Sample Detailed Results — New → Closed</h2>
+                    <h2 class="section-title">Sample Detailed Results - New → Closed</h2>
                     <table>
                         <thead><tr><th>Order #</th><th>Client</th><th>Entered</th><th>Closed</th><th>Total Cycle Time</th><th>Delay Flag</th></tr></thead>
                         <tbody>
-                            <tr><td>ORD-260801-1021</td><td>Martin Holdings</td><td>Aug 1, 9:02 AM</td><td>Aug 6, 4:11 PM</td><td>5.3 days</td><td>—</td></tr>
+                            <tr><td>ORD-260801-1021</td><td>Martin Holdings</td><td>Aug 1, 9:02 AM</td><td>Aug 6, 4:11 PM</td><td>5.3 days</td><td>-</td></tr>
                             <tr><td>ORD-260802-1027</td><td>David Wilson</td><td>Aug 2, 1:33 PM</td><td>Aug 13, 10:15 AM</td><td>10.9 days</td><td><span class="status s-review">Watch</span></td></tr>
-                            <tr><td>ORD-260803-1040</td><td>Sarah Patel</td><td>Aug 3, 8:10 AM</td><td>Aug 12, 1:45 PM</td><td>9.2 days</td><td>—</td></tr>
-                            <tr><td>ORD-260804-1055</td><td>Thomas Reed</td><td>Aug 4, 3:05 PM</td><td>Aug 12, 5:44 PM</td><td>8.1 days</td><td>—</td></tr>
+                            <tr><td>ORD-260803-1040</td><td>Sarah Patel</td><td>Aug 3, 8:10 AM</td><td>Aug 12, 1:45 PM</td><td>9.2 days</td><td>-</td></tr>
+                            <tr><td>ORD-260804-1055</td><td>Thomas Reed</td><td>Aug 4, 3:05 PM</td><td>Aug 12, 5:44 PM</td><td>8.1 days</td><td>-</td></tr>
                         </tbody>
                     </table>
                 </div>

@@ -2,7 +2,7 @@
 //
 // Split out of lib/modules.ts so the server can read it. That file imports `useState` and the
 // browser Supabase client, and Next.js refuses to let a Server Component import a module that
-// reaches `useEffect` — which is exactly what happened the moment lib/shell-data.ts wanted
+// reaches `useEffect` - which is exactly what happened the moment lib/shell-data.ts wanted
 // DEFAULT_MODULES for its fallback. Duplicating the list here instead would have been worse:
 // this codebase's recurring failure is two copies of one truth drifting apart.
 //
@@ -29,7 +29,7 @@ export interface AppModule {
 }
 
 // Fallback whenever app_modules can't be loaded (or a key isn't seeded yet), so every module
-// stays available — matches pre-migration-066 behavior, where nothing was ever gated.
+// stays available - matches pre-migration-066 behavior, where nothing was ever gated.
 export const DEFAULT_MODULES: AppModule[] = [
   { module_key: 'boards', enabled: true },
   { module_key: 'personal_tasks', enabled: true },

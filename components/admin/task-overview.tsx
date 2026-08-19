@@ -30,7 +30,7 @@ export default function TaskOverview({ tasks, users }: TaskOverviewProps) {
     <div className="space-y-6">
       {/* No heading here. The DashboardWindow this renders inside is already titled
           "Overview" with the same description word for word, so repeating it printed the
-          title twice — which on a phone cost a third of the first screen. */}
+          title twice - which on a phone cost a third of the first screen. */}
 
       {/* Two across on a phone. One per row meant four full-height cards to read four
           numbers, so the headline figure of the whole dashboard took two thumb-scrolls. */}

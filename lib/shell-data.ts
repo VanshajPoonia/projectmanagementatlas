@@ -9,7 +9,7 @@ import type { MarketingCalendarSummary } from './use-marketing-calendars'
  * The two lists the app shell needs before it can draw a correct sidebar.
  *
  * Both used to be fetched client-side on mount, which meant every screen painted its nav
- * from lib/modules.ts's fallback first — where `crm` and `appointments` are off — and
+ * from lib/modules.ts's fallback first - where `crm` and `appointments` are off - and
  * corrected itself a beat later. A super admin who had just switched CRM on in Settings
  * watched it appear, which reads exactly like the thing not being saved.
  */
@@ -25,7 +25,7 @@ export interface ShellData {
  * `marketing_calendars` already scopes itself to "every calendar for admins, only mine for
  * everyone else" (085). Nothing here re-implements visibility.
  *
- * Every consumer is a dynamic page — they all call `auth.getUser()` first — so this is never
+ * Every consumer is a dynamic page - they all call `auth.getUser()` first - so this is never
  * served from a static cache and cannot go stale behind a toggle.
  */
 export async function loadShellData(supabase: SupabaseClient): Promise<ShellData> {

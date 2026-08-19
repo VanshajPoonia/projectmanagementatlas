@@ -18,7 +18,7 @@ export {
  * The enabled-module list for this viewer.
  *
  * Pass `initial` (from `loadShellData` on the server) wherever the host can. Without it the
- * first frame renders DEFAULT_MODULES — where `crm` and `appointments` are off — and
+ * first frame renders DEFAULT_MODULES - where `crm` and `appointments` are off - and
  * corrects itself once the fetch lands, so a module that is switched on visibly pops into
  * the sidebar a moment after the page appears.
  *
@@ -48,7 +48,7 @@ export function useAppModules(initial?: AppModule[] | null) {
 
   // The seed is read on every render rather than copied into state once. A `useState`
   // initializer runs only on mount, so a soft navigation carrying a newly-toggled list would
-  // have been ignored for the lifetime of the component — and syncing it back with an effect
+  // have been ignored for the lifetime of the component - and syncing it back with an effect
   // risks a render loop whenever the host passes a fresh array identity.
   return seeded ? initial! : (fetched ?? DEFAULT_MODULES)
 }

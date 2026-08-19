@@ -1,6 +1,6 @@
 -- Rollback for 090_project_ids.sql.
 --
--- ⚠️ DESTRUCTIVE. public.project_ids is a permanent ledger — dropping it discards every
+-- ⚠️ DESTRUCTIVE. public.project_ids is a permanent ledger - dropping it discards every
 -- claimed project number along with who took it, for which client, and when. Those numbers
 -- are referenced outside this app (on jobs, files, invoices), so the data cannot be
 -- reconstructed. Take a dump first, always, and never run this against production without

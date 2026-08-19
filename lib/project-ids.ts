@@ -1,5 +1,5 @@
 // Pure helpers for the Project ID ledger (migration 090). Kept out of the view so the
-// numbering rules — which are the whole product here — are unit-testable without a browser
+// numbering rules - which are the whole product here - are unit-testable without a browser
 // or a database.
 //
 // The authoritative allocation happens in public.claim_project_id(); everything below is for
@@ -96,7 +96,7 @@ export function matchesProjectIdSearch(row: ProjectIdRow, query: string): boolea
 /** Timestamps are displayed in the same zone the numbers are minted in, and labelled as such. */
 export function formatClaimedAt(iso: string): string {
   const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return '—'
+  if (Number.isNaN(date.getTime())) return '-'
   return new Intl.DateTimeFormat('en-US', {
     timeZone: LEDGER_TIME_ZONE,
     dateStyle: 'medium',

@@ -8,7 +8,7 @@ import { useEffect, useRef } from 'react'
 // app left focus on `document.body`, so a keyboard or screen-reader user who opened a task
 // from the middle of a board was returned to the top of the document and had to tab back
 // through the entire page to find their place. Verified in a real browser, on a clean Escape
-// close, before any of this slice's changes — it is a pre-existing defect, not a regression.
+// close, before any of this slice's changes - it is a pre-existing defect, not a regression.
 //
 // WHY RADIX'S OWN RESTORE DOES NOT COVER IT HERE. Radix records `document.activeElement` when
 // the dialog opens and re-focuses that exact node from `onCloseAutoFocus`. That works when the
@@ -18,8 +18,8 @@ import { useEffect, useRef } from 'react'
 // element silently does nothing, and focus falls to body.
 //
 // The fix below is deliberately defensive rather than clever: remember the element, and on
-// close put focus back only if it is still connected. When it is not — genuinely unavoidable
-// if the trigger no longer exists — fall back to the main landmark, so a screen reader lands
+// close put focus back only if it is still connected. When it is not - genuinely unavoidable
+// if the trigger no longer exists - fall back to the main landmark, so a screen reader lands
 // in page content rather than at the very top of the document. That is a worse outcome than
 // the trigger and a much better one than body.
 
@@ -28,7 +28,7 @@ import { useEffect, useRef } from 'react'
  *
  * `#app-main` is AppShell's own main element, which already carries `tabIndex={-1}` for the
  * skip link. Board pages render outside AppShell and have a plain `<main>` instead, which is
- * why the bare tag is listed too — an earlier version checked only `#app-main`, found nothing
+ * why the bare tag is listed too - an earlier version checked only `#app-main`, found nothing
  * on exactly the page where this matters most, and quietly left focus on body.
  */
 const FALLBACK_SELECTORS = ['#app-main', 'main', '[role="main"]']
@@ -44,7 +44,7 @@ function isFocusable(el: Element | null | undefined): el is HTMLElement {
 
 /**
  * Focus a landmark. A `<main>` is not focusable by default, so give it `tabindex="-1"` first
- * — the standard skip-link technique. -1 keeps it out of the tab order; it only makes the
+ * - the standard skip-link technique. -1 keeps it out of the tab order; it only makes the
  * element a valid target for programmatic focus.
  */
 function focusLandmark(): void {
@@ -66,7 +66,7 @@ function focusLandmark(): void {
  * ⚠️ TIMING IS THE WHOLE PROBLEM, and a double requestAnimationFrame is not enough. Radix
  * animates the dialog out over ~200ms, and until that finishes the dialog's own input is
  * still mounted and still holds focus. A check that runs two frames after close therefore
- * sees a perfectly healthy `activeElement`, concludes nothing is wrong, and does nothing —
+ * sees a perfectly healthy `activeElement`, concludes nothing is wrong, and does nothing -
  * and focus drops to `body` a moment later when the content finally unmounts. Measured
  * exactly that in a browser: INPUT#title at 100ms, BODY from 300ms onward.
  *
@@ -101,7 +101,7 @@ export function useDialogFocusRestore(open: boolean): void {
           target.focus()
           // focus() is a silent no-op on an element that is not focusable, which would leave
           // us on body having believed we succeeded. Check, and fall through if it did
-          // nothing — this is also what covers a trigger that was re-rendered into a new node
+          // nothing - this is also what covers a trigger that was re-rendered into a new node
           // while the dialog was open, which is the common case in this codebase.
           if (document.activeElement === target) return
         }
@@ -118,7 +118,7 @@ export function useDialogFocusRestore(open: boolean): void {
           restore()
           return
         }
-        // Still inside the dialog that is animating away — not settled yet.
+        // Still inside the dialog that is animating away - not settled yet.
         if (active.closest?.('[data-slot="dialog-content"]')) {
           if (elapsed >= SETTLE_TIMEOUT_MS) {
             clearInterval(timer)

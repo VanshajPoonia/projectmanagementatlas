@@ -47,7 +47,7 @@ function dueLabel(due: unknown): { text: string; overdue: boolean } | null {
  *
  * Two halves, in the order a person actually needs them: the ranked shortlist ("what
  * should I do next, and why") on top, then the full picture broken into the urgency
- * sections underneath. Every ranked item shows the reasons that put it where it is —
+ * sections underneath. Every ranked item shows the reasons that put it where it is -
  * an unexplained ordering is a black box, and people stop trusting it the first time it
  * disagrees with them.
  */
@@ -84,7 +84,7 @@ export default function MyWorkView({ user, tasks, shell }: MyWorkViewProps) {
   )
 
   // The palette's Create section. Both are honest navigations to where the create
-  // affordance actually lives — no capability gate, because neither performs a write.
+  // affordance actually lives - no capability gate, because neither performs a write.
   const commands: Command[] = useMemo(
     () => [
       {
@@ -215,7 +215,7 @@ export default function MyWorkView({ user, tasks, shell }: MyWorkViewProps) {
                     {section.tasks.length}
                   </Badge>
                 </CardTitle>
-                {/* Every section explains what it contains — a bare heading leaves the
+                {/* Every section explains what it contains - a bare heading leaves the
                     reader guessing at the rule that put a task in front of them. */}
                 <CardDescription>{section.description}</CardDescription>
               </CardHeader>
@@ -261,7 +261,7 @@ export default function MyWorkView({ user, tasks, shell }: MyWorkViewProps) {
           <ul className="mt-2 space-y-1">
             {UNANSWERED_QUESTIONS.map((entry) => (
               <li key={entry.question}>
-                {entry.question} — needs {entry.blockedBy}.
+                {entry.question} - needs {entry.blockedBy}.
               </li>
             ))}
           </ul>

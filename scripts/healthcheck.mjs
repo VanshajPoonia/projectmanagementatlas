@@ -3,13 +3,13 @@
 //
 // Run:  node scripts/healthcheck.mjs      (or: pnpm dlx tsx scripts/healthcheck.mjs)
 //
-// This is an OPS tool, not app code — it is allowed to read .env.local and, for the
+// This is an OPS tool, not app code - it is allowed to read .env.local and, for the
 // object-storage check only, use the service-role key locally. It never runs in the
 // request path. See docs/development/local-setup.md and docs/architecture/current-system.md.
 //
 // It honestly reports the services the audit brief asks about: DB, cache, queue,
 // object storage, API health, worker health, and search. Services this architecture
-// does not provision (cache / queue / dedicated search) are reported as N/A — a real
+// does not provision (cache / queue / dedicated search) are reported as N/A - a real
 // reflection of the system, not a failure.
 
 import { readFileSync } from 'node:fs'
@@ -64,7 +64,7 @@ async function checkDatabase() {
     if (res.ok) return record('Database', 'ok', `Supabase REST reachable (HTTP ${res.status})`)
 
     // ⚠️ 401 + Postgres 42501 means HEALTHY. Migration 095 revoked every anon privilege
-    // in `public`, so this unauthenticated probe is now always refused — and the old
+    // in `public`, so this unauthenticated probe is now always refused - and the old
     // `res.ok` test reported the database as down from the moment 095 landed. PostgREST
     // can only produce 42501 by asking Postgres and being refused, which proves the
     // reachability this check exists to measure. See app/api/health/route.ts.
@@ -81,7 +81,7 @@ async function checkDatabase() {
 async function checkObjectStorage() {
   if (!SUPABASE_URL) return record('Object storage', 'fail', 'Missing NEXT_PUBLIC_SUPABASE_URL')
   if (!SERVICE) {
-    return record('Object storage', 'skip', 'No SERVICE_ROLE_KEY locally — cannot list buckets (ops-only check)')
+    return record('Object storage', 'skip', 'No SERVICE_ROLE_KEY locally - cannot list buckets (ops-only check)')
   }
   try {
     const res = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
@@ -137,7 +137,7 @@ async function main() {
   checkAi()
   checkNonProvisioned()
 
-  console.log('\n  Health check —', new Date().toISOString())
+  console.log('\n  Health check -', new Date().toISOString())
   console.log('  ' + '-'.repeat(72))
   for (const r of results) {
     console.log(`  ${ICON[r.status] || '  '} ${r.name.padEnd(22)} ${r.detail}`)

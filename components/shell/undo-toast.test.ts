@@ -81,7 +81,7 @@ describe('createUndoHandler', () => {
     expect(success).toHaveBeenCalledWith('Restored')
   })
 
-  // A handler that threw once has still "been used" — retrying would be a second write
+  // A handler that threw once has still "been used" - retrying would be a second write
   // against a state the caller can no longer reason about.
   it('does not re-arm after a failure', async () => {
     const { surface } = fakeToast()

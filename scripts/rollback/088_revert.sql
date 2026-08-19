@@ -1,7 +1,7 @@
 -- Rollback for 088_marketing_channel_reorder.sql.
 --
 -- Drops the reorder RPC. Channel positions keep whatever order they were last
--- dragged into — this only removes the ability to change it, it does not restore
+-- dragged into - this only removes the ability to change it, it does not restore
 -- any previous ordering (nothing records one).
 --
 -- Only worth running if the matching client change is coming off too: with 088

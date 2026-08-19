@@ -1,11 +1,11 @@
-# Current System — Architecture Audit
+# Current System - Architecture Audit
 
 _Audit date: 2026-07-23. Source: direct inspection of the repository at `main`, not product documentation._
 
 > **Headline finding:** This repository is **not** a Plane deployment or a Plane fork. It is a
 > greenfield **Next.js 16 App Router + Supabase** application (v0-scaffolded, package name
 > `my-v0-project`). Every "Plane version / upstream commit" style question in the audit brief is
-> **N/A** — see [`upstream-boundary.md`](./upstream-boundary.md). The audit below records what is
+> **N/A** - see [`upstream-boundary.md`](./upstream-boundary.md). The audit below records what is
 > actually present in code.
 
 ## 1. Stack summary
@@ -28,10 +28,10 @@ _Audit date: 2026-07-23. Source: direct inspection of the repository at `main`, 
 
 Single Next.js App-Router app. There is **no separate frontend SPA**, no monorepo of apps. Route groups:
 
-- `app/login`, `app/signup` — auth pages (public signup is disabled in practice; see §6).
-- `app/dashboard`, `app/dashboard/board/[id]` — regular-user work area (Kanban board view).
-- `app/admin`, `app/admin/board/[id]`, `app/admin/super-admin` — admin + super-admin management.
-- `app/api/**` — server routes (see §7).
+- `app/login`, `app/signup` - auth pages (public signup is disabled in practice; see §6).
+- `app/dashboard`, `app/dashboard/board/[id]` - regular-user work area (Kanban board view).
+- `app/admin`, `app/admin/board/[id]`, `app/admin/super-admin` - admin + super-admin management.
+- `app/api/**` - server routes (see §7).
 
 Component library under `components/` (board, chat, ai-chat, ui, etc.). Design tokens and the visual
 system are documented in the repo-root `DESIGN.md`.
@@ -40,7 +40,7 @@ system are documented in the repo-root `DESIGN.md`.
 
 No standalone backend service. "Backend" = Next.js **Route Handlers** (`app/api/**/route.ts`) plus
 **Server Components / server actions** that talk to Supabase directly. There is no Django/Python
-service, no separate API gateway, no gRPC — again confirming this is not Plane.
+service, no separate API gateway, no gRPC - again confirming this is not Plane.
 
 ## 4. Database
 
@@ -62,12 +62,12 @@ See [`domain-map.md`](./domain-map.md) for the entity model.
 ## 5. Authentication
 
 - **Supabase Auth** via `@supabase/ssr` (0.8.0). Two client factories:
-  - `lib/supabase/server.ts` — cookie-bound server client (anon key + user session cookies).
-  - `lib/supabase/client.ts` — memoised browser client (anon key).
+  - `lib/supabase/server.ts` - cookie-bound server client (anon key + user session cookies).
+  - `lib/supabase/client.ts` - memoised browser client (anon key).
 - Session refresh happens in **`proxy.ts`** at the repo root. In Next.js 16 the middleware file
   convention is `proxy.ts`; this project uses it to refresh the Supabase session and to gate
   `/admin` paths by `profiles.role`. (SETUP.md's older claim "there is no Middleware" refers to the
-  pre-16 `middleware.ts` name — the equivalent now lives in `proxy.ts`. **Documentation mismatch
+  pre-16 `middleware.ts` name - the equivalent now lives in `proxy.ts`. **Documentation mismatch
   logged** in [`risk-register.md`](./risk-register.md).)
 - **Public self-service signup is effectively disabled**: accounts are created by admins through the
   admin API. `app/signup` exists but org policy is admin-provisioned users.
@@ -129,7 +129,7 @@ search UI). Lookups are direct Postgres queries / client-side filtering.
 
 - **Supabase Storage** bucket `chat-attachments` (created in `002`) for chat images, with
   per-user-folder RLS policies.
-- **Task attachments do NOT use a bucket** — they are stored as **size-capped base64** in the DB
+- **Task attachments do NOT use a bucket** - they are stored as **size-capped base64** in the DB
   with a server-enforced size check (`043`). (Trade-off: simple, but bloats rows / not CDN-served.)
 
 ## 14. Email
@@ -146,13 +146,13 @@ co-editing; realtime is row-change fan-out only.
 ## 16. Feature flags
 
 **None.** No flag system, no per-workspace module toggles yet. (The Master Product Context's
-"module activation" concept is unbuilt — a Phase-1+ item, not present today.)
+"module activation" concept is unbuilt - a Phase-1+ item, not present today.)
 
 ## 17. Existing tests
 
 **None.** No `vitest`/`jest`/`playwright` config, no `*.test.ts` / `*.spec.ts` files. `package.json`
 has no `test` script. This is the single biggest engineering-hygiene gap and is why the agreed
-process is "calibrated" — tests are introduced incrementally alongside risky features.
+process is "calibrated" - tests are introduced incrementally alongside risky features.
 
 ## 18. CI/CD
 
@@ -192,7 +192,7 @@ ordering contract; there is no schema-version table.
 
 | Brief assumed (Plane-shaped) | Reality |
 |---|---|
-| Plane version / upstream commit | N/A — not Plane, no upstream |
+| Plane version / upstream commit | N/A - not Plane, no upstream |
 | Separate frontend + backend apps | Single Next.js app |
 | Django/Python API, DRF | Next Route Handlers + Supabase |
 | Redis cache, Celery queue, workers | None provisioned |
@@ -201,4 +201,4 @@ ordering contract; there is no schema-version table.
 | CI/CD pipelines | None (Vercel git deploy only) |
 | Existing test suite | None |
 
-This table is the crux of the extension decision — see [`adr-001-extension-strategy.md`](./adr-001-extension-strategy.md).
+This table is the crux of the extension decision - see [`adr-001-extension-strategy.md`](./adr-001-extension-strategy.md).

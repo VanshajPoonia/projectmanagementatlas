@@ -28,7 +28,7 @@ export interface DestinationColumn {
 /**
  * The boards worth offering as a destination.
  *
- * Archived boards are excluded — moving live work into an archive is almost certainly a
+ * Archived boards are excluded - moving live work into an archive is almost certainly a
  * misclick, and the board list UI already hides them. The board the task is already on is
  * excluded because "move it to where it is" is not an action. Everything else the caller can
  * see is fair game; RLS decided what that is before this list was fetched, and migration 102
@@ -49,7 +49,7 @@ export function selectableBoards<T extends BoardOption>(
  *
  * Preference order, all of it delegated to findColumnForStatus so a move classifies a status
  * exactly the way the status dropdown and the board itself already do:
- *   1. a column explicitly linked to the task's status (columns.status_key — migration 063),
+ *   1. a column explicitly linked to the task's status (columns.status_key - migration 063),
  *   2. a column whose title matches the status label,
  *   3. a column in the same coarse to_do/in_progress/done bucket,
  *   4. the leftmost column.
@@ -80,7 +80,7 @@ export function chooseDestinationColumn(
  * The activity-log sentence for a completed move.
  *
  * Names both boards, because on the destination board the entry is the only record of where
- * the card came from — the source board keeps no trace of it at all once it has gone.
+ * the card came from - the source board keeps no trace of it at all once it has gone.
  */
 export function describeMove(
   fromBoardTitle: string | null | undefined,

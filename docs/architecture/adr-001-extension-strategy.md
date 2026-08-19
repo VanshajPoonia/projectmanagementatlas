@@ -1,4 +1,4 @@
-# ADR-001 — Extension Strategy for the Unified Product
+# ADR-001 - Extension Strategy for the Unified Product
 
 - **Status:** Accepted
 - **Date:** 2026-07-23
@@ -10,7 +10,7 @@
 
 The Master Product Context was written assuming a **Plane Community Edition** foundation and asks the
 audit to choose between four extension strategies. The repository audit established that **there is
-no Plane in this repository** — it is a greenfield Next.js 16 + React 19 + Supabase application with
+no Plane in this repository** - it is a greenfield Next.js 16 + React 19 + Supabase application with
 62 hand-applied SQL migrations, RLS-based authorization, no tests, no CI, and no upstream. That fact
 reshapes the four options: two of them (“fork Plane”, “Plane + sidecar”) presuppose an upstream we do
 not have, so adopting them would mean **importing a large external codebase we currently don’t
@@ -20,13 +20,13 @@ This ADR evaluates the four canonical options honestly against the *actual* star
 
 ## The four options (as posed), reinterpreted for this repo
 
-1. **API-only extension** — Keep an external product (Plane) as the system of record; build only
+1. **API-only extension** - Keep an external product (Plane) as the system of record; build only
    against its API. _For us this means adopting Plane first, then integrating._
-2. **Shallow Plane fork** — Fork Plane, layer changes on top, track upstream. _Requires importing
+2. **Shallow Plane fork** - Fork Plane, layer changes on top, track upstream. _Requires importing
    Plane and migrating our existing data/users into it._
-3. **Plane + sidecar service** — Run Plane unmodified; add a separate service for the differentiated
+3. **Plane + sidecar service** - Run Plane unmodified; add a separate service for the differentiated
    features. _Two systems of record to keep consistent._
-4. **Greenfield / continue on the codebase we have** — Build the unified product on the existing
+4. **Greenfield / continue on the codebase we have** - Build the unified product on the existing
    Next.js + Supabase app, mining OSS products (Plane/OpenProject/Vikunja/Leantime/Taiga) as
    **reference designs only**, copying **no code**. _This is the “greenfield we already have.”_
 
@@ -52,14 +52,14 @@ existing live app with real data). Higher = more favourable.
 ### Why the Plane-based options score low _here_
 
 - They all begin with a **migration project**: importing Plane and moving existing users, boards,
-  tasks, marketing calendar, personal tasks, and AI-chat history into Plane's model — pure cost
+  tasks, marketing calendar, personal tasks, and AI-chat history into Plane's model - pure cost
   before any new value.
 - **Licensing exposure jumps.** Plane's licensing (and its enterprise `ee/` boundary) would need
   formal legal review before we distribute anything; forking maximises that exposure. Today we have
-  **zero** copyleft product code. _(Flag for human legal review — not a legal conclusion.)_
+  **zero** copyleft product code. _(Flag for human legal review - not a legal conclusion.)_
 - **Two-system consistency** (option 3) is the worst operational trade for a solo maintainer on free
   tiers: two databases, two auth systems, two deploy targets.
-- **Auth/permissions** would be **duplicated** — we already have working Supabase Auth + RLS; Plane
+- **Auth/permissions** would be **duplicated** - we already have working Supabase Auth + RLS; Plane
   brings its own, and reconciling them is exactly the "duplicate existing authentication" trap the
   Master Context warns against.
 
@@ -75,7 +75,7 @@ existing live app with real data). Higher = more favourable.
 
 ## Decision
 
-**Adopt Option 4 — continue building the unified product on the existing Next.js 16 + Supabase
+**Adopt Option 4 - continue building the unified product on the existing Next.js 16 + Supabase
 application.** Do **not** fork, adopt, or run Plane. Use Plane/OpenProject/Vikunja/Leantime/Taiga
 purely as reference designs; copy no code and preserve every upstream license if any snippet is ever
 studied.
@@ -95,7 +95,7 @@ configurable Work-Item domain).
 
 **Negative / obligations**
 - We own the full build cost of advanced modules (views, Gantt, automation, governance).
-- We must **stand up a test harness** and CI as first-class calibrated work — this is now a tracked
+- We must **stand up a test harness** and CI as first-class calibrated work - this is now a tracked
   obligation (risk register R-01/R-02), not an afterthought.
 - Enterprise features must be **designed-for-later in the data model** so we don't repaint ourselves
   into a corner (custom-fields engine first = "one Work-Item domain with configurable types").

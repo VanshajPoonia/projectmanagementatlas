@@ -102,7 +102,7 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
 
       const body = await response.json().catch(() => ({}))
       if (!response.ok) {
-        // The server refuses for reasons worth reading — deleting yourself, or removing the
+        // The server refuses for reasons worth reading - deleting yourself, or removing the
         // last super admin. Replacing them with "Failed to delete user" told the operator
         // nothing and made a deliberate refusal look like a bug.
         throw new Error(body?.error || 'Failed to delete user')
@@ -182,7 +182,7 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
       setPassword('')
       setEditOpen(false)
 
-      // Supabase revokes every session for an account whose password changes — including the
+      // Supabase revokes every session for an account whose password changes - including the
       // one that just made the change. Verified in a browser: the very next navigation bounced
       // to /login. Refreshing the user list here would fire a query with a dead token and leave
       // the operator on a page where nothing works, so sign out cleanly and send them to the
@@ -340,7 +340,7 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
               </div>
               
               {/* Your own card gets Edit and nothing else. Changing your own password was
-                  previously impossible from here — the whole action block was hidden — which
+                  previously impossible from here - the whole action block was hidden - which
                   meant the one person who administers every other account had no way to rotate
                   their own credentials in the place they manage credentials. Delete and Switch
                   off access stay hidden for yourself: both are refused server-side anyway
@@ -465,7 +465,7 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
               </div>
               <div className="space-y-2">
                 <Label htmlFor="editRole">Role</Label>
-                {/* Demoting yourself out of super_admin locks you out of this page — and if
+                {/* Demoting yourself out of super_admin locks you out of this page - and if
                     you were the last one, out of the org's only super-admin surface entirely.
                     The server refuses a self role change too; this just stops the control
                     from looking usable. */}

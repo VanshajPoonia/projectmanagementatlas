@@ -39,7 +39,7 @@ interface Profile {
 /**
  * Status control: the screen that moves an order and shows what that movement cost.
  *
- * The transition itself is a plain UPDATE of crm_orders.status — the history row is written by
+ * The transition itself is a plain UPDATE of crm_orders.status - the history row is written by
  * the database trigger, in the same transaction. That is deliberate: if this component wrote
  * the history, an order moved from anywhere else (an import, a future automation, psql) would
  * have a gap, and a cycle-time report built on a history with gaps is worse than no report.
@@ -98,7 +98,7 @@ export function CrmStatusControl({
 
     // The disposition rides along in the SAME update as the status. The trigger copies both
     // onto the interval it opens and blanks the carriers again, so there is never a moment
-    // where the history records a move it cannot explain — and the history table itself stays
+    // where the history records a move it cannot explain - and the history table itself stays
     // unwritable by the application, which is what makes it an audit trail.
     const { data, error } = await supabase
       .from('crm_orders')
@@ -265,10 +265,10 @@ export function CrmStatusControl({
                         showing only the disposition ("Work proceeding normally") would hide
                         the one sentence explaining why the deal was lost. */}
                     <td className="text-muted-foreground max-w-[280px] px-3 py-2.5"
-                        title={[row.reason, row.note].filter(Boolean).join(' — ') || undefined}>
+                        title={[row.reason, row.note].filter(Boolean).join(' - ') || undefined}>
                       {row.reason && <span className="block truncate">{row.reason}</span>}
                       {row.note && <span className="text-foreground block truncate">{row.note}</span>}
-                      {!row.reason && !row.note && '—'}
+                      {!row.reason && !row.note && '-'}
                     </td>
                   </tr>
                 )

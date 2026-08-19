@@ -7,7 +7,7 @@
 --   SELECT email, role, deactivated_at FROM public.profiles WHERE is_active IS FALSE;
 --
 -- If that returns anyone, reactivate them deliberately (or delete them) before reverting,
--- rather than handing access back by accident. The GoTrue bans are NOT undone by this file —
+-- rather than handing access back by accident. The GoTrue bans are NOT undone by this file -
 -- they live in the auth server, so a reverted database plus a standing ban leaves someone
 -- unable to sign in with no flag explaining why. Lift those with
 -- `auth.admin.updateUserById(id, { ban_duration: 'none' })`.

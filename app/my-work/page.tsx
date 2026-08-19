@@ -4,7 +4,7 @@ import MyWorkView from '@/components/my-work/my-work-view'
 import { loadShellData } from '@/lib/shell-data'
 
 /**
- * My Work — the personal cockpit the shell has advertised as "soon" since the nav model
+ * My Work - the personal cockpit the shell has advertised as "soon" since the nav model
  * was written. Unlike /dashboard this is a real route, not a tab, because it is the one
  * screen people are expected to deep-link and open first.
  *

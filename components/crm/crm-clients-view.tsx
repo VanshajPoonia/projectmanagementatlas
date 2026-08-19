@@ -188,7 +188,7 @@ export function CrmClientsView({
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <span className="font-mono text-xs">{client.client_ref ?? '—'}</span>
+                      <span className="font-mono text-xs">{client.client_ref ?? '-'}</span>
                       <span className="text-muted-foreground text-xs">
                         {formatDistanceToNow(new Date(client.last_activity_at), { addSuffix: true })}
                       </span>
@@ -253,19 +253,19 @@ export function CrmClientsView({
                         aria-selected={isSelected}
                         className={cn('cursor-pointer transition-colors', isSelected ? 'bg-accent' : 'hover:bg-accent/50')}
                       >
-                        <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap">{client.client_ref ?? '—'}</td>
+                        <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap">{client.client_ref ?? '-'}</td>
                         <td className="px-3 py-2.5 font-medium whitespace-nowrap">
-                          {contact ? `${contact.first_name} ${contact.last_name}` : '—'}
+                          {contact ? `${contact.first_name} ${contact.last_name}` : '-'}
                         </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{client.company_name || '—'}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{client.company_name || '-'}</td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {contact?.email ? (
                             <a href={`mailto:${contact.email}`} className="hover:underline" onClick={e => e.stopPropagation()}>
                               {contact.email}
                             </a>
-                          ) : '—'}
+                          ) : '-'}
                         </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{contact?.mobile_phone || '—'}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{contact?.mobile_phone || '-'}</td>
                         <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                           <Select value={client.status} onValueChange={v => updateStatus(client.id, v)}>
                             <SelectTrigger className="h-8 w-[168px]" aria-label={`Status for ${clientDisplayName(client)}`}>
@@ -371,7 +371,7 @@ function ClientWorkspace({
     <section className="bg-card rounded-lg border">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
         <h2 className="font-semibold">
-          Client workspace <span className="text-muted-foreground font-normal">— {clientDisplayName(client)}</span>
+          Client workspace <span className="text-muted-foreground font-normal">- {clientDisplayName(client)}</span>
         </h2>
         <StatusPill status={status} />
       </div>

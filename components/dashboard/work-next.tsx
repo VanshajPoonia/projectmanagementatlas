@@ -41,7 +41,7 @@ export default function WorkNext({ tasks, basePath = '/dashboard', limit = 5 }: 
               href={boardId ? `${basePath}/board/${boardId}` : '#'}
               className={cn(
                 'flex items-start gap-3 rounded-lg border p-3 transition-all hover:border-primary/30 hover:bg-accent hover:shadow-md',
-                // Only the top pick gets emphasis — that is the whole point of the panel.
+                // Only the top pick gets emphasis - that is the whole point of the panel.
                 index === 0 && 'border-primary/40 bg-primary/5',
                 isOverdue && 'border-red-300 bg-red-50/40 dark:border-red-800 dark:bg-red-950/40'
               )}

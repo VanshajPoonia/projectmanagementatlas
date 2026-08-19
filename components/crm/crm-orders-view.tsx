@@ -204,7 +204,7 @@ export function CrmOrdersView({
                     <div className="flex gap-1.5">
                       <dt className="text-muted-foreground">In status</dt>
                       <dd className={cn('tabular-nums', late && 'text-red-600 dark:text-red-400 font-medium')}>
-                        {open ? formatDuration(intervalDuration(open, now)) : '—'}
+                        {open ? formatDuration(intervalDuration(open, now)) : '-'}
                         {late && status?.sla_hours ? (
                           <span className="sr-only"> (past the {status.sla_hours} hour target for {status.label})</span>
                         ) : null}
@@ -264,7 +264,7 @@ export function CrmOrdersView({
                           redden the Age cell, which measures something else entirely and made
                           a two-day-old order look overdue because of one slow stage. */}
                       <td className={cn('px-3 py-2.5 whitespace-nowrap tabular-nums', late && 'text-red-600 dark:text-red-400 font-medium')}>
-                        {open ? formatDuration(intervalDuration(open, now)) : '—'}
+                        {open ? formatDuration(intervalDuration(open, now)) : '-'}
                         {late && status?.sla_hours ? (
                           <span className="sr-only"> (past the {status.sla_hours} hour target for {status.label})</span>
                         ) : null}
@@ -276,7 +276,7 @@ export function CrmOrdersView({
                         {orderAgeDays(order, now).toFixed(1)} days
                       </td>
                       <td className={cn('px-3 py-2.5 whitespace-nowrap', pastTarget && 'text-red-600 dark:text-red-400 font-medium')}>
-                        {order.target_close_date ? format(new Date(`${order.target_close_date}T00:00:00`), 'd MMM') : '—'}
+                        {order.target_close_date ? format(new Date(`${order.target_close_date}T00:00:00`), 'd MMM') : '-'}
                       </td>
                       <td className={cn('px-3 py-2.5 whitespace-nowrap capitalize', PRIORITY_CLASS[order.priority] ?? '')}>
                         {order.priority}

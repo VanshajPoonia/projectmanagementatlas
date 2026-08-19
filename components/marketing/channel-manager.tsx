@@ -16,7 +16,7 @@ import type { Channel } from './marketing-calendar'
 interface ChannelManagerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Every channel, switched-off ones included — this dialog is the only way back on. */
+  /** Every channel, switched-off ones included - this dialog is the only way back on. */
   channels: Channel[]
   onRename: (channel: Channel, label: string) => Promise<boolean>
   onSetArchived: (channel: Channel, archived: boolean) => Promise<void>
@@ -143,7 +143,7 @@ export default function ChannelManager({
               <Pencil className="h-4 w-4" />
             </Button>
             {/* The visible text is the same on every row, so the accessible name has to carry
-                the channel — otherwise this reads as thirteen identical "Turn off" buttons. */}
+                the channel - otherwise this reads as thirteen identical "Turn off" buttons. */}
             <Button size="sm" variant="outline" className="flex-shrink-0 gap-1.5" disabled={busy}
               aria-label={`${channel.is_archived ? 'Turn on' : 'Turn off'} ${channel.label}`}
               onClick={() => toggleArchived(channel)}>
