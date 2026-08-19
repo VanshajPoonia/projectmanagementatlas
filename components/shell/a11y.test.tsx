@@ -156,3 +156,43 @@ describe('non-colour state cues', () => {
     expect(getByText('soon')).toBeInTheDocument()
   })
 })
+
+
+describe('active navigation state is not carried by colour alone', () => {
+  // WCAG 1.4.1. `aria-current` covered assistive tech from the start; what was missing was
+  // the visual half - both bars marked the active destination with a text/background
+  // colour and nothing else, which vanishes for anyone whose accent sits near the muted
+  // foreground.
+  const groups = [
+    {
+      id: 'sections',
+      label: 'Workspace',
+      items: [
+        { id: 'home', label: 'Home', icon: 'home', href: '/dashboard?tab=tasks', status: 'live' as const },
+        { id: 'boards', label: 'Boards', icon: 'kanban', href: '/dashboard?tab=boards', status: 'live' as const },
+      ],
+    },
+  ]
+
+  it('marks the active sidebar item with aria-current and a shape, not only a colour', () => {
+    const { container } = render(
+      <AppSidebar groups={groups} activeId="boards" collapsed={false} onToggle={() => {}} />,
+    )
+    const active = container.querySelector('[aria-current="page"]')
+    expect(active).not.toBeNull()
+    // A non-text child element carrying the marker - the rule is "something other than the
+    // colour of the label itself".
+    expect(active!.querySelector('span[aria-hidden="true"]')).not.toBeNull()
+    expect(active!.className).toContain('font-semibold')
+  })
+
+  it('leaves inactive items without the marker, so it means something', () => {
+    const { container } = render(
+      <AppSidebar groups={groups} activeId="boards" collapsed={false} onToggle={() => {}} />,
+    )
+    const links = [...container.querySelectorAll('a')]
+    const inactive = links.find((link) => !link.hasAttribute('aria-current'))
+    expect(inactive).toBeDefined()
+    expect(inactive!.className).not.toContain('font-semibold')
+  })
+})

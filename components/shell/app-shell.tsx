@@ -143,10 +143,23 @@ export function AppShell({
                 // min-w-0 so five labels share a 320px screen by truncating rather than
                 // forcing the whole page to scroll sideways - measured at the WCAG 1.4.10
                 // reflow width, where "Marketing" alone pushed the bar 29px past the viewport.
-                'flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium sm:text-xs',
-                isActive ? 'text-primary' : 'text-muted-foreground',
+                'relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium sm:text-xs',
+                isActive ? 'text-primary font-semibold' : 'text-muted-foreground',
               )}
             >
+              {/*
+                A shape, not just a colour. The active tab used to be marked by `text-primary`
+                alone, which is the one cue WCAG 1.4.1 says may not stand on its own - and it
+                disappears entirely for anyone whose accent happens to sit near the muted
+                foreground. aria-current already carried this for assistive tech; this is the
+                visual half of the same statement.
+              */}
+              {isActive && (
+                <span
+                  className="bg-primary absolute inset-x-3 top-0 h-0.5 rounded-full"
+                  aria-hidden="true"
+                />
+              )}
               <span className="relative">
                 <Icon className="size-5" aria-hidden="true" />
                 {item.badge}
@@ -159,6 +172,7 @@ export function AppShell({
 
       <CommandPalette
         groups={groups}
+        role={user.role}
         open={commandOpen}
         onOpenChange={setCommandOpen}
         favorites={favorites}
