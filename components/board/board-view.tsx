@@ -33,8 +33,16 @@ import { ShareLinkDialog } from './share-link-dialog'
 import ChatPanel from '@/components/chat/chat-panel'
 import MobileBottomNav, { type NavItem } from '@/components/dashboard/mobile-bottom-nav'
 import { getAssigneeIds, getAssignees, getAssigneeNames } from '@/lib/assignees'
-import { allows, can, type Actor } from '@/lib/capabilities'
+import { allows, can, type Actor, type PlatformRole } from '@/lib/capabilities'
+import { classifyWrite, writeFailureMessage } from '@/lib/rls-write'
 import { ActionGuard } from '@/components/shell/action-guard'
+import { CommandPalette } from '@/components/shell/command-palette'
+import {
+  buildBoardContextCommands,
+  buildWorkItemContextCommands,
+  type Command,
+} from '@/components/shell/commands'
+import { moveTaskToColumn, setTaskPriority } from '@/lib/task-mutations'
 import { useRememberRecord } from '@/components/shell/use-recent-records'
 import { FavoriteStar } from '@/components/shell/favorite-star'
 import { useFavorites } from '@/lib/use-favorites'
@@ -51,8 +59,21 @@ interface BoardViewProps {
   board: any
   columns: any[]
   users: any[]
+  /**
+   * Board-surface admin override. `/dashboard/board/[id]` passes false even for a real
+   * admin, deliberately, so that route keeps non-admin edit rules. It is NOT the viewer's
+   * platform role - see `platformRole`.
+   */
   isAdmin: boolean
   isSuperAdmin?: boolean
+  /**
+   * The viewer's actual `profiles.role`, independent of the `isAdmin` override above.
+   * Capabilities that mirror `private.is_admin_user()` rather than this surface's edit
+   * rules (large uploads, audit, module config) must read this one. It used to be
+   * hardcoded to 'user' here with a comment arguing nothing on this surface read it -
+   * true at the time, and a trap for the next capability added.
+   */
+  platformRole?: PlatformRole
   currentUserId: string
   /** The caller's board_members row for this board, if any (null = no row = full default access). */
   boardRole?: 'member' | 'guest' | 'client' | null
@@ -64,7 +85,7 @@ const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profi
 // library's default type, so the two can never accept each other's payload.
 const COLUMN_DRAG_TYPE = 'BOARD_COLUMN'
 
-export default function BoardView({ board, columns: initialColumns, users, isAdmin, isSuperAdmin = false, currentUserId, boardRole = null }: BoardViewProps) {
+export default function BoardView({ board, columns: initialColumns, users, isAdmin, isSuperAdmin = false, platformRole = 'user', currentUserId, boardRole = null }: BoardViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   // Feeds the shell's Recent section and the ⌘K palette's Recent group. Written here
@@ -97,7 +118,9 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   }>>([])
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [taskDetailOpen, setTaskDetailOpen] = useState(false)
+  const [taskDetailTab, setTaskDetailTab] = useState<'comments' | 'activity'>('comments')
   const [chatDialogOpen, setChatDialogOpen] = useState(false)
+  const [commandOpen, setCommandOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
@@ -158,20 +181,36 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
   // Delegates to lib/capabilities.ts so the board, the task tile and the detail modal
   // share one definition of "may I change this task" (they used to hold three copies).
-  // platformRole is unused on this surface - no capability read here consults it - so the
-  // isAdmin prop carries the whole decision, exactly as it did before.
-  const createDecision = can(
-    { userId: currentUserId, platformRole: 'user', boardRole, isAdmin },
-    'task.create',
+  // Both roles travel: `isAdmin` is this surface's edit override (false on /dashboard even
+  // for a real admin), `platformRole` is who the viewer actually is. Capabilities that
+  // mirror private.is_admin_user() read the second one past the first.
+  const actor: Actor = useMemo(
+    () => ({ userId: currentUserId, platformRole, boardRole, isAdmin }),
+    [currentUserId, platformRole, boardRole, isAdmin],
   )
+  /**
+   * The single way a task detail is opened, from any of the three views.
+   *
+   * The kanban card used to render its own TaskDetailModal - a second copy of the one
+   * below - which meant the board had no idea which task was open, and the palette's
+   * work-item context actions had nothing to act on. One opener, one modal, one answer.
+   */
+  const openTaskDetail = useCallback((taskId: string, tab: 'comments' | 'activity' = 'comments') => {
+    setSelectedTaskId(taskId)
+    setTaskDetailTab(tab)
+    setTaskDetailOpen(true)
+  }, [])
+
+  const createDecision = can(actor, 'task.create')
+  const manageBoardDecision = can(actor, 'project.manage', undefined, board)
+  const shareBoardDecision = can(actor, 'share.external', undefined, board)
   const canManageTask = useCallback((task: any) => {
-    const actor: Actor = { userId: currentUserId, platformRole: 'user', boardRole, isAdmin }
     return allows(actor, 'task.edit', {
       created_by: task?.created_by,
       assigned_to: task?.assigned_to,
       assigneeIds: getAssigneeIds(task),
     })
-  }, [currentUserId, isAdmin, boardRole])
+  }, [actor])
 
   const columnColors = [
     '#3b82f6', // blue
@@ -272,18 +311,25 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     })
     setColumns(newColumns)
 
-    const { error } = await supabase
-      .from('tasks')
-      .update({
-        column_id: destColumn.id,
-        status: newStatus,
-        position: destination.index
-      })
-      .eq('id', draggableId)
-
-    if (error) {
+    // Asking for the row back is what makes the optimistic move honest. A refused UPDATE
+    // returns zero rows and no error, so checking `error` alone left the card sitting in
+    // its new column, apparently moved, until the next refresh. Column and position are
+    // not inputs to can_view_task, so zero rows here can only mean refused.
+    const outcome = await classifyWrite(
+      await supabase
+        .from('tasks')
+        .update({
+          column_id: destColumn.id,
+          status: newStatus,
+          position: destination.index,
+        })
+        .eq('id', draggableId)
+        .select('id'),
+    )
+    const failure = writeFailureMessage(outcome, 'move')
+    if (failure) {
       setColumns(prevColumns)
-      toast.error('Could not move task', { description: error.message })
+      toast.error(failure.title, { description: failure.description })
     }
   }
 
@@ -529,6 +575,124 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   // as their parents. They're rendered nested inside the parent card, so they must be
   // kept out of the column lists - otherwise every subtask also shows up as a loose
   // card and inflates the per-column counts.
+  /**
+   * ⌘K on a board.
+   *
+   * A board renders outside AppShell (kanban needs the full viewport width), so this page
+   * had no command palette at all - which is why the plan's project-context and
+   * work-item-context actions were declared in commands.ts and then never built. The
+   * palette is mounted directly here instead of dragging the whole shell in.
+   *
+   * Stacking over the open task modal is fine: this subtree already opens the share and
+   * move dialogs from inside it, so a dialog over a dialog is an established pattern here.
+   */
+  const runOnTask = useCallback(
+    async (taskId: string, work: () => Promise<import('@/lib/rls-write').WriteOutcome>, subject: string) => {
+      const failure = writeFailureMessage(await work(), subject)
+      if (failure) {
+        toast.error(failure.title, { description: failure.description })
+        return
+      }
+      await refreshColumns()
+    },
+    [refreshColumns],
+  )
+
+  const copyToClipboard = useCallback(async (url: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success(`${label} copied`)
+    } catch {
+      // Clipboard access is refused outside a secure context and in some embedded
+      // browsers. Saying so beats a command that silently does nothing.
+      toast.error('Could not copy the link', { description: 'Copy it from the address bar instead.' })
+    }
+  }, [])
+
+  const boardHref = `${isAdmin ? '/admin' : '/dashboard'}/board/${board.id}`
+
+  const paletteCommands: Command[] = useMemo(() => {
+    const commands = buildBoardContextCommands({
+      boardTitle: board.title,
+      createDecision,
+      manageDecision: manageBoardDecision,
+      membersDecision: can(actor, 'members.manage', undefined, board),
+      onCreate: () => {
+        // Same guard the "+" button uses: cancelled is an archive destination.
+        const target = columns.find((c: any) => c.status_key && c.status_key !== 'cancelled') ?? columns[0]
+        if (target) handleOpenCreateDialog(target)
+      },
+      onFilter: () => setShowFilters(true),
+      onOpenSettings: () => router.push(`${isAdmin ? '/admin' : '/dashboard'}?tab=boards`),
+      onCopyLink: () => copyToClipboard(`${window.location.origin}${boardHref}`, 'Board link'),
+    })
+
+    // Work-item actions only exist when something is open to act on. Offering them with no
+    // target would be a menu of commands that quietly do nothing.
+    const openTask = selectedTaskId
+      ? columns.flatMap((c: any) => c.tasks ?? []).find((t: any) => t.id === selectedTaskId)
+      : null
+
+    if (openTask) {
+      commands.push(
+        ...buildWorkItemContextCommands({
+          task: {
+            id: openTask.id,
+            title: openTask.title,
+            priority: openTask.priority,
+            parentId: openTask.parent_task_id ?? null,
+          },
+          columns: columns.map((c: any) => ({ id: c.id, title: c.title })),
+          currentColumnId: openTask.column_id,
+          editDecision: can(actor, 'task.edit', {
+            created_by: openTask.created_by,
+            assigned_to: openTask.assigned_to,
+            assigneeIds: getAssigneeIds(openTask),
+          }),
+          onMoveToColumn: (columnId) => {
+            const destination = columns.find((c: any) => c.id === columnId)
+            if (!destination) return
+            const matching = taskStatuses.find(
+              (status) => status.label.trim().toLowerCase() === destination.title.trim().toLowerCase(),
+            )
+            // Same three-step status resolution the drag handler uses, deliberately: the
+            // palette must not invent a different answer for the same move.
+            const status =
+              destination.status_key ??
+              matching?.key ??
+              destination.title.toLowerCase().replace(/ /g, '_')
+            runOnTask(
+              openTask.id,
+              () => moveTaskToColumn(supabase, openTask.id, {
+                id: destination.id,
+                status,
+                position: boardTasks(destination).length,
+              }),
+              'move',
+            )
+          },
+          onSetPriority: (priority) =>
+            runOnTask(openTask.id, () => setTaskPriority(supabase, openTask.id, priority), 'priority'),
+          // The detail is where assignees and labels live, and reproducing either here
+          // would be a fourth copy of rules this codebase has already been bitten by
+          // duplicating. The palette's job is to get you there without the mouse.
+          onOpenAssignees: () => openTaskDetail(openTask.id),
+          onOpenLabels: () => openTaskDetail(openTask.id),
+          onCopyLink: () =>
+            copyToClipboard(`${window.location.origin}${boardHref}?task=${openTask.id}`, 'Work item link'),
+          onOpenParent: () => {
+            if (!openTask.parent_task_id) return
+            openTaskDetail(openTask.parent_task_id)
+          },
+          onOpenBoard: () => setTaskDetailOpen(false),
+        }),
+      )
+    }
+
+    return commands
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board, columns, selectedTaskId, actor, createDecision, manageBoardDecision, taskStatuses, isAdmin, runOnTask, copyToClipboard, boardHref, openTaskDetail])
+
   const boardTasks = (column: any) =>
     (column.tasks || []).filter((task: any) => !task.deleted_at && !task.archived_at && !task.parent_task_id)
 
@@ -549,19 +713,22 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       return
     }
 
-    const { error } = await supabase
-      .from('tasks')
-      .update({
-        column_id: destination.id,
-        status: 'to_do',
-        position: boardTasks(destination).length,
-        archived_at: null,
-        archived_by: null,
-      })
-      .eq('id', task.id)
-
-    if (error) {
-      toast.error('Could not restore task', { description: error.message })
+    const outcome = await classifyWrite(
+      await supabase
+        .from('tasks')
+        .update({
+          column_id: destination.id,
+          status: 'to_do',
+          position: boardTasks(destination).length,
+          archived_at: null,
+          archived_by: null,
+        })
+        .eq('id', task.id)
+        .select('id'),
+    )
+    const failure = writeFailureMessage(outcome, 'restore')
+    if (failure) {
+      toast.error(failure.title, { description: failure.description })
       return
     }
 
@@ -776,6 +943,23 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                 <ArrowLeft className="w-4 h-4 sm:mr-2" />
                 <span className="hidden sm:inline">Back</span>
               </Button>
+              {/* The palette's entry point. ⌘K alone is not an affordance - the shell's
+                  topbar has a visible button for exactly this reason, and a board renders
+                  outside that topbar. */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() => setCommandOpen(true)}
+                    aria-label="Open the command palette"
+                    aria-keyshortcuts="Meta+K Control+K"
+                  >
+                    <SlidersHorizontal className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Commands and actions (⌘K)</TooltipContent>
+              </Tooltip>
               {/* Persistent nav so switching sections doesn't require leaving the board first
                   (mobile gets the equivalent via MobileBottomNav below - this page renders
                   outside the AppShell sidebar since kanban boards need the full viewport width). */}
@@ -899,7 +1083,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   navigate to a dashboard, flip it there, and come back. */}
               <ThemeControls />
 
-              {(isAdmin || board?.created_by === currentUserId) && (
+              {/* This is a public-audience change, so the same capability and RLS rule
+                  must gate board links and task links. In particular, a platform admin
+                  explicitly narrowed to guest/client on this board stays view-only. */}
+              {shareBoardDecision.allowed && (
                 <ShareLinkDialog resourceType="board" resourceId={board.id} />
               )}
 
@@ -1184,6 +1371,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                       subtasks={subtasksByParent.get(task.id)}
                                       isDragging={snapshot.isDragging}
                                       onUpdate={refreshColumns}
+                                      onOpenDetail={openTaskDetail}
                                     />
                                   </div>
                                 )}
@@ -1257,8 +1445,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                           <div
                             key={task.id}
                             onClick={() => {
-                              setSelectedTaskId(task.id)
-                              setTaskDetailOpen(true)
+                              openTaskDetail(task.id)
                             }}
                             className="flex items-center gap-3 rounded-md border bg-background px-3 py-2.5 active:bg-accent/50 transition-colors"
                           >
@@ -1413,8 +1600,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                 key={task.id} 
                                 className="border-b hover:bg-accent/50 cursor-pointer transition-colors"
                                 onClick={() => {
-                                  setSelectedTaskId(task.id)
-                                  setTaskDetailOpen(true)
+                                  openTaskDetail(task.id)
                                 }}
                               >
                                 <td className="py-3 px-4">
@@ -1433,8 +1619,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                     size="sm"
                                     className="h-9 gap-2"
                                     onClick={() => {
-                                      setSelectedTaskId(task.id)
-                                      setTaskDetailOpen(true)
+                                      openTaskDetail(task.id)
                                     }}
                                   >
                                     {taskAssignees.length > 0 ? (
@@ -1566,11 +1751,14 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           onUpdate={async () => {
             await refreshColumns()
           }}
+          // Refresh the board's rollup without dismissing the task being worked in.
+          onSubtaskChange={() => { void refreshColumns() }}
           board={board}
           isAdmin={isAdmin}
           currentUserId={currentUserId}
           boardRole={boardRole}
           columns={columns}
+          initialTab={taskDetailTab}
         />
       )}
 
@@ -1676,6 +1864,16 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           </Dialog>
         </>
       )}
+
+      <CommandPalette
+        // No nav groups: this page is not the shell, and duplicating the sidebar here
+        // would offer a second, unfiltered copy of it. The context group is the point.
+        groups={[]}
+        role={platformRole}
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        commands={paletteCommands}
+      />
 
       <MobileBottomNav items={navItems} moreItems={navMoreItems} activeTab="boards" onChange={handleNavChange} />
     </div>
