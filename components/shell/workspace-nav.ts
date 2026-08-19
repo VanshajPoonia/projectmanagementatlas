@@ -37,6 +37,21 @@ const USER_HOME_TAB = 'tasks'
 const ADMIN_HOME_TAB = 'overview'
 
 /**
+ * Which dashboard hosts this viewer's `?tab=` destinations.
+ *
+ * app/dashboard/page.tsx redirects an admin to /admin **and drops the query string**, so a
+ * link built as '/dashboard?tab=boards' for an admin silently lands them on whatever tab
+ * they had open last. The host is a function of role, never of the current URL.
+ *
+ * Exported because the ⌘K palette builds `?tab=` links too and had its own hardcoded
+ * '/dashboard' - the exact bug this rule exists to prevent, reintroduced one file over.
+ * One function, so the sidebar and the palette cannot disagree about where a tab lives.
+ */
+export function dashboardHost(role: Role): '/admin' | '/dashboard' {
+  return role === 'admin' || role === 'super_admin' ? '/admin' : '/dashboard'
+}
+
+/**
  * Build the sidebar groups for a viewer.
  *
  * Home and My Work are core: they are not registered modules and cannot be switched off,
@@ -50,12 +65,8 @@ export function buildWorkspaceNav({
 }: WorkspaceNavOptions): NavGroup[] {
   const on = (key: Parameters<typeof isModuleEnabled>[1]) => isModuleEnabled(modules, key)
 
-  // An admin's dashboard tabs are hosted at /admin, not /dashboard. app/dashboard/page.tsx
-  // redirects admins to /admin and drops the query string on the way, so a link built as
-  // '/dashboard?tab=boards' for an admin silently lands them on whatever tab they had open
-  // last. Same nav, two hosts; the host is a function of role, never of the current URL.
   const isAdmin = role === 'admin' || role === 'super_admin'
-  const host = isAdmin ? '/admin' : '/dashboard'
+  const host = dashboardHost(role)
   const tab = (name: string) => `${host}?tab=${name}`
   const homeTab = isAdmin ? ADMIN_HOME_TAB : USER_HOME_TAB
 

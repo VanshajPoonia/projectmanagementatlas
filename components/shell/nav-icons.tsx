@@ -6,6 +6,8 @@ import {
   Contact,
   Crown,
   FileBarChart,
+  Filter,
+  Flag,
   Hash,
   History,
   Home,
@@ -18,9 +20,12 @@ import {
   MessageSquare,
   Plus,
   Search,
+  Settings,
   Shield,
   SlidersHorizontal,
   Star,
+  Tag,
+  Users,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -50,6 +55,12 @@ const ICONS: Record<string, LucideIcon> = {
   clock: Clock,
   link: Link2,
   star: Star,
+  // Board context actions (buildBoardContextCommands / buildWorkItemContextCommands).
+  filter: Filter,
+  flag: Flag,
+  settings: Settings,
+  tag: Tag,
+  users: Users,
 }
 
 export function navIcon(key: string): LucideIcon {
