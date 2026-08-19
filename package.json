@@ -34,7 +34,8 @@
     "check:appointment-booking": "node --env-file=.env.local scripts/check-appointment-booking.mjs",
     "check:project-ids": "node --env-file=.env.local scripts/check-project-ids.mjs",
     "check:task-move": "node --env-file=.env.local scripts/check-task-move.mjs",
-    "check:crm": "node --env-file=.env.local scripts/check-crm.mjs"
+    "check:crm": "node --env-file=.env.local scripts/check-crm.mjs",
+    "check:shell-actions": "node --env-file=.env.local scripts/check-shell-actions.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",
