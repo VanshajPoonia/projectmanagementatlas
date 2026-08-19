@@ -12,6 +12,12 @@
 // treated as a security boundary; a denial rendered by this module must never be the
 // only thing standing between a user and a mutation.
 //
+// ⚠️ The corollary, learned the hard way (see docs/reviews/atlas-prompts-a-b-audit.md):
+// a capability that is *stricter* than its policy is not "safe by default". It takes an
+// ability away from someone the database was built to serve, and the user has no way to
+// tell that refusal apart from a bug. Every entry below states which policy it mirrors,
+// and the ones that deliberately differ say so and why.
+//
 // The vocabulary deliberately covers only capabilities that map to something that
 // exists today. Speculative entries (approval.respond, automation.manage, budget/cost)
 // are left out until their modules land, matching the same "don't build it
@@ -25,7 +31,6 @@ export type BoardRole = 'member' | 'guest' | 'client'
 
 export type Capability =
   // Work items
-  | 'task.view'
   | 'task.create'
   | 'task.edit'
   | 'task.delete'
@@ -43,6 +48,12 @@ export type Capability =
   | 'share.external'
   | 'audit.view'
   | 'ai.execute'
+
+// There is deliberately no `task.view`. It resolved to an unconditional ALLOW, which is
+// not an answer - who may see a task is decided by `private.can_view_task` (visibility,
+// assignment, board privacy), and no client holds the inputs to reproduce that. Asking
+// the database and rendering what comes back is the only correct implementation, so the
+// capability existed only to be trusted wrongly.
 
 export interface Actor {
   userId: string
@@ -65,6 +76,17 @@ export interface TaskSubject {
   assigned_to?: string | { id?: string | null } | null
   /** Ids from `task_assignees`, however the caller already resolved them. */
   assigneeIds?: readonly string[] | null
+  /**
+   * Only for `task.attachment.delete`: who uploaded the attachment in question. The
+   * DELETE policy (091) is `uploaded_by = auth.uid() OR can_delete_task(...)`, so the
+   * uploader keeps control of their own file regardless of who owns the task.
+   */
+  uploadedBy?: string | null
+}
+
+/** Just enough of a board row to decide who administers it. */
+export interface BoardSubject {
+  created_by?: string | null
 }
 
 /**
@@ -128,27 +150,27 @@ function isAssignee(actor: Actor, task: TaskSubject | undefined): boolean {
 
 const NOT_OWNER = 'Only the task’s creator, its assignees, or an admin can change it.'
 const NOT_SCHEDULER = 'Only the task’s creator or an admin can change the due date.'
+const NOT_UPLOADER = 'Only the person who attached this file, the task’s creator, or an admin can remove it.'
+/** Exported: lib/board-membership.ts renders this same sentence in place of the picker. */
+export const NOT_BOARD_CREATOR =
+  'Only the person who created this board can change who has access to it.'
 
 /**
- * Resolve one capability for one actor, optionally against one task.
+ * Resolve one capability for one actor, optionally against one task and one board.
  *
- * Behaviour is intentionally identical to the inline checks it replaces, so adopting it
- * is a refactor rather than a permission change; `capabilities.test.ts` pins each of the
- * original expressions.
+ * `board` is only consulted by the container capabilities (`project.manage`,
+ * `members.manage`); passing it for a task capability is harmless.
  */
 export function can(
   actor: Actor,
   capability: Capability,
   task?: TaskSubject,
+  board?: BoardSubject,
 ): CapabilityDecision {
   const admin = isAdminActor(actor)
   const restricted = restrictedReason(actor.boardRole)
 
   switch (capability) {
-    // Membership on the board is what grants sight of it; RLS decides the rest.
-    case 'task.view':
-      return ALLOW
-
     case 'task.create':
       // No task to own yet, so board role is the only gate.
       return restricted ? deny('explain', restricted) : ALLOW
@@ -156,18 +178,47 @@ export function can(
     case 'task.edit':
     case 'task.delete':
     case 'task.assign':
-    case 'task.attach':
-    case 'comment.create': {
+    case 'task.attach': {
       if (restricted) return deny('explain', restricted)
       if (admin || isCreator(actor, task) || isAssignee(actor, task)) return ALLOW
       return deny('explain', NOT_OWNER)
     }
 
-    case 'task.schedule':
-    case 'task.attachment.delete': {
+    /**
+     * Commenting is NOT restricted by board role, and that is the database's rule rather
+     * than a relaxation invented here. The `task_comments` INSERT policy (035, restated by
+     * 101) gates on `private.can_view_task`, not `can_manage_task`, and
+     * `task_restricted_by_board_role` is only ANDed into the latter - so a guest or client
+     * who can open a task may comment on it. Measured against real RLS, not inferred.
+     *
+     * It is also the point of the role: 065 keeps `client` as a distinct value because the
+     * client portal will one day *hide internal comments* from them, which presupposes
+     * they are talking to us in the first place. Denying it here would have made the one
+     * capability a client portal is built on unreachable the moment anyone wired it up.
+     *
+     * Anyone rendering a task already passed `can_view_task`, so ALLOW is the honest
+     * answer; RLS still refuses a comment on a task the caller cannot see.
+     */
+    case 'comment.create':
+      return ALLOW
+
+    case 'task.schedule': {
       if (restricted) return deny('explain', restricted)
       if (admin || isCreator(actor, task)) return ALLOW
       return deny('explain', NOT_SCHEDULER)
+    }
+
+    /**
+     * Mirrors 091's DELETE policy: `uploaded_by = auth.uid() OR can_delete_task(created_by)`.
+     * The uploader clause matters - this used to share a branch with `task.schedule`, so an
+     * assignee could not delete a file they had attached themselves, and the refusal they
+     * would have been shown talked about due dates.
+     */
+    case 'task.attachment.delete': {
+      if (restricted) return deny('explain', restricted)
+      if (task?.uploadedBy && task.uploadedBy === actor.userId) return ALLOW
+      if (admin || isCreator(actor, task)) return ALLOW
+      return deny('explain', NOT_UPLOADER)
     }
 
     case 'task.attach.large': {
@@ -179,23 +230,61 @@ export function can(
       return deny('hide')
     }
 
-    // Configuration surfaces. Non-admins have no path to these at all, so hide them
-    // rather than advertising a door they cannot open.
+    // Board configuration (rename, colour, columns, archive) is admin-gated, matching the
+    // `boards`/`columns` write policies. Non-admins have no path to it, so hide it.
     case 'project.manage':
-    case 'members.manage':
+      return admin ? ALLOW : deny('hide')
+
+    /**
+     * ⚠️ NOT the same rule as project.manage, and this used to return ALLOW for any admin.
+     *
+     * Migration 061 removed the admin bypass on `board_members` deliberately: an admin who
+     * could re-add themselves to a private board made "remove this admin's access"
+     * meaningless. The board's CREATOR is the sole owner of its membership list. An admin
+     * who is not the creator gets a zero-row DELETE (not an error) and a 42501 on INSERT -
+     * which is exactly how the old UI told them their changes had been saved when the
+     * database had rejected every one. See lib/board-membership.ts.
+     *
+     * Explained rather than hidden when the caller is an admin: they can see the board and
+     * would otherwise be left guessing why saving did nothing.
+     */
+    case 'members.manage': {
+      if (board?.created_by && board.created_by === actor.userId) return ALLOW
+      return admin ? deny('explain', NOT_BOARD_CREATOR) : deny('hide')
+    }
+
     case 'audit.view':
       return admin ? ALLOW : deny('hide')
 
+    /**
+     * Minting a public URL for internal work. Migration 109 applies the same ordering at
+     * the database: an explicit guest/client row removes the capability even from an admin
+     * or resource creator; otherwise a task's creator, a board's creator, or an admin may
+     * share. Keeping both resource shapes here lets board-view use the same vocabulary as
+     * task-detail-modal instead of maintaining another inline approximation.
+     */
     case 'share.external':
       if (restricted) return deny('explain', restricted)
-      return admin || isCreator(actor, task) ? ALLOW : deny('hide')
+      return admin || isCreator(actor, task) || board?.created_by === actor.userId
+        ? ALLOW
+        : deny('hide')
 
+    /**
+     * The AI assistant. Every signed-in person may use it; whether it exists at all is a
+     * module question, not a capability one, and `app/api/ai-chat/route.ts` enforces that
+     * server-side rather than trusting the widget to be absent.
+     */
     case 'ai.execute':
       return ALLOW
   }
 }
 
 /** Convenience wrapper for the common `if (allowed)` case. */
-export function allows(actor: Actor, capability: Capability, task?: TaskSubject): boolean {
-  return can(actor, capability, task).allowed
+export function allows(
+  actor: Actor,
+  capability: Capability,
+  task?: TaskSubject,
+  board?: BoardSubject,
+): boolean {
+  return can(actor, capability, task, board).allowed
 }
