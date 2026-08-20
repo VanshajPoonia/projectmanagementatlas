@@ -5,8 +5,9 @@ Audited 2026-08-19 against `plan/ATLAS_02_CLAUDE_FINAL_BUILD_PROMPTS_AUDITED.md`
 
 **Method.** Read the prompts, then the implementation - not the changelog. Every claim below is
 either quoted from a file at a named line or measured against the dev sandbox through real
-anon-key sessions. Baseline at audit time: 589 unit tests green, `pnpm check:access-matrix`
-51/51 green.
+anon-key sessions. Baseline at audit time: 589 unit tests green and `pnpm check:access-matrix`
+green at **57** checks - not the 51 CLAUDE.md claimed, which had gone stale as checks were added.
+Counted, because a number nobody re-counts is how that line got wrong in the first place.
 
 **Headline.** Most defects below were above the database - the same shape this repo has already
 recorded three times under "the database and the toggle were right, and no human could get
@@ -315,8 +316,9 @@ the full unit suite, TypeScript, production build, access matrix and lifecycle h
 - `npx next build` - clean, with `.env.production.local` moved aside and the **dev** ref
   (`pxzpewaerhjwnwsbaklc`) confirmed baked into the client bundle, per CLAUDE.md's rule that
   a local production build otherwise targets prod. Restored afterwards.
-- **RLS gates, all green:** `check:access-matrix` (**64**, including 13 direct PostgREST
-  task/board sharing checks across member, guest, client and restricted-admin cases), `check:board-roles`,
+- **RLS gates, all green:** `check:access-matrix` (**70**, of which 13 are the new direct
+  PostgREST sharing checks across member, guest, client and restricted-admin cases; counted from
+  the run, not derived from the older 51 figure), `check:board-roles`,
   `check:task-lifecycle`, `check:favorites`, `check:teams`, `check:grants`,
   `check:column-delete`, `check:task-move`, `check:deactivation`, `check:deprovision`.
 - Dev migration ledger: **109 applied, 0 pending**. Migration 109's in-transaction post-check
@@ -335,6 +337,19 @@ to any of this, and untouched.
 
 ## F. Still open
 
+- **`109` is applied to DEV only, and it cannot ride `--allow-prod`.** It rewrites an RLS
+  policy, which this repo classifies as destructive, so the runner's prod opt-in is off the
+  table by the project's own rule - it needs a deliberate application. Nothing breaks
+  meanwhile: `share.external` already refuses guest/client in the client, so the only
+  consequence of the delay is that **production still has the hole B3a describes**, exactly
+  as it did before any of this work. The application code is already on `main` and therefore
+  already live. Rollback if needed: `scripts/rollback/109_revert.sql` (added 2026-08-20,
+  destroys no data).
+- **`109`'s guest/client predicate is a third copy.** `private.task_restricted_by_board_role`
+  (065) and `private.column_restricted_by_board_role` (067) already express the same rule;
+  `109` inlines it into both resource branches instead. Correct today and verified, but a
+  fourth `board_members` role would need updating in three places. Folding all three onto one
+  helper is a tidy-up, not a fix, and was not done here.
 - **Saved views / pinned views** (Prompt A, and the palette's "open saved view") - Prompt E.
 - **Inbox navigation** (Prompt A) - Prompt F. `task_notifications` already fits.
 - **Route-level permission-denied states.** Prompt A asks every destination for one; this app

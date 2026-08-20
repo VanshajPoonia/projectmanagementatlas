@@ -204,7 +204,8 @@ above the database:
 Fixed in `lib/board-membership.ts` (diff, never rewrite - `plan(x, x)` writes nothing) plus
 `components/admin/board-member-picker.tsx`. Every membership write now asks for its rows back and
 compares the count, because that is the only way to tell a refusal from a no-op. The gate is
-`pnpm check:access-matrix` (51 checks), which covers the plan's full matrix and pins all three
+`pnpm check:access-matrix` (70 checks as of 2026-08-20; it said 51 for a long time after the
+number stopped being true - re-count rather than copy it), which covers the plan's full matrix and pins all three
 regressions. **When a permission feature is verified only at the database, check that a human can
 actually reach it and that unrelated writes cannot undo it.**
 
@@ -308,13 +309,15 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `108`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `110`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
-  As of 2026-08-19, verified by running the runner against both: **dev and prod are BOTH fully
+  As of 2026-08-19, verified by running the runner against both: **dev and prod were BOTH fully
   applied at `107` - all 107 files, zero pending on either.** `105`–`107` went to prod with
   `--only=105,106,107 --allow-prod`, which is what the runner's `--only` flag exists for.
+  **Since then `108` and `109` have been applied to DEV** (ledger read 2026-08-20); prod was
+  not checked from that session, so run the runner rather than assuming either way.
   ⚠️ **The per-migration notes below saying a given number is "dev-only" are HISTORICAL** -
   each was true the day it was written and most have since been applied. `087`, `096`–`102`
   and `104` are all on prod now. The ledger is the only truth; those notes are kept for the
@@ -387,6 +390,31 @@ deliberately left out.
   UPDATE policy, the SELECT policy is the one that decides what an UPDATE can touch.** A
   `SECURITY DEFINER` function that writes one named column is the way around it; RLS-refused
   writes stay silent, so anything crossing that gap needs a row count.
+- ⚠️ **`109` (2026-08-20) rewrites an RLS policy, so it is destructive by this repo's own
+  definition and must NOT use `--allow-prod`.** It is applied to **dev only**. Nothing in the
+  app depends on it - `lib/capabilities.ts` already refuses `share.external` for a
+  guest/client - so leaving it unapplied breaks no screen; it just leaves the boundary at the
+  UI, which is exactly the state it was written to end. Gate: `pnpm check:access-matrix`
+  (70 checks, 13 of them the new share-link section; counted, not estimated).
+  Rollback: `scripts/rollback/109_revert.sql`, which destroys no data - both `109` and
+  its revert govern INSERT only and never touch a row.
+  - **What it closes:** `074`'s `share_links` INSERT policy checks the link's creator, the
+    resource's creator-or-admin, and board privacy - but never `board_members.role`. `065`
+    had made guest/client read-only *after* `074` was written, so a member demoted to guest
+    could still POST a `share_links` row through PostgREST and expose work they had created
+    to the unauthenticated public web. The Share button was already hidden from them; the
+    button was never the boundary. Measured before and after, not reasoned.
+  - **The predicate is `NOT EXISTS (... board_members ... role IN ('guest','client'))`,
+    inlined into both resource branches.** That is a third copy of a rule
+    `private.task_restricted_by_board_role` (065) and `private.column_restricted_by_board_role`
+    (067) already express. It is correct today, and it is only safe because
+    `board_members`' SELECT policy (`061`) always exposes the caller's **own** row and the
+    subquery reads nothing else - had it needed to see someone else's row, RLS would have
+    hidden it and the `NOT EXISTS` would have silently passed. **If a fourth role is ever
+    added to `board_members_role_check`, three places need updating.**
+  - ⚠️ **Forward-only.** A link minted *before* someone is demoted keeps working; `109`
+    governs new inserts and deliberately leaves existing rows alone. Revoking on demotion
+    would need a trigger, and that is a separate decision.
 - **`105`, `106`, `107` (2026-08-19) - marketing channel editing and board column ordering.**
   Gates: `pnpm check:marketing-channels` (39, was 16) and `pnpm check:board-columns` (30, new),
   plus a real-browser pass covering drag, the menu, the rename cascade and the channel dialog.

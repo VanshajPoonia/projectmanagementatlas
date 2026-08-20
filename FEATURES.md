@@ -265,7 +265,7 @@ Detailed investigation prompts will be added by the owner. When investigating, e
   the only INSERT policy and changed no existing link rows. Existing links remain active by design.
   The board Share button's remaining inline admin/creator check now uses the same `share.external`
   capability as task detail. **Verified:** 657 unit tests, `tsc --noEmit`, production build against
-  the dev ref (prod ref absent), `check:access-matrix` **64/64** including 13 new direct sharing
+  the dev ref (prod ref absent), `check:access-matrix` **70/70** including 13 new direct sharing
   cases and same-session demotion, and `check:task-lifecycle`; migration ledger 109 applied / 0
   pending. Supabase advisors found no new `share_links` warning (only the empty sandbox's two
   pre-existing INFO-level unused-index notices). **Not applied to production:** this rewrites an
@@ -300,7 +300,8 @@ Detailed investigation prompts will be added by the owner. When investigating, e
   deletion rendered with the same weight as a rename; `canViewAudit` reached only one shell;
   `task.view` was deleted as an unconditional ALLOW. **Verified:** 652 unit tests (was 589),
   `tsc --noEmit` clean, `next build` clean with `.env.production.local` moved aside and the dev ref
-  confirmed baked, **ten RLS harnesses green** including `check:access-matrix` 51/51, and a new
+  confirmed baked, **ten RLS harnesses green** including `check:access-matrix` (57 at that
+  point, counted), and a new
   **`pnpm check:shell-actions` - 18/18 in a real browser**: ⌘K stacks over an open task modal, every
   context command from the plan is present, a palette "Move to" really moved the task in Postgres,
   and a real guest session posted a comment that reached `task_comments`. **Deferred at audit time: B3a** -
