@@ -316,8 +316,10 @@ deliberately left out.
   As of 2026-08-19, verified by running the runner against both: **dev and prod were BOTH fully
   applied at `107` - all 107 files, zero pending on either.** `105`–`107` went to prod with
   `--only=105,106,107 --allow-prod`, which is what the runner's `--only` flag exists for.
-  **Since then `108` and `109` have been applied to DEV** (ledger read 2026-08-20); prod was
-  not checked from that session, so run the runner rather than assuming either way.
+  **Verified again 2026-08-20 by reading both ledgers: dev is at `109`, prod is at `108`.**
+  `109` is the one gap, and it is deliberate - see its entry below. Prod's ledger was read
+  through the REST API rather than the runner, because the direct DB host is IPv6-only and
+  the pooler is disabled on the dev project, so no `psql` path existed from that machine.
   ⚠️ **The per-migration notes below saying a given number is "dev-only" are HISTORICAL** -
   each was true the day it was written and most have since been applied. `087`, `096`–`102`
   and `104` are all on prod now. The ledger is the only truth; those notes are kept for the
@@ -391,8 +393,9 @@ deliberately left out.
   `SECURITY DEFINER` function that writes one named column is the way around it; RLS-refused
   writes stay silent, so anything crossing that gap needs a row count.
 - ⚠️ **`109` (2026-08-20) rewrites an RLS policy, so it is destructive by this repo's own
-  definition and must NOT use `--allow-prod`.** It is applied to **dev only**. Nothing in the
-  app depends on it - `lib/capabilities.ts` already refuses `share.external` for a
+  definition and must NOT use `--allow-prod`.** Applied to **dev only** - prod's ledger was
+  read on 2026-08-20 and stops at `108`, so **production still has the hole described below**,
+  exactly as it did before the fix was written. Nothing in the app depends on it - `lib/capabilities.ts` already refuses `share.external` for a
   guest/client - so leaving it unapplied breaks no screen; it just leaves the boundary at the
   UI, which is exactly the state it was written to end. Gate: `pnpm check:access-matrix`
   (70 checks, 13 of them the new share-link section; counted, not estimated).

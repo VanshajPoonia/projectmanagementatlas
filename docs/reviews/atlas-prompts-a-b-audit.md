@@ -337,7 +337,8 @@ to any of this, and untouched.
 
 ## F. Still open
 
-- **`109` is applied to DEV only, and it cannot ride `--allow-prod`.** It rewrites an RLS
+- **`109` is applied to DEV only, and it cannot ride `--allow-prod`.** Confirmed 2026-08-20 by
+  reading both ledgers: **dev is at `109`, prod is at `108`.** It rewrites an RLS
   policy, which this repo classifies as destructive, so the runner's prod opt-in is off the
   table by the project's own rule - it needs a deliberate application. Nothing breaks
   meanwhile: `share.external` already refuses guest/client in the client, so the only
