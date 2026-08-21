@@ -347,7 +347,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
     e.stopPropagation()
 
     const confirmed = window.confirm(
-      `Archive "${boardTitle}"?\n\nThe board and all its data are kept - it's just hidden from everyone except super admins. Only a super admin can restore it.`
+      `Archive "${boardTitle}"?\n\nThe board and all its data are kept - it's just hidden from everyone except super admins. Only a super admin can archive or restore a board.`
     )
     if (!confirmed) return
     if (movingBoardIds.has(boardId)) return
@@ -658,10 +658,18 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
                       <Edit className="w-4 h-4 mr-2" />
                       Edit Board
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="cursor-pointer" onClick={(e) => handleArchiveBoard(board.id, board.title, e)}>
-                      <Archive className="w-4 h-4 mr-2" />
-                      Archive Board
-                    </DropdownMenuItem>
+                    {/* Archiving is the only way a board leaves the workspace - there is no
+                        delete path anywhere in this app - and 110 makes both halves of that
+                        door super-admin-only. Hidden rather than disabled: a plain admin has
+                        no route to it at all, so an inert row would only raise a question it
+                        cannot answer. The trigger is the real boundary; this just avoids
+                        offering a button that would be refused. */}
+                    {isSuperAdmin && (
+                      <DropdownMenuItem className="cursor-pointer" onClick={(e) => handleArchiveBoard(board.id, board.title, e)}>
+                        <Archive className="w-4 h-4 mr-2" />
+                        Archive Board
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -743,13 +751,16 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
                     <Edit className="w-4 h-4 mr-2" />
                     Edit Board
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer"
-                    onClick={(e) => handleArchiveBoard(board.id, board.title, e)}
-                  >
-                    <Archive className="w-4 h-4 mr-2" />
-                    Archive Board
-                  </DropdownMenuItem>
+                  {/* Same gate as the tile menu above. */}
+                  {isSuperAdmin && (
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      onClick={(e) => handleArchiveBoard(board.id, board.title, e)}
+                    >
+                      <Archive className="w-4 h-4 mr-2" />
+                      Archive Board
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

@@ -31,7 +31,7 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` - ${detail}` : ''}`)
 }
 
-let browser, su, board, board2
+let browser, su, plainAdmin, board, board2
 const TITLE = `ZZ Archive Probe ${stamp}`
 const TITLE2 = `ZZ Archive Probe Two ${stamp}`
 try {
@@ -41,6 +41,16 @@ try {
   if (error) throw error
   su = { id: data.user.id, email, password }
   await admin.from('profiles').upsert({ id: su.id, email, full_name: 'BS Archive', role: 'super_admin', is_active: true })
+
+  // A plain admin, to prove 110's gate is role-specific and not a blanket break. They must
+  // still be able to RENAME a board: 110 narrows one column transition, not the whole row.
+  const adminEmail = `bs-arch-plain-${stamp}@goatlasgo.us`
+  const { data: pa, error: pae } = await admin.auth.admin.createUser({
+    email: adminEmail, password, email_confirm: true,
+  })
+  if (pae) throw pae
+  plainAdmin = { id: pa.user.id, email: adminEmail, password }
+  await admin.from('profiles').upsert({ id: plainAdmin.id, email: adminEmail, full_name: 'BS Plain Admin', role: 'admin', is_active: true })
 
   const { data: b, error: be } = await admin.from('boards').insert({ title: TITLE, created_by: su.id }).select().single()
   if (be) throw be
@@ -174,10 +184,20 @@ try {
     check('archiving a second board while the first is still saving still archives it',
       one && two, `first=${one}, second=${two}`)
 
-    // Put the first board back so the reload check below reads the state it expects.
+    // Put BOTH boards back. Restoring only .first() restored the wrong one: the archived list
+    // is ordered archived_at desc, so the second board is at the top and the board under test
+    // was left archived, which then failed every later check for reasons that had nothing to
+    // do with the code being tested.
     await openArchived()
-    await page.getByRole('button', { name: /^Restore$/i }).first().click()
-    await page.waitForTimeout(1500)
+    for (let i = 0; i < 4; i++) {
+      const restores = page.getByRole('button', { name: /^Restore$/i })
+      if (await restores.count() === 0) break
+      await restores.first().click()
+      await page.waitForTimeout(1400)
+    }
+    check('both boards are live again before the permission checks',
+      !(await isArchived(TITLE)) && !(await isArchived(TITLE2)),
+      `${TITLE.slice(-4)} archived=${await isArchived(TITLE)}, two archived=${await isArchived(TITLE2)}`)
   }
 
   // ── the list a reload produces is the one already on screen ──────────────
@@ -187,11 +207,61 @@ try {
   const afterReload = await stableCount()
   check('a reload agrees with what was on screen', afterReload === 1 && await inDb() === 1,
     `${afterReload} on screen`)
+
+  // ── 110: archiving is super-admin-only, both in the UI and underneath it ──
+  {
+    const ctx2 = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const p2 = await ctx2.newPage()
+    p2.on('dialog', (d) => d.accept())
+    await p2.goto(`${BASE}/login`, { waitUntil: 'networkidle' })
+    await p2.locator('button[type=submit]').waitFor({ state: 'visible' })
+    await p2.fill('input[type=email]', plainAdmin.email)
+    await p2.fill('input[type=password]', plainAdmin.password)
+    await p2.click('button[type=submit]')
+    await p2.waitForURL((u) => !/\/login/.test(u.toString()), { timeout: 45000 })
+    await p2.goto(`${BASE}/admin?tab=boards`, { waitUntil: 'networkidle' })
+    await p2.waitForTimeout(1200)
+
+    check('a plain admin can see the board at all', await p2.getByText(TITLE, { exact: true }).count() === 1)
+
+    await p2.getByLabel(`Actions for ${TITLE}`).first().click()
+    await p2.waitForTimeout(400)
+    const archiveItems = await p2.getByRole('menuitem', { name: /archive/i }).count()
+    check('a plain admin is not offered Archive Board', archiveItems === 0, `${archiveItems} archive items`)
+    const editItems = await p2.getByRole('menuitem', { name: /edit board/i }).count()
+    check('a plain admin still has the rest of the menu (control)', editItems === 1, `${editItems} edit items`)
+    await p2.keyboard.press('Escape')
+
+    await ctx2.close()
+
+    // The button was never the boundary. Make the same write directly as the plain admin,
+    // against real RLS and 110's trigger, and confirm the database is the thing refusing.
+    const asAdmin = createClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } })
+    const { error: signInErr } = await asAdmin.auth.signInWithPassword({
+      email: plainAdmin.email, password: plainAdmin.password,
+    })
+    if (signInErr) throw signInErr
+    const { error: archErr } = await asAdmin
+      .from('boards').update({ archived_at: new Date().toISOString() }).eq('id', board.id).select()
+    check('the database refuses a plain admin archiving a board',
+      Boolean(archErr) && /super admin can archive/i.test(archErr?.message ?? ''),
+      archErr?.message ?? '(no error - the write was allowed)')
+    check('the board really is still live after that attempt', (await archived()) === null)
+
+    // Control: the same person may still rename it, so 110 narrowed a transition, not the row.
+    const { data: renamed, error: renameErr } = await asAdmin
+      .from('boards').update({ title: `${TITLE} renamed` }).eq('id', board.id).select('id, title')
+    check('a plain admin can still rename a board (control)',
+      !renameErr && renamed?.length === 1, renameErr?.message ?? `${renamed?.length ?? 0} rows`)
+    await admin.from('boards').update({ title: TITLE }).eq('id', board.id)
+    await asAdmin.auth.signOut()
+  }
 } finally {
   if (browser) await browser.close()
   if (board) await admin.from('boards').delete().eq('id', board.id)
   if (board2) await admin.from('boards').delete().eq('id', board2.id)
   if (su) await admin.auth.admin.deleteUser(su.id)
+  if (plainAdmin) await admin.auth.admin.deleteUser(plainAdmin.id)
 }
 
 const failed = results.filter((r) => !r.ok)
