@@ -30,6 +30,7 @@ import TaskCard from './task-card'
 import CreateTaskDialog from './create-task-dialog'
 import { TaskDetailModal } from './task-detail-modal'
 import { ShareLinkDialog } from './share-link-dialog'
+import { BoardAttachmentsDialog } from './board-attachments-dialog'
 import ChatPanel from '@/components/chat/chat-panel'
 import MobileBottomNav, { type NavItem } from '@/components/dashboard/mobile-bottom-nav'
 import { getAssigneeIds, getAssignees, getAssigneeNames } from '@/lib/assignees'
@@ -1387,6 +1388,21 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                 <MessageSquare className="w-4 h-4" />
                 Chat
               </Button>
+              {/* Files that belong to the board rather than to a card. Everyone who can see the
+                  board can read them; 111's INSERT policy is an admin who can see the board, so
+                  canUpload mirrors that rather than inventing a second rule. The label collapses
+                  on a phone like its neighbours - the header strip has no room to grow.
+
+                  ⚠️ platformRole, NOT isAdmin. isAdmin is a SURFACE flag: /dashboard/board/<id>
+                  passes it as false on purpose, so keying upload off it would hide the button
+                  from a real admin who happened to arrive through that route, while 111's policy
+                  cheerfully accepted their write. Same trap boardHref exists to avoid. */}
+              <BoardAttachmentsDialog
+                boardId={board.id}
+                currentUserId={currentUserId}
+                canUpload={platformRole === 'admin' || platformRole === 'super_admin'}
+                isSuperAdmin={isSuperAdmin}
+              />
               <Button onClick={exportVisibleTasksToCSV} variant="outline" size="sm" className="gap-2">
                 <Download className="w-4 h-4" />
                 <span className="hidden sm:inline">Export CSV</span>

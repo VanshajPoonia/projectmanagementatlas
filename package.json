@@ -41,7 +41,8 @@
     "check:chat-composer": "node --env-file=.env.local scripts/check-chat-composer.mjs",
     "check:dictation": "node --env-file=.env.local scripts/check-dictation.mjs",
     "check:board-archive": "node --env-file=.env.local scripts/check-board-archive.mjs",
-    "check:schedule-grid": "node --env-file=.env.local scripts/check-marketing-schedule-grid.mjs"
+    "check:schedule-grid": "node --env-file=.env.local scripts/check-marketing-schedule-grid.mjs",
+    "check:board-attachments": "node --env-file=.env.local scripts/check-board-attachments.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",
