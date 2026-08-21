@@ -9,7 +9,9 @@ import {
   isImportedWeekendPlaceholder,
   MAX_SCHEDULED_MARKETING_POSTS,
   moveListItem,
+  marketingCalendarStorageKey,
   reconcileCompanySelection,
+  resolveSelectedCalendarId,
   toggleCompanySelection,
 } from './marketing-calendar-state'
 
@@ -329,5 +331,62 @@ describe('buildScheduleGridMonths', () => {
   it('refuses a range too wide to lay out, so the caller falls back to the list', () => {
     expect(buildScheduleGridMonths('2026-01-01', '2027-06-30')).toEqual([])
     expect(buildScheduleGridMonths('2026-01-01', '2026-12-31').length).toBe(12)
+  })
+})
+
+describe('which calendar the switcher opens on', () => {
+  // Mirrors production: an admin sees all three, ordered by name, and the alphabetically
+  // first one is an empty calendar nobody is a member of.
+  const kaylaPersonal = { id: 'personal', member_user_ids: [] }
+  const marketing = { id: 'marketing', member_user_ids: ['kayla'] }
+  const test = { id: 'test', member_user_ids: ['bobby', 'kayla'] }
+  const all = [kaylaPersonal, marketing, test]
+
+  it('does not open a calendar the viewer holds no membership row on', () => {
+    expect(
+      resolveSelectedCalendarId({ current: null, calendars: all, storedId: null, userId: 'kayla' }),
+    ).toBe('marketing')
+  })
+
+  it('restores what the viewer last chose', () => {
+    expect(
+      resolveSelectedCalendarId({ current: null, calendars: all, storedId: 'test', userId: 'kayla' }),
+    ).toBe('test')
+  })
+
+  it('ignores a stored calendar that was archived or is no longer reachable', () => {
+    expect(
+      resolveSelectedCalendarId({ current: null, calendars: [marketing], storedId: 'gone', userId: 'kayla' }),
+    ).toBe('marketing')
+  })
+
+  it('keeps a live selection when the list is refetched', () => {
+    // An admin creating or archiving a calendar re-runs this; re-deciding here would undo
+    // the switch the user just made.
+    expect(
+      resolveSelectedCalendarId({ current: 'personal', calendars: all, storedId: 'test', userId: 'kayla' }),
+    ).toBe('personal')
+  })
+
+  it('drops a live selection the viewer can no longer reach', () => {
+    expect(
+      resolveSelectedCalendarId({ current: 'personal', calendars: [marketing], storedId: null, userId: 'kayla' }),
+    ).toBe('marketing')
+  })
+
+  it('falls back to the first calendar when the viewer is a member of none', () => {
+    expect(
+      resolveSelectedCalendarId({ current: null, calendars: all, storedId: null, userId: 'stranger' }),
+    ).toBe('personal')
+  })
+
+  it('returns null when there is nothing to show', () => {
+    expect(
+      resolveSelectedCalendarId({ current: 'personal', calendars: [], storedId: 'test', userId: 'kayla' }),
+    ).toBeNull()
+  })
+
+  it('keys the stored choice per user so a shared browser does not leak one', () => {
+    expect(marketingCalendarStorageKey('kayla')).not.toBe(marketingCalendarStorageKey('bobby'))
   })
 })

@@ -43,7 +43,8 @@
     "check:board-archive": "node --env-file=.env.local scripts/check-board-archive.mjs",
     "check:schedule-grid": "node --env-file=.env.local scripts/check-marketing-schedule-grid.mjs",
     "check:board-attachments": "node --env-file=.env.local scripts/check-board-attachments.mjs",
-    "check:metrics": "node --env-file=.env.local scripts/check-metrics.mjs"
+    "check:metrics": "node --env-file=.env.local scripts/check-metrics.mjs",
+    "check:marketing-calendar-default": "node --env-file=.env.local scripts/check-marketing-calendar-default.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",

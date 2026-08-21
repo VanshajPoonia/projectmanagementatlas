@@ -328,3 +328,51 @@ export function isImportedWeekendPlaceholder(item: ImportedCalendarItem) {
     && ['SAT', 'SUN'].includes(item.day_label.toUpperCase())
     && item.content.trim().toLowerCase() === 'wk'
 }
+
+/* ─── which calendar the switcher opens on ─────────────────────────────── */
+
+export function marketingCalendarStorageKey(userId: string) {
+  return `marketing_calendar_selected:${userId}`
+}
+
+interface SelectableCalendar {
+  id: string
+  member_user_ids?: string[]
+}
+
+/**
+ * Pick the calendar to show, given the ones this user can currently reach.
+ *
+ * The old rule was `activeCalendars[0]`, and the list is ordered by name - so the default was
+ * decided by the alphabet. On production that is "Kayla's Personal": an empty calendar with no
+ * members at all, visible only because `marketing_calendars`' SELECT policy lets an admin read
+ * every calendar. Opening Marketing therefore landed on a blank board every time, and the
+ * switcher forgot the correction on the next visit.
+ *
+ * `storedId` is what this user last chose and is checked against the live list first, so an
+ * archived calendar or revoked access falls through rather than selecting nothing. Membership
+ * comes next, because a calendar the viewer holds no row on is one they were never given - it
+ * is reaching them through the admin bypass. First-by-name stays as the last resort.
+ */
+export function resolveSelectedCalendarId({
+  current,
+  calendars,
+  storedId,
+  userId,
+}: {
+  current: string | null
+  calendars: SelectableCalendar[]
+  storedId: string | null
+  userId: string
+}): string | null {
+  // A live selection wins outright: this runs again whenever the list identity changes (an
+  // admin creating or archiving one), and re-deciding there would throw away the switch the
+  // user just made.
+  if (current && calendars.some(c => c.id === current)) return current
+  if (storedId && calendars.some(c => c.id === storedId)) return storedId
+
+  const mine = calendars.find(c => c.member_user_ids?.includes(userId))
+  if (mine) return mine.id
+
+  return calendars[0]?.id ?? null
+}

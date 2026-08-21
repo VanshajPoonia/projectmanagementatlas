@@ -58,10 +58,12 @@ import {
   centeredScrollLeft,
   dayLabelForDateKey,
   isImportedWeekendPlaceholder,
+  marketingCalendarStorageKey,
   MAX_SCHEDULED_MARKETING_POSTS,
   moveListItem,
   type MarketingRecurrencePattern,
   reconcileCompanySelection,
+  resolveSelectedCalendarId,
   toggleCompanySelection,
 } from './marketing-calendar-state'
 import MarketingCalendarManagement from '../admin/marketing-calendar-management'
@@ -194,6 +196,33 @@ function loadViewMode(): ViewMode {
     if (raw === 'week' || raw === 'month' || raw === 'grid') return raw
   } catch { /* ignore */ }
   return 'week'
+}
+
+/* ─── selected-calendar persistence ────────────────────────────────────── */
+
+// Per-user, per-browser, and presentational in the sense migration 097 settled: which of
+// several calendars you had open is a view preference, not a record. Both sides are guarded,
+// because localStorage throws in a private-mode Safari window and losing a preference must
+// never take the calendar down with it.
+//
+// window.localStorage rather than the bare global, matching components/shell/use-density.ts:
+// Node 22 defines its own `localStorage` that is undefined unless --localstorage-file is
+// passed, and it shadows jsdom's under vitest. A bare reference therefore throws in tests,
+// the catch below swallows it, and persistence becomes unverifiable. loadViewMode above reads
+// the bare global and has been silently doing nothing in tests for exactly that reason.
+function loadStoredCalendarId(userId: string): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.localStorage.getItem(marketingCalendarStorageKey(userId))
+  } catch { /* ignore */ }
+  return null
+}
+
+function storeCalendarId(userId: string, calendarId: string) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(marketingCalendarStorageKey(userId), calendarId)
+  } catch { /* ignore */ }
 }
 
 /* ─── date utilities ──────────────────────────────────────────────────── */
@@ -521,13 +550,28 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const [manageOpen, setManageOpen] = useState(false)
 
   // Keep the selection valid as the calendar list changes (initial load, or after an admin
-  // creates/archives one) - falls back to the first available calendar, or null if none exist.
+  // creates/archives one). The rule itself is pure and tested in marketing-calendar-state.ts.
+  //
+  // Reading localStorage here rather than in a useState initializer is deliberate: the initial
+  // value stays null on the server and on the first client paint, so there is nothing for the
+  // two to disagree about. loadViewMode() above does read during render, which is why this one
+  // does not copy it.
   useEffect(() => {
-    setSelectedCalendarId(current => {
-      if (current && activeCalendars.some(c => c.id === current)) return current
-      return activeCalendars[0]?.id ?? null
-    })
-  }, [activeCalendars])
+    setSelectedCalendarId(current => resolveSelectedCalendarId({
+      current,
+      calendars: activeCalendars,
+      storedId: loadStoredCalendarId(userId),
+      userId,
+    }))
+  }, [activeCalendars, userId])
+
+  // Only an explicit switch is remembered. Persisting whatever the resolver settled on would
+  // pin a first-visit fallback as though it had been chosen, and the fallback is the branch
+  // least likely to be right.
+  const selectCalendar = (calendarId: string) => {
+    setSelectedCalendarId(calendarId)
+    storeCalendarId(userId, calendarId)
+  }
 
   const selectedCalendar = activeCalendars.find(c => c.id === selectedCalendarId) ?? null
 
@@ -2299,7 +2343,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
             {activeCalendars.length > 1 && (
               <select
                 value={selectedCalendarId ?? ''}
-                onChange={e => setSelectedCalendarId(e.target.value)}
+                onChange={e => selectCalendar(e.target.value)}
                 aria-label="Select calendar"
                 className="h-9 rounded-md border bg-background px-2.5 text-sm font-semibold"
               >

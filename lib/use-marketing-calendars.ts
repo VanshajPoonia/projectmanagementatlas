@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import {
+  MARKETING_CALENDAR_SELECT,
+  toMarketingCalendarSummaries,
+  type MarketingCalendarSummary,
+} from '@/lib/marketing-calendar-summary'
 
-export interface MarketingCalendarSummary {
-  id: string
-  name: string
-  color: string
-  is_archived: boolean
-}
+// Re-exported so every existing `from '@/lib/use-marketing-calendars'` import still resolves;
+// the declaration itself lives in a framework-free module the server can also import.
+export type { MarketingCalendarSummary }
 
 // RLS on marketing_calendars already scopes this to "every calendar for admins, only mine for
 // everyone else" (private.is_calendar_member), so no extra client-side filtering is needed here.
@@ -33,9 +35,9 @@ export function useMarketingCalendars(initial?: MarketingCalendarSummary[] | nul
     const supabase = createClient()
     const { data } = await supabase
       .from('marketing_calendars')
-      .select('id, name, color, is_archived')
+      .select(MARKETING_CALENDAR_SELECT)
       .order('name', { ascending: true })
-    setCalendars(data ?? [])
+    setCalendars(toMarketingCalendarSummaries(data))
   }, [])
 
   const seeded = initial !== undefined && initial !== null

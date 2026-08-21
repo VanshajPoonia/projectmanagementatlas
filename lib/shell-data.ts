@@ -3,7 +3,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // From ./module-registry, not ./modules: the latter is a client module (it imports
 // useState and the browser Supabase client), and a Server Component may not import one.
 import { DEFAULT_MODULES, type AppModule } from './module-registry'
-import type { MarketingCalendarSummary } from './use-marketing-calendars'
+import {
+  MARKETING_CALENDAR_SELECT,
+  toMarketingCalendarSummaries,
+  type MarketingCalendarSummary,
+} from './marketing-calendar-summary'
 
 /**
  * The two lists the app shell needs before it can draw a correct sidebar.
@@ -31,7 +35,7 @@ export interface ShellData {
 export async function loadShellData(supabase: SupabaseClient): Promise<ShellData> {
   const [{ data: modules }, { data: calendars }] = await Promise.all([
     supabase.from('app_modules').select('module_key, enabled, config'),
-    supabase.from('marketing_calendars').select('id, name, color, is_archived').order('name'),
+    supabase.from('marketing_calendars').select(MARKETING_CALENDAR_SELECT).order('name'),
   ])
 
   return {
@@ -39,6 +43,6 @@ export async function loadShellData(supabase: SupabaseClient): Promise<ShellData
     // DEFAULT_MODULES here rather than passing `[]` keeps one rule for that case instead of
     // two: `useAppModules` treats an empty seed as "no seed" and applies the same fallback.
     modules: modules?.length ? (modules as AppModule[]) : DEFAULT_MODULES,
-    calendars: (calendars ?? []) as MarketingCalendarSummary[],
+    calendars: toMarketingCalendarSummaries(calendars),
   }
 }

@@ -24,6 +24,28 @@ vi.mock('sonner', () => ({
   },
 }))
 
+// vitest's jsdom environment points `window` at globalThis, and Node 22 defines its own
+// `localStorage` there which is undefined unless --localstorage-file is passed. So in this
+// environment neither the bare global nor window.localStorage is a real Storage, and the
+// afterEach clear below had been throwing into its own catch since the day it was written.
+// Install a minimal in-memory one so the persistence tests can actually observe a write.
+const memoryStorage = (() => {
+  const store = new Map<string, string>()
+  return {
+    getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
+    setItem: (key: string, value: string) => { store.set(key, String(value)) },
+    removeItem: (key: string) => { store.delete(key) },
+    clear: () => { store.clear() },
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() { return store.size },
+  }
+})()
+Object.defineProperty(globalThis, 'localStorage', {
+  value: memoryStorage,
+  configurable: true,
+  writable: true,
+})
+
 import MarketingCalendar from './marketing-calendar'
 
 const companies = [
@@ -37,7 +59,7 @@ const companies = [
 // ("Kayla's Posting Board") so the 13 pre-existing render() sites below only need this one new
 // prop, not a rewrite of every assertion.
 const defaultCalendars = [
-  { id: 'cal-1', name: "Kayla's Posting Board", color: '#3b82f6', is_archived: false },
+  { id: 'cal-1', name: "Kayla's Posting Board", color: '#3b82f6', is_archived: false, member_user_ids: ['user-1'] },
 ]
 const noopRefetchCalendars = async () => {}
 
@@ -193,7 +215,7 @@ describe('MarketingCalendar controls', () => {
     // The view toggle persists to localStorage, which jsdom keeps for the whole
     // file - without this, one test switching to the channel grid would silently
     // start every later test there.
-    try { localStorage.clear() } catch { /* ignore */ }
+    try { window.localStorage.clear() } catch { /* ignore */ }
     vi.restoreAllMocks()
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
       configurable: true,
@@ -802,14 +824,55 @@ describe('MarketingCalendar controls', () => {
 
   it('shows a calendar switcher listing every available calendar', async () => {
     const twoCalendars = [
-      { id: 'cal-1', name: "Kayla's Posting Board", color: '#3b82f6', is_archived: false },
-      { id: 'cal-2', name: 'Q1 Campaigns', color: '#dc2626', is_archived: false },
+      { id: 'cal-1', name: "Kayla's Posting Board", color: '#3b82f6', is_archived: false, member_user_ids: ['user-1'] },
+      { id: 'cal-2', name: 'Q1 Campaigns', color: '#dc2626', is_archived: false, member_user_ids: [] },
     ]
     render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={twoCalendars} refetchCalendars={noopRefetchCalendars} />)
 
     const select = await screen.findByLabelText('Select calendar')
     expect(within(select).getByText("Kayla's Posting Board")).toBeInTheDocument()
     expect(within(select).getByText('Q1 Campaigns')).toBeInTheDocument()
+  })
+
+  // Production shape: an admin reads every calendar through the SELECT policy, the list is
+  // ordered by name, and the alphabetically first one is somebody else's empty personal
+  // calendar. Opening Marketing used to land there every single time.
+  const adminsView = [
+    { id: 'cal-personal', name: "Kayla's Personal", color: '#ef0b79', is_archived: false, member_user_ids: [] },
+    { id: 'cal-1', name: "Kayla's Posting Board", color: '#3b82f6', is_archived: false, member_user_ids: ['user-1'] },
+  ]
+
+  it('opens a calendar the viewer belongs to, not whichever sorts first', async () => {
+    render(<MarketingCalendar userId="user-1" userName="Kayla" isAdmin calendars={adminsView} refetchCalendars={noopRefetchCalendars} />)
+
+    const select = await screen.findByLabelText('Select calendar') as HTMLSelectElement
+    expect(select.value).toBe('cal-1')
+  })
+
+  it('remembers the calendar the viewer switched to', async () => {
+    const { unmount } = render(<MarketingCalendar userId="user-1" userName="Kayla" isAdmin calendars={adminsView} refetchCalendars={noopRefetchCalendars} />)
+
+    fireEvent.change(await screen.findByLabelText('Select calendar'), { target: { value: 'cal-personal' } })
+    unmount()
+
+    render(<MarketingCalendar userId="user-1" userName="Kayla" isAdmin calendars={adminsView} refetchCalendars={noopRefetchCalendars} />)
+    const select = await screen.findByLabelText('Select calendar') as HTMLSelectElement
+    expect(select.value).toBe('cal-personal')
+  })
+
+  it('does not hand one user the calendar another chose in the same browser', async () => {
+    const shared = [
+      { id: 'cal-personal', name: "Kayla's Personal", color: '#ef0b79', is_archived: false, member_user_ids: [] },
+      { id: 'cal-1', name: "Kayla's Posting Board", color: '#3b82f6', is_archived: false, member_user_ids: ['user-1', 'user-2'] },
+    ]
+    const { unmount } = render(<MarketingCalendar userId="user-1" userName="Kayla" isAdmin calendars={shared} refetchCalendars={noopRefetchCalendars} />)
+    fireEvent.change(await screen.findByLabelText('Select calendar'), { target: { value: 'cal-personal' } })
+    unmount()
+
+    render(<MarketingCalendar userId="user-2" userName="Bobby" isAdmin calendars={shared} refetchCalendars={noopRefetchCalendars} />)
+    const select = await screen.findByLabelText('Select calendar') as HTMLSelectElement
+    expect(select.value).toBe('cal-1')
+    expect(window.localStorage.getItem('marketing_calendar_selected:user-2')).toBeNull()
   })
 
   it('tells a non-admin with no calendar access to ask an admin, with no create option', async () => {
