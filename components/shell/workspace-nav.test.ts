@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { addressableTabs, buildWorkspaceNav } from './workspace-nav'
+import { addressableTabs, boardHref, buildWorkspaceNav, dashboardHost } from './workspace-nav'
 import { DEFAULT_MODULES, type AppModule } from '@/lib/modules'
 
 function ids(groups: ReturnType<typeof buildWorkspaceNav>, groupId = 'sections') {
@@ -95,6 +95,26 @@ describe('the tab host follows the role', () => {
 
 // admin-dashboard.tsx used to hand-write its own copy of this list, so a module switched on
 // in Super Admin → Modules appeared on /dashboard, /my-work and /crm but never on /admin.
+describe('boardHref', () => {
+  // /dashboard/board/[id] renders with isAdmin={false} on purpose, so an admin sent there
+  // loses Add Column, the column menu and the board rename with no explanation. The host
+  // is a function of the viewer's role, exactly like dashboardHost.
+  it('opens a board on the admin surface for both admin tiers', () => {
+    expect(boardHref('admin', 'b1')).toBe('/admin/board/b1')
+    expect(boardHref('super_admin', 'b1')).toBe('/admin/board/b1')
+  })
+
+  it('opens a board on the user surface for a plain member', () => {
+    expect(boardHref('user', 'b1')).toBe('/dashboard/board/b1')
+  })
+
+  it('agrees with dashboardHost, so the two can never drift', () => {
+    for (const role of ['user', 'admin', 'super_admin'] as const) {
+      expect(boardHref(role, 'b1')).toBe(`${dashboardHost(role)}/board/b1`)
+    }
+  })
+})
+
 describe('admin-hosted sections', () => {
   const adminIds = (extra: Partial<Parameters<typeof buildWorkspaceNav>[0]> = {}) =>
     ids(buildWorkspaceNav({ ...base, role: 'admin', ...extra }))

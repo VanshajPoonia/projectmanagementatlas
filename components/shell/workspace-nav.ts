@@ -52,6 +52,24 @@ export function dashboardHost(role: Role): '/admin' | '/dashboard' {
 }
 
 /**
+ * Where a board opens for this viewer.
+ *
+ * Same rule as dashboardHost, and it exists for the same reason: the two board routes are
+ * not interchangeable. `app/dashboard/board/[id]/page.tsx` passes `isAdmin={false}`
+ * deliberately, so sending an admin to /dashboard/board/<id> silently strips the controls
+ * they are entitled to - no Add Column, no column menu, no board rename - with nothing on
+ * screen explaining why.
+ *
+ * ⚠️ Build board links from the viewer's **platform role**, never from a board surface's
+ * own `isAdmin` flag. On /dashboard/board/<id> that flag is false even for a super admin,
+ * so a link built from it pins them into the stripped surface for every board they open
+ * next - and every board they star, since a favourite stores the href it was created from.
+ */
+export function boardHref(role: Role, boardId: string): string {
+  return `${dashboardHost(role)}/board/${boardId}`
+}
+
+/**
  * Build the sidebar groups for a viewer.
  *
  * Home and My Work are core: they are not registered modules and cannot be switched off,
