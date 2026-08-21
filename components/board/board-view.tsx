@@ -23,7 +23,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, ChevronLeft, ChevronRight, Download, MessageSquare, Home, Lock, Kanban, ClipboardList, FileBarChart, Megaphone, SlidersHorizontal, Archive, ArchiveRestore, GripVertical } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Download, MessageSquare, Lock, Kanban, SlidersHorizontal, Archive, ArchiveRestore, GripVertical, Pencil, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import TaskCard from './task-card'
@@ -52,7 +52,13 @@ import { ThemeControls } from '@/components/theme/theme-controls'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel, statusesMissingFromBoard } from '@/lib/task-status'
 import { moveListItem } from '@/lib/reorder'
-import { useTaskStatuses } from '@/lib/use-task-statuses'
+import { useTaskStatusList } from '@/lib/use-task-statuses'
+import { useAppModules } from '@/lib/modules'
+import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
+import type { ShellData } from '@/lib/shell-data'
+import { boardHref as buildBoardHref, buildWorkspaceNav, dashboardHost } from '@/components/shell/workspace-nav'
+import { navIcon } from '@/components/shell/nav-icons'
+import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 
 interface BoardViewProps {
@@ -77,6 +83,18 @@ interface BoardViewProps {
   currentUserId: string
   /** The caller's board_members row for this board, if any (null = no row = full default access). */
   boardRole?: 'member' | 'guest' | 'client' | null
+  /**
+   * Every board this viewer may open, for the header's board switcher. Already
+   * RLS-filtered by the server route, so a private board a non-member cannot see is
+   * simply absent - the switcher never has to decide what to hide.
+   */
+  boards?: Array<{ id: string; title: string; is_private?: boolean }>
+  /**
+   * Enabled modules + marketing calendars, fetched on the server. A board renders outside
+   * AppShell, so without this its header nav has nothing to gate on. Optional: both hooks
+   * fall back to fetching on mount, which is what every screen used to do.
+   */
+  shell?: ShellData
 }
 
 const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profiles!tasks_assigned_to_fkey(id, full_name, email), task_assignees(user_id), task_tags(tag:tags(*)))'
@@ -85,19 +103,29 @@ const BOARD_COLUMNS_SELECT = '*, tasks!tasks_column_id_fkey(*, assigned_to:profi
 // library's default type, so the two can never accept each other's payload.
 const COLUMN_DRAG_TYPE = 'BOARD_COLUMN'
 
-export default function BoardView({ board, columns: initialColumns, users, isAdmin, isSuperAdmin = false, platformRole = 'user', currentUserId, boardRole = null }: BoardViewProps) {
+// Which destinations the phone's bottom bar keeps on the bar itself, after Home. See the
+// memo that consumes it for why these three and not simply the first few in nav order.
+const BOARD_BAR_PRIORITY = ['boards', 'chat', 'my-work']
+
+export default function BoardView({ board, columns: initialColumns, users, isAdmin, isSuperAdmin = false, platformRole = 'user', currentUserId, boardRole = null, boards = [], shell }: BoardViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   // Feeds the shell's Recent section and the ⌘K palette's Recent group. Written here
   // rather than on the server route because it is a per-browser convenience, not data.
+  // ⚠️ buildBoardHref(platformRole, …), never `isAdmin ? … : …`. On /dashboard/board/<id>
+  // `isAdmin` is false even for a super admin, so building the href from it stored a
+  // /dashboard link in Recents - and re-opening from Recents dropped them back into the
+  // stripped surface every time, with nothing on screen saying why.
   useRememberRecord(currentUserId, {
     key: `board:${board.id}`,
     kind: 'board',
     label: board.title,
-    href: `${isAdmin ? '/admin' : '/dashboard'}/board/${board.id}`,
+    href: buildBoardHref(platformRole, board.id),
   })
   const [columns, setColumns] = useState(initialColumns)
-  const taskStatuses = useTaskStatuses()
+  // The refetch matters here and nowhere else: renaming a board column renames the status
+  // behind it, and every status picker on this page is labelled from this list.
+  const { statuses: taskStatuses, refetch: refetchStatuses } = useTaskStatusList()
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [selectedColumn, setSelectedColumn] = useState<any>(null)
   const [newColumnDialogOpen, setNewColumnDialogOpen] = useState(false)
@@ -108,6 +136,9 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [boardTitle, setBoardTitle] = useState(board.title)
   const [boardDescription, setBoardDescription] = useState(cleanBoardDescription(board.description))
   const [colorPickerColumn, setColorPickerColumn] = useState<string | null>(null)
+  const [renameColumnId, setRenameColumnId] = useState<string | null>(null)
+  const [renameColumnValue, setRenameColumnValue] = useState('')
+  const [renameColumnBusy, setRenameColumnBusy] = useState(false)
   const [filterUser, setFilterUser] = useState<string>('all')
   const [filterPriority, setFilterPriority] = useState<string>('all')
   const [filterDateRange, setFilterDateRange] = useState<'all' | 'overdue' | 'today' | 'week' | 'month'>('all')
@@ -129,9 +160,12 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   // Favourites (migration 097). This page renders outside AppShell, so it gets no sidebar
   // Favourites block - but it is the natural place to *add* one, so the star lives by the
   // board title here.
+  // Same rule as Recents above: a favourite stores the href it was created from, so an
+  // href built from the surface flag pins an admin into the stripped board surface for as
+  // long as the star exists.
   const favoriteBoardHref = useCallback(
-    (boardId: string) => `${isAdmin ? '/admin' : '/dashboard'}/board/${boardId}`,
-    [isAdmin],
+    (boardId: string) => buildBoardHref(platformRole, boardId),
+    [platformRole],
   )
   const {
     starred: isBoardStarred,
@@ -146,38 +180,104 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     if (taskParam) {
       setSelectedTaskId(taskParam)
       setTaskDetailOpen(true)
-      router.replace(`/${isAdmin ? 'admin' : 'dashboard'}/board/${board.id}`)
+      router.replace(buildBoardHref(platformRole, board.id))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  // Bottom nav items mirror the dashboard shell's tabs so navigation stays available
-  // while viewing an individual board (that page renders outside the dashboard shell).
-  const navItems: NavItem[] = isAdmin
-    ? [
-        { value: 'overview', label: 'Home', icon: Home },
-        { value: 'boards', label: 'Boards', icon: ClipboardList },
-        { value: 'reports', label: 'Reports', icon: FileBarChart },
-        { value: 'chat', label: 'Chat', icon: MessageSquare },
-      ]
-    : [
-        { value: 'tasks', label: 'Home', icon: Home },
-        { value: 'personal', label: 'Personal', icon: Lock },
-        { value: 'calendar', label: 'Calendar', icon: Calendar },
-        { value: 'boards', label: 'Boards', icon: Kanban },
-        { value: 'chat', label: 'Chat', icon: MessageSquare },
-      ]
-  const navMoreItems: NavItem[] = isAdmin
-    ? [
-        { value: 'calendar', label: 'Calendar', icon: Calendar },
-        { value: 'marketing', label: 'Marketing', icon: Megaphone },
-        { value: 'personal', label: 'Personal', icon: Lock },
-      ]
-    : []
-  const handleNavChange = (value: string) => {
-    sessionStorage.setItem(isAdmin ? 'admin-active-tab' : 'user-active-tab', value)
-    router.push(isAdmin ? '/admin' : '/dashboard')
-  }
+  /**
+   * Boards other than this one. The switcher is only worth a control when there is
+   * somewhere to switch *to*: on a workspace with one board, a dropdown whose only entry is
+   * the board you are already looking at is a chevron that does nothing.
+   *
+   * `boards` is already RLS-filtered by the server route, so nothing is decided here about
+   * what this viewer may see - which matters, because an empty list from a filtered read is
+   * indistinguishable from a workspace with no boards, and this code must not treat it as
+   * a claim about either.
+   */
+  const otherBoards = useMemo(
+    () => boards.filter((entry) => entry.id !== board.id),
+    [board.id, boards],
+  )
+
+  const isPlatformAdmin = platformRole === 'admin' || platformRole === 'super_admin'
+  const modules = useAppModules(shell?.modules)
+  const { calendars: marketingCalendars } = useMarketingCalendars(shell?.calendars)
+
+  /**
+   * The header and bottom-bar navigation, from the same builder as the sidebar and the ⌘K
+   * palette.
+   *
+   * This used to be two hand-written arrays keyed off `isAdmin`, and it was wrong in three
+   * ways at once - the third being the one that actually bit people:
+   *
+   *   1. It ignored `app_modules` entirely, so CRM, Appointments and Project IDs were
+   *      unreachable from a board however they were configured, and Marketing was offered
+   *      to every admin whether or not the module was on. That is the drift CLAUDE.md
+   *      records for /admin's hand-written copy, one file over.
+   *   2. It listed no My Work, which is not a module and cannot be switched off.
+   *   3. `handleNavChange` wrote sessionStorage and pushed a bare `/admin` | `/dashboard`,
+   *      picked from `isAdmin` - which is FALSE on /dashboard/board/<id> even for a real
+   *      admin. So an admin clicking "Boards" from a board wrote `user-active-tab`, landed
+   *      on /dashboard, was redirected to /admin with the query string dropped, and arrived
+   *      on whatever tab they last had open. Navigating now means following the item's own
+   *      href, which buildWorkspaceNav has already pointed at the right host.
+   */
+  const navGroups = useMemo(
+    () =>
+      buildWorkspaceNav({
+        role: platformRole,
+        modules,
+        // Migration 085's rule: admin, or a member of at least one calendar.
+        canUseMarketingCalendar: isPlatformAdmin || marketingCalendars.length > 0,
+        canViewAudit: allows({ userId: currentUserId, platformRole }, 'audit.view'),
+      }),
+    [currentUserId, isPlatformAdmin, marketingCalendars.length, modules, platformRole],
+  )
+
+  const navDestinations = useMemo(() => navGroups.flatMap((group) => group.items), [navGroups])
+
+  /**
+   * The phone's bottom bar: five across before the labels start truncating, the rest behind
+   * "More".
+   *
+   * The five are not simply the first five in nav order. Nav order is the sidebar's, where
+   * Home/My Work/Personal/Calendar/Marketing come first - which on a board would push Boards
+   * and Chat into the More drawer, on the one screen that IS a board. These four ids are
+   * exactly what the old hardcoded bar surfaced here, so keeping them promoted means
+   * sourcing the list from buildWorkspaceNav (and finally honouring app_modules) costs
+   * nothing on mobile. Anything promoted but switched off simply is not in the list to find.
+   */
+  const [navItems, navMoreItems]: [NavItem[], NavItem[]] = useMemo(() => {
+    const toNavItem = (item: { id: string; label: string; icon: string }): NavItem => ({
+      value: item.id,
+      label: item.label,
+      icon: navIcon(item.icon),
+    })
+
+    // Home (whatever this role calls its landing tab) always leads, then the promoted ids in
+    // the order above, then everything else in the nav's own order.
+    const [home, ...rest] = navDestinations
+    const promoted = BOARD_BAR_PRIORITY
+      .map((id) => rest.find((item) => item.id === id))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    const promotedIds = new Set(promoted.map((item) => item.id))
+    const ordered = [
+      ...(home ? [home] : []),
+      ...promoted,
+      ...rest.filter((item) => !promotedIds.has(item.id)),
+    ]
+
+    return [ordered.slice(0, 5).map(toNavItem), ordered.slice(5).map(toNavItem)]
+  }, [navDestinations])
+
+  const handleNavChange = useCallback(
+    (value: string) => {
+      const destination = navDestinations.find((item) => item.id === value)
+      if (destination) router.push(destination.href)
+    },
+    [navDestinations, router],
+  )
 
   // Delegates to lib/capabilities.ts so the board, the task tile and the detail modal
   // share one definition of "may I change this task" (they used to hold three copies).
@@ -533,6 +633,126 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     setColorPickerColumn(null)
   }
 
+  const renameTarget = useMemo(
+    () => columns.find((col: any) => col.id === renameColumnId) ?? null,
+    [columns, renameColumnId],
+  )
+  const renameTargetStatus = useMemo(
+    () => (renameTarget?.status_key ? taskStatuses.find((s: any) => s.key === renameTarget.status_key) ?? null : null),
+    [renameTarget, taskStatuses],
+  )
+
+  const openRenameColumn = (column: any) => {
+    setRenameColumnId(column.id)
+    setRenameColumnValue(column.title ?? '')
+  }
+
+  /**
+   * Rename a column, at the scope the column's own wiring dictates.
+   *
+   * A column linked to a status is NAMED BY that status - migration 107 renames every linked
+   * column on every board whenever the status is renamed, deliberately, so that two boards
+   * can never disagree about what the same thing is called. Writing `columns.title` on one
+   * board would therefore produce a name that looks saved and is silently reverted by the
+   * next status rename, which is worse than refusing.
+   *
+   * So there are two real cases, and the dialog says which one is in front of you:
+   *
+   *   - Linked column  -> rename the STATUS, then let 107's cascade rename every column that
+   *     represents it. Same two calls status-management.tsx makes, in the same order, for
+   *     exactly the same reason - this is that screen's action surfaced where you actually
+   *     notice the wrong name. `task_statuses` is super-admin-only (migration 069), so a
+   *     plain admin is told that rather than being handed a write that cannot land.
+   *   - Custom column (no status_key) -> rename this board's column and nothing else. The
+   *     status list has no claim on it; that is what "custom" means here.
+   */
+  const handleRenameColumn = async () => {
+    const column = renameTarget
+    const title = renameColumnValue.trim()
+    if (!column || !title || title === column.title) {
+      setRenameColumnId(null)
+      return
+    }
+
+    setRenameColumnBusy(true)
+    try {
+      if (!column.status_key) {
+        const { data, error } = await supabase
+          .from('columns')
+          .update({ title })
+          .eq('id', column.id)
+          .select('id, title')
+
+        // Zero rows with no error is an RLS refusal, not a no-op (CLAUDE.md). `title` is not
+        // an input to any visibility rule, so no re-read probe is needed here - unlike the
+        // writes lib/rls-write.ts exists for.
+        if (error || !data || data.length === 0) {
+          toast.error('Could not rename the column', {
+            description: error?.message ?? 'Only admins can change a board\u2019s columns.',
+          })
+          return
+        }
+
+        setColumns(columns.map((col: any) => (col.id === column.id ? { ...col, title: data[0].title } : col)))
+        toast.success(`Renamed to \u201C${data[0].title}\u201D`)
+        setRenameColumnId(null)
+        return
+      }
+
+      const status = renameTargetStatus
+      if (!status?.id) {
+        toast.error('Could not rename the column', {
+          description: 'The status this column tracks could not be read. Reload and try again.',
+        })
+        return
+      }
+
+      const { data: updated, error: statusError } = await supabase
+        .from('task_statuses')
+        .update({ label: title })
+        .eq('id', status.id)
+        .select('id, label')
+
+      if (statusError || !updated || updated.length === 0) {
+        toast.error('Could not rename the status', {
+          description: statusError?.code === '23505'
+            ? 'A status with that name already exists.'
+            : statusError?.message ?? 'Only super admins can rename a status.',
+        })
+        return
+      }
+
+      // The cascade. It is an RPC rather than an UPDATE because RLS applies SELECT policies
+      // to an UPDATE, so a direct sweep silently skips every private board the caller is not
+      // a member of - see migration 107's header for the measurement.
+      const { data: renamedCount, error: cascadeError } = await supabase
+        .rpc('rename_columns_for_status', { p_status_key: column.status_key, p_title: title })
+
+      if (cascadeError) {
+        // The status really did change, so saying "could not rename" would be false. Report
+        // the half that failed and re-read, rather than leaving the board claiming a name the
+        // columns do not have.
+        toast.warning('Status renamed, but the board columns were not', { description: cascadeError.message })
+        await Promise.all([refreshColumns(), refetchStatuses()])
+        return
+      }
+
+      // Every linked column on THIS board moves with it; the RPC has already done the same
+      // on every other board. Reading the count back is what stops this claiming a success
+      // that did not happen.
+      setColumns(columns.map((col: any) => (col.status_key === column.status_key ? { ...col, title } : col)))
+      await refetchStatuses()
+      setRenameColumnId(null)
+      toast.success(`Renamed to \u201C${title}\u201D`, {
+        description: typeof renamedCount === 'number' && renamedCount > 0
+          ? `${renamedCount} board ${renamedCount === 1 ? 'column' : 'columns'} renamed across every board.`
+          : undefined,
+      })
+    } finally {
+      setRenameColumnBusy(false)
+    }
+  }
+
   const handleUpdateColumnStatus = async (columnId: string, statusKey: string) => {
     const resolvedKey = statusKey === '__none__' ? null : statusKey
     const status = resolvedKey ? taskStatuses.find((s: any) => s.key === resolvedKey) : null
@@ -609,7 +829,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     }
   }, [])
 
-  const boardHref = `${isAdmin ? '/admin' : '/dashboard'}/board/${board.id}`
+  const boardHref = buildBoardHref(platformRole, board.id)
 
   const paletteCommands: Command[] = useMemo(() => {
     const commands = buildBoardContextCommands({
@@ -623,7 +843,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         if (target) handleOpenCreateDialog(target)
       },
       onFilter: () => setShowFilters(true),
-      onOpenSettings: () => router.push(`${isAdmin ? '/admin' : '/dashboard'}?tab=boards`),
+      onOpenSettings: () => router.push(`${dashboardHost(platformRole)}?tab=boards`),
       onCopyLink: () => copyToClipboard(`${window.location.origin}${boardHref}`, 'Board link'),
     })
 
@@ -936,7 +1156,11 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   if (window.history.length > 1) {
                     router.back()
                   } else {
-                    router.push(isAdmin ? '/admin' : '/dashboard')
+                    // dashboardHost, not `isAdmin`: this surface's flag is false on
+                    // /dashboard/board/<id> even for an admin, and /dashboard redirects
+                    // them to /admin anyway - so the old fallback was a guaranteed
+                    // double hop for exactly the people who use this app.
+                    router.push(dashboardHost(platformRole))
                   }
                 }}
               >
@@ -960,29 +1184,42 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                 </TooltipTrigger>
                 <TooltipContent>Commands and actions (⌘K)</TooltipContent>
               </Tooltip>
-              {/* Persistent nav so switching sections doesn't require leaving the board first
-                  (mobile gets the equivalent via MobileBottomNav below - this page renders
-                  outside the AppShell sidebar since kanban boards need the full viewport width). */}
-              <div className="hidden items-center gap-0.5 rounded-md border p-0.5 md:flex">
-                {[...navItems, ...navMoreItems].map((item) => {
-                  const Icon = item.icon
-                  return (
-                    <Tooltip key={item.value}>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => handleNavChange(item.value)}
-                          aria-label={item.label}
-                        >
-                          <Icon className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>{item.label}</TooltipContent>
-                    </Tooltip>
-                  )
-                })}
-              </div>
+              {/*
+                Persistent nav so switching sections doesn't require leaving the board first
+                (mobile gets the equivalent via MobileBottomNav below - this page renders
+                outside the AppShell sidebar since kanban boards need the full viewport width).
+
+                ⚠️ One menu, not a strip of icons. This was a row of unlabelled icon buttons
+                back when the list was four hardcoded entries; sourcing it from
+                buildWorkspaceNav grew it to a dozen, and a dozen 32px buttons ate the whole
+                middle of the header - the board title was squeezed out of its own page and
+                the description reflowed to one word per line. A menu costs one button's width
+                whatever the workspace has switched on, and it can carry the labels, which the
+                strip never could.
+              */}
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon-sm" aria-label="Go to another section">
+                        <LayoutGrid className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Go to</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="start" className="w-52">
+                  {navDestinations.map((item) => {
+                    const Icon = navIcon(item.icon)
+                    return (
+                      <DropdownMenuItem key={item.id} onClick={() => router.push(item.href)} className="gap-2">
+                        <Icon className="h-4 w-4 flex-shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span className="truncate">{item.label}</span>
+                      </DropdownMenuItem>
+                    )
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
               {editingBoardTitle && isAdmin ? (
                 <div className="flex-1 max-w-xl space-y-2">
                   <Input
@@ -1004,7 +1241,49 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
               ) : (
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h1 className="min-w-0 truncate text-lg font-bold tracking-tight sm:text-xl">{boardTitle}</h1>
+                    {/*
+                      The board switcher. Moving between boards used to mean going back to a
+                      dashboard, finding the boards tab and picking from the grid - three
+                      screens to change one thing, on the surface where you are most likely
+                      to want it. The title itself is the trigger, so the affordance costs no
+                      extra header width (which is scarce here - see the note below).
+                    */}
+                    {otherBoards.length > 0 ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="group/switch -ml-1.5 flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            aria-label={`Switch board. Currently on ${boardTitle}`}
+                          >
+                            <h1 className="min-w-0 truncate text-lg font-bold tracking-tight sm:text-xl">{boardTitle}</h1>
+                            <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform group-data-[state=open]/switch:rotate-180" aria-hidden="true" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="max-h-[60vh] w-64 overflow-y-auto">
+                          {boards.map((entry) => (
+                            <DropdownMenuItem
+                              key={entry.id}
+                              // buildBoardHref, not the current path: an admin who arrived
+                              // here through /dashboard/board/<id> must not be kept on that
+                              // stripped surface for every board they open next.
+                              onClick={() => router.push(buildBoardHref(platformRole, entry.id))}
+                              className="gap-2"
+                            >
+                              {entry.is_private
+                                ? <Lock className="h-4 w-4 flex-shrink-0 text-muted-foreground" aria-hidden="true" />
+                                : <Kanban className="h-4 w-4 flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
+                              <span className="min-w-0 flex-1 truncate">{entry.title}</span>
+                              {entry.id === board.id && (
+                                <Check className="h-4 w-4 flex-shrink-0 text-primary" aria-hidden="true" />
+                              )}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : (
+                      <h1 className="min-w-0 truncate text-lg font-bold tracking-tight sm:text-xl">{boardTitle}</h1>
+                    )}
                     {/* Starring from inside the board matters more than starring from the
                         list: this is where you realise you keep coming back to it. */}
                     <FavoriteStar
@@ -1320,6 +1599,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                   >
                                     <ChevronRight className="w-4 h-4 mr-2" />
                                     Move Right
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => openRenameColumn(column)}>
+                                    <Pencil className="w-4 h-4 mr-2" />
+                                    Rename Column
                                   </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => setColorPickerColumn(column.id)}>
                                     <Palette className="w-4 h-4 mr-2" />
@@ -1811,6 +2094,74 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                     Cancel
                   </Button>
                   <Button onClick={handleAddColumn}>Add Column</Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={renameColumnId !== null}
+            onOpenChange={(next) => { if (!next && !renameColumnBusy) setRenameColumnId(null) }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Rename column</DialogTitle>
+                <DialogDescription>
+                  {renameTargetStatus
+                    ? `This column is the \u201C${renameTargetStatus.label}\u201D status. Renaming it renames that status, and every column tracking it on every board.`
+                    : 'This is a custom column, so the name belongs to this board alone.'}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="rename-column-input">Name</Label>
+                  <Input
+                    id="rename-column-input"
+                    value={renameColumnValue}
+                    onChange={(e) => setRenameColumnValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return
+                      e.preventDefault()
+                      if (renameTargetStatus && !isSuperAdmin) return
+                      handleRenameColumn()
+                    }}
+                    autoFocus
+                    disabled={renameColumnBusy || Boolean(renameTargetStatus && !isSuperAdmin)}
+                  />
+                </div>
+
+                {/*
+                  task_statuses is super-admin-only (migration 069) while columns are
+                  admin-writable, so a plain admin can rename a custom column and not a
+                  linked one. Saying so beats letting them type a name into a control whose
+                  write the database will refuse - and beats the alternative of writing
+                  columns.title anyway, which 107's cascade would silently revert on the next
+                  status rename.
+                */}
+                {renameTargetStatus && !isSuperAdmin && (
+                  <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                    Only a super admin can rename a status. To give this column a name of its
+                    own instead, unlink it first with <span className="font-medium">Link Status</span> -
+                    note that tasks on this board can then no longer be set to{' '}
+                    <span className="font-medium">{renameTargetStatus.label}</span>.
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setRenameColumnId(null)} disabled={renameColumnBusy}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleRenameColumn}
+                    disabled={
+                      renameColumnBusy
+                      || !renameColumnValue.trim()
+                      || renameColumnValue.trim() === renameTarget?.title
+                      || Boolean(renameTargetStatus && !isSuperAdmin)
+                    }
+                  >
+                    {renameColumnBusy ? 'Renaming\u2026' : 'Rename'}
+                  </Button>
                 </div>
               </div>
             </DialogContent>

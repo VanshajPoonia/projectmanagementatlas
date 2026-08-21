@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export interface TaskStatus {
@@ -19,25 +19,48 @@ export const DEFAULT_STATUSES: TaskStatus[] = [
   { key: 'cancelled', label: 'Cancelled', color: '#dc2626' },
 ]
 
-export function useTaskStatuses({ includeArchived = false }: { includeArchived?: boolean } = {}) {
+/**
+ * The managed status list, plus a way to re-read it.
+ *
+ * `useTaskStatuses` below returns only the array, which is all six of its original callers
+ * ever wanted. This variant exists for the one screen that can *change* a status label
+ * without navigating: renaming a board column renames the status behind it, and every status
+ * picker on the page is labelled from this list. Without a refetch those pickers keep
+ * offering the old name until the component remounts, so the board would show the new column
+ * title beside a dropdown still saying the old one.
+ */
+export function useTaskStatusList({ includeArchived = false }: { includeArchived?: boolean } = {}) {
   const [statuses, setStatuses] = useState<TaskStatus[]>(DEFAULT_STATUSES)
 
-  useEffect(() => {
-    let active = true
+  // A ref, not state: `refetch` must keep a stable identity so callers can list it in a
+  // dependency array without re-subscribing on every render.
+  const activeRef = useRef(true)
+
+  const refetch = useCallback(async () => {
     const supabase = createClient()
-    supabase
+    const { data } = await supabase
       .from('task_statuses')
       .select('id, key, label, color, position, is_archived')
       .order('position', { ascending: true })
       .order('label', { ascending: true })
-      .then(({ data }: { data: TaskStatus[] | null }) => {
-        if (!active || !data || data.length === 0) return
-        setStatuses(includeArchived ? data : data.filter((s: TaskStatus) => !s.is_archived))
-      })
-    return () => {
-      active = false
-    }
+
+    // An empty result is a failed read or an unseeded table, not "there are no statuses" -
+    // so DEFAULT_STATUSES stays in place rather than emptying every picker on the page.
+    if (!activeRef.current || !data || data.length === 0) return
+    setStatuses(includeArchived ? data : data.filter((s: TaskStatus) => !s.is_archived))
   }, [includeArchived])
 
-  return statuses
+  useEffect(() => {
+    activeRef.current = true
+    void refetch()
+    return () => {
+      activeRef.current = false
+    }
+  }, [refetch])
+
+  return { statuses, refetch }
+}
+
+export function useTaskStatuses(options: { includeArchived?: boolean } = {}) {
+  return useTaskStatusList(options).statuses
 }
