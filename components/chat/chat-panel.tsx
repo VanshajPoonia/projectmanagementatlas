@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Send, Paperclip } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -16,7 +16,14 @@ import {
   resolveChatAttachmentMimeType,
   validateChatAttachment,
 } from '@/lib/chat-attachments'
+import { composerHeight, shouldSendOnKey } from '@/lib/chat-composer'
 import ChatMessage from './chat-message'
+
+/**
+ * Roughly seven lines. Past this the composer scrolls rather than eating the message list it
+ * sits under.
+ */
+const COMPOSER_MAX_HEIGHT = 160
 
 interface ChatPanelProps {
   currentUserId: string
@@ -34,6 +41,8 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
   const [unreadBySender, setUnreadBySender] = useState<Record<string, number>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  const [coarsePointer, setCoarsePointer] = useState(false)
   const supabase = createClient()
 
   const selectedUserName = users.find((user) => user.id === selectedUser)?.full_name
@@ -150,6 +159,58 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  /**
+   * Grow the box with its content, up to a cap, then scroll.
+   *
+   * The Textarea primitive carries `field-sizing-content`, which does exactly this natively -
+   * but only in Chromium. Safari ignores it, and Safari is the iPhone, so the measurement is
+   * done here rather than left to CSS. Height must be cleared before reading scrollHeight or
+   * the box can only ever grow.
+   */
+  const resizeComposer = useCallback(() => {
+    const el = composerRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    // scrollHeight covers content plus padding but NOT the border, while box-sizing:border-box
+    // makes `height` include it. Assigning scrollHeight straight across therefore leaves the
+    // box a border's worth too short and clips the last line - measured, 2px on this control.
+    const style = window.getComputedStyle(el)
+    const border = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth)
+    el.style.height = `${composerHeight(el.scrollHeight + border, COMPOSER_MAX_HEIGHT)}px`
+  }, [])
+
+  useEffect(() => { resizeComposer() }, [newMessage, resizeComposer])
+
+  /**
+   * Enter sends on a keyboard; on a touchscreen it types a newline and the Send button sends.
+   *
+   * Keyed on the pointer rather than the viewport, matching the rule app/globals.css already
+   * uses for touch targets. A phone has no comfortable Shift+Enter, so binding send to Enter
+   * there would leave a thumb no way to type the paragraph breaks this composer exists to
+   * allow - which is the original bug, reintroduced on the device it matters most on.
+   * matchMedia does not exist during SSR, so this is read on mount and defaults to the
+   * keyboard rule.
+   */
+  useEffect(() => {
+    const mq = window.matchMedia('(pointer: coarse)')
+    const sync = () => setCoarsePointer(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
+  const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const send = shouldSendOnKey({
+      key: e.key,
+      shiftKey: e.shiftKey,
+      isComposing: e.nativeEvent.isComposing,
+      coarsePointer,
+    })
+    if (!send) return
+    e.preventDefault()
+    void handleSendMessage(e)
+  }
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -278,7 +339,7 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
         {uploadError && (
           <p className="mb-2 text-xs text-destructive">{uploadError}</p>
         )}
-        <form onSubmit={handleSendMessage} className="flex gap-2">
+        <form onSubmit={handleSendMessage} className="flex items-end gap-2">
           <input
             type="file"
             ref={fileInputRef}
@@ -297,11 +358,21 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
           >
             <Paperclip className="w-4 h-4" />
           </Button>
-          <Input
-            placeholder={selectedUser ? 'Type a message...' : 'Choose a member first'}
+          <Textarea
+            ref={composerRef}
+            rows={1}
+            placeholder={
+              selectedUser
+                ? coarsePointer ? 'Type a message...' : 'Type a message... (Shift+Enter for a new line)'
+                : 'Choose a member first'
+            }
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
+            onKeyDown={handleComposerKeyDown}
             disabled={uploading || !selectedUser}
+            // min-h-0 overrides the primitive's min-h-16, which is a form-field height and far
+            // too tall for a one-line composer; resize-none because the box sizes itself.
+            className="max-h-40 min-h-0 flex-1 resize-none overflow-y-auto py-2"
           />
           <Button
             type="submit"

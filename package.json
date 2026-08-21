@@ -37,7 +37,8 @@
     "check:crm": "node --env-file=.env.local scripts/check-crm.mjs",
     "check:shell-actions": "node --env-file=.env.local scripts/check-shell-actions.mjs",
     "check:board-nav": "node --env-file=.env.local scripts/check-board-navigation.mjs",
-    "check:marketing-channel-ui": "node --env-file=.env.local scripts/check-marketing-channel-ui.mjs"
+    "check:marketing-channel-ui": "node --env-file=.env.local scripts/check-marketing-channel-ui.mjs",
+    "check:chat-composer": "node --env-file=.env.local scripts/check-chat-composer.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",
