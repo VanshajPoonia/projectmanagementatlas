@@ -16,7 +16,7 @@ that file was written, which closes out last session's work.
 ## The short version
 
 Of the 15, **9 were already built and shipped**, 3 are built with a named gap, and **3 were
-genuinely open. All three are now fixed** (see below). Every "built" verdict is traced to a
+genuinely open. All three are now fixed** (see below), so 12 of the 15 are done. Every "built" verdict is traced to a
 control a human can actually reach, not to a database object, because this repo has been burned
 repeatedly by features that existed only in SQL.
 
@@ -177,9 +177,9 @@ ctrl+click-specific-days calendar, is not built. He wrote it as an alternative t
 - **5. `fe66cd47`** CRM Phase II: `app/crm/` plus 8 components. **`app_modules.crm` is
   `enabled = true` on production and `crm_clients` holds real rows**, so it is live, not pending.
   CLAUDE.md still describes `103` as dev-only; that note is stale (prod's ledger is at 108).
-  ⚠️ The task says "SEE ATTACHMENT for HTML Mockup" and I cannot open that attachment, so I can
-  confirm a CRM exists and is live but **not** that it matches the design Bobby mailed over. That
-  comparison needs him.
+  The task says "SEE ATTACHMENT for HTML Mockup", which is not readable from the repo, so this
+  was flagged as "live, but unconfirmed against the design". **Owner confirmed 2026-08-21: the
+  CRM is done.** Nothing further is outstanding on this item.
 - **6. `145ff6fd`** who entered it: "Created by X on DATE" at `task-detail-modal.tsx:935`, and on
   board cards at `board-management.tsx:689`.
 - **7. `b0d18f64`** activity timeline: an Activity tab on the task modal reading `task_activity`,
@@ -231,8 +231,9 @@ Every verdict above was re-checked rather than carried forward from the first pa
 - **Items 4, 7 and 15 were upgraded from "reads correct" to "measured".** Project IDs and the
   status timeline were confirmed against live production rows; the mobile list view was measured
   in a real browser at 390px.
-- **Item 5 carries a caveat I cannot close.** The CRM is live, but the task references an HTML
-  mockup attachment I cannot open, so "matches what Bobby designed" is unverified.
+- **Item 5's caveat is closed.** The CRM is live, and the one thing the repo could not settle -
+  whether it matches the mockup attached to the task - was confirmed done by the owner on
+  2026-08-21.
 - **Item 2 gained a note.** The search deep-link works, but hand-builds its board href instead of
   using `boardHref()`. Correct today because both call sites pass a real platform role.
 
@@ -242,7 +243,12 @@ and there is no hard-delete path for boards or tasks anywhere in the app.
 
 ## For Bobby
 
-1. **Nine of these are done** and only need moving out of To Do.
+**12 of the 15 can move out of To Do**: the 9 that were already built, plus the 3 fixed this
+session (the mic, the column headers, the restore duplicate). Three questions left:
+
+1. **Who may archive a board?** You asked that only a super admin archive *and* un-archive.
+   Today any admin can archive; only restore is locked to super admin. Small change if you want
+   it tightened, but it is a real behaviour difference, not an oversight (item 1).
 2. **Board-level attachments** (item 12) and the **ctrl+click day picker** (item 14): wanted, or
    is what shipped enough?
 3. **Metrics reports** (item 9.4) is the one substantial piece of unbuilt product left in this
