@@ -961,7 +961,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               <Label>Description</Label>
               {canEdit && (
                 <VoiceInputButton
-                  onTranscript={(t) => setDescription((prev) => (prev ? prev + ' ' + t : t))}
+                  value={description}
+                  onChange={setDescription}
                   className="h-6 w-6 text-muted-foreground"
                   title="Dictate description"
                 />

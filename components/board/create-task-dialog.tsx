@@ -320,7 +320,8 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
                 Description
               </label>
               <VoiceInputButton
-                onTranscript={(t) => setDescription((prev) => (prev ? prev + ' ' + t : t))}
+                value={description}
+                onChange={setDescription}
                 className="h-6 w-6 text-muted-foreground"
                 title="Dictate description"
               />
