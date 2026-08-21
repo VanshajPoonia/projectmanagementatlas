@@ -25,6 +25,16 @@ export interface StatusInterval {
   durationMs: number
 }
 
+/** One leg of a single task's trip from creation to close. */
+export interface JourneyStage {
+  key: string
+  label: string
+  enteredAt: number
+  /** null while the task is still sitting in this status. */
+  leftAt: number | null
+  durationMs: number
+}
+
 export interface ActivityCoverage {
   totalTasks: number
   tasksWithStatusHistory: number
@@ -182,6 +192,72 @@ export function getVerifiedStatusIntervals(
     }
   }
   return intervals
+}
+
+/**
+ * Reconstruct one task's trip from creation to close, stage by stage.
+ *
+ * getVerifiedStatusIntervals answers "how long does In Progress take on average" by pooling
+ * every interval across every task. This answers the other half of what Bobby asked for -
+ * "entry date to progression on each status to close" - for ONE task, in order, with the dates.
+ * An average tells you the shape of the process; a journey tells you where a specific piece of
+ * work actually sat.
+ *
+ * Deliberately more permissive than getVerifiedStatusIntervals. That function only counts an
+ * interval when the departing event's `from` matches the entering event's `to`, because a
+ * mismatched pair would corrupt an average that gets quoted as fact. Here a gap is visible in
+ * context - it is one row of one task's history, next to the events around it - so consecutive
+ * events are chained on their timestamps and any disagreement is reported rather than dropped.
+ * Losing a stage entirely would misrepresent the journey more than showing an imperfect one.
+ *
+ * `createdAt` opens the first stage, because a task's first recorded event is its move OUT of
+ * whatever status it was created in, and that opening stretch is usually the interesting one.
+ */
+export function buildTaskJourney(
+  events: StatusEvent[],
+  createdAt: number,
+  closedAt: number | null = null,
+): JourneyStage[] {
+  const ordered = [...events]
+    .filter((event) => Number.isFinite(event.at))
+    .sort((a, b) => a.at - b.at)
+
+  const stages: JourneyStage[] = []
+  if (!Number.isFinite(createdAt)) return stages
+
+  let cursorAt = createdAt
+  let cursorLabel = ordered[0]?.from ?? null
+
+  for (const event of ordered) {
+    // Ignore an event that predates creation, or a duplicate at the same instant: neither can
+    // describe a stage with a real duration.
+    if (event.at < cursorAt) continue
+    if (cursorLabel) {
+      stages.push({
+        key: statusIdentity(cursorLabel) || cursorLabel.toLowerCase(),
+        label: cursorLabel,
+        enteredAt: cursorAt,
+        leftAt: event.at,
+        durationMs: event.at - cursorAt,
+      })
+    }
+    cursorAt = event.at
+    cursorLabel = event.to
+  }
+
+  // The final stage is still open unless the task closed.
+  if (cursorLabel) {
+    const end = closedAt !== null && closedAt >= cursorAt ? closedAt : null
+    stages.push({
+      key: statusIdentity(cursorLabel) || cursorLabel.toLowerCase(),
+      label: cursorLabel,
+      enteredAt: cursorAt,
+      leftAt: end,
+      durationMs: end === null ? 0 : end - cursorAt,
+    })
+  }
+
+  return stages
 }
 
 export function summarizeActivityCoverage({

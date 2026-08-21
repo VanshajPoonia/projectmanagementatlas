@@ -6,6 +6,7 @@ import {
   parseStatusEvent,
   summarizeActivityCoverage,
   type StatusEvent,
+  buildTaskJourney,
 } from './metrics-activity'
 
 const hour = 60 * 60 * 1000
@@ -148,5 +149,76 @@ describe('defensible timing metrics', () => {
       structuredEvents: 1,
       legacyEvents: 2,
     })
+  })
+})
+
+describe('buildTaskJourney', () => {
+  const ev = (from: string, to: string, at: number): StatusEvent =>
+    ({ taskId: 't1', from, to, at, source: 'structured' })
+
+  const DAY = 86400000
+
+  it('opens the first stage at creation, not at the first event', () => {
+    // A task's first recorded event is its move OUT of the status it was created in, so the
+    // opening stretch only exists if creation anchors it. That stretch is usually the one
+    // worth seeing: how long did this sit before anyone touched it.
+    const stages = buildTaskJourney([ev('To Do', 'In Progress', 10 * DAY)], 8 * DAY, 12 * DAY)
+    expect(stages).toHaveLength(2)
+    expect(stages[0]).toMatchObject({ label: 'To Do', enteredAt: 8 * DAY, leftAt: 10 * DAY, durationMs: 2 * DAY })
+  })
+
+  it('chains consecutive moves in order', () => {
+    const stages = buildTaskJourney(
+      [ev('To Do', 'In Progress', 3 * DAY), ev('In Progress', 'Review', 6 * DAY), ev('Review', 'Completed', 7 * DAY)],
+      1 * DAY,
+      7 * DAY,
+    )
+    expect(stages.map((s) => s.label)).toEqual(['To Do', 'In Progress', 'Review', 'Completed'])
+    expect(stages.map((s) => s.durationMs)).toEqual([2 * DAY, 3 * DAY, 1 * DAY, 0])
+  })
+
+  it('sorts events it is handed out of order', () => {
+    const stages = buildTaskJourney(
+      [ev('In Progress', 'Completed', 5 * DAY), ev('To Do', 'In Progress', 2 * DAY)],
+      1 * DAY,
+      5 * DAY,
+    )
+    expect(stages.map((s) => s.label)).toEqual(['To Do', 'In Progress', 'Completed'])
+  })
+
+  it('leaves the last stage open when the task has not closed', () => {
+    const stages = buildTaskJourney([ev('To Do', 'In Progress', 4 * DAY)], 2 * DAY, null)
+    expect(stages.at(-1)).toMatchObject({ label: 'In Progress', leftAt: null, durationMs: 0 })
+  })
+
+  it('keeps a stage whose from/to disagree rather than dropping it', () => {
+    // getVerifiedStatusIntervals refuses a mismatched pair because it would corrupt an average
+    // quoted as fact. Here the gap is visible in context, and losing a leg of the journey
+    // misrepresents it more than showing an imperfect one.
+    const stages = buildTaskJourney(
+      [ev('To Do', 'In Progress', 3 * DAY), ev('Blocked', 'Completed', 5 * DAY)],
+      1 * DAY,
+      5 * DAY,
+    )
+    expect(stages.map((s) => s.label)).toEqual(['To Do', 'In Progress', 'Completed'])
+    expect(stages[1].durationMs).toBe(2 * DAY)
+  })
+
+  it('ignores an event that predates creation', () => {
+    const stages = buildTaskJourney(
+      [ev('To Do', 'In Progress', 1 * DAY), ev('In Progress', 'Completed', 6 * DAY)],
+      4 * DAY,
+      6 * DAY,
+    )
+    expect(stages.map((s) => s.label)).toEqual(['To Do', 'Completed'])
+    expect(stages[0].durationMs).toBe(2 * DAY)
+  })
+
+  it('returns nothing without a usable creation time', () => {
+    expect(buildTaskJourney([ev('To Do', 'Done', DAY)], NaN, DAY)).toEqual([])
+  })
+
+  it('survives a task with no recorded events at all', () => {
+    expect(buildTaskJourney([], 2 * DAY, 5 * DAY)).toEqual([])
   })
 })

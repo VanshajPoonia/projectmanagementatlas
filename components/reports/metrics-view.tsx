@@ -8,11 +8,35 @@ import { getAssigneeIds } from '@/lib/assignees'
 import { getNormalizedTaskStatus } from '@/lib/task-status'
 import {
   buildStatusEventMap,
+  buildTaskJourney,
   findRecordedClose,
   getVerifiedStatusIntervals,
   summarizeActivityCoverage,
   type StatusEvent,
 } from './metrics-activity'
+import { Route } from 'lucide-react'
+
+/**
+ * Stable colour per status, so the same status is the same colour in every journey bar.
+ * Indexed by the normalized key rather than the label, so renaming a status does not reshuffle
+ * every chart. Falls back by hashing, so a status this list has never heard of still gets a
+ * consistent colour rather than sharing one with its neighbour.
+ */
+const STAGE_COLORS: Record<string, string> = {
+  to_do: 'bg-slate-400',
+  in_progress: 'bg-blue-500',
+  review: 'bg-amber-500',
+  blocked: 'bg-rose-500',
+  done: 'bg-emerald-500',
+  cancelled: 'bg-zinc-400',
+}
+const FALLBACK_COLORS = ['bg-violet-500', 'bg-teal-500', 'bg-orange-500', 'bg-cyan-500', 'bg-fuchsia-500']
+function stageColor(key: string): string {
+  if (STAGE_COLORS[key]) return STAGE_COLORS[key]
+  let hash = 0
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0
+  return FALLBACK_COLORS[hash % FALLBACK_COLORS.length]
+}
 
 interface MetricsViewProps {
   tasks: any[]
@@ -148,6 +172,26 @@ export default function MetricsView({ tasks, users, boards }: MetricsViewProps) 
   }, [taskMetrics, users])
 
   const recentCompleted = [...completed].sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0)).slice(0, 12)
+
+  /**
+   * Bobby asked for "entry date to progression on each status to close". The card above answers
+   * the averaged half of that; this answers the per-task half - where one specific piece of work
+   * actually sat on its way through, in order, with the dates.
+   *
+   * Built only for tasks that have both a creation time and enough recorded history to say
+   * something, because a bar with one undifferentiated block asserts a journey nobody measured.
+   */
+  const journeys = useMemo(() => {
+    return recentCompleted
+      .map(({ task, created, closedAt }) => {
+        const stages = buildTaskJourney(visibleActivityByTask[task.id] || [], created, closedAt)
+        const measured = stages.filter((stage) => stage.durationMs > 0)
+        const total = measured.reduce((sum, stage) => sum + stage.durationMs, 0)
+        return { task, stages: measured, total }
+      })
+      .filter((row) => row.stages.length >= 2 && row.total > 0)
+      .slice(0, 8)
+  }, [recentCompleted, visibleActivityByTask])
   const maxStatusAvg = timeInStatus.length ? Math.max(...timeInStatus.map((s) => s.avg)) : 0
 
   if (loading) {
@@ -252,6 +296,51 @@ export default function MetricsView({ tasks, users, boards }: MetricsViewProps) 
                 ))}
               </tbody>
             </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Route className="h-4 w-4" /> Where the time went, task by task
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {journeys.length === 0 ? (
+            <p className="py-4 text-sm text-muted-foreground">
+              No task yet has enough recorded status history to break its cycle down by stage.
+              This fills in as work moves between statuses.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {journeys.map(({ task, stages, total }) => (
+                <div key={task.id} className="space-y-1.5">
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="min-w-0 flex-1 truncate font-medium">{task.title}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{fmtDuration(total)} total</span>
+                  </div>
+                  <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-secondary">
+                    {stages.map((stage, index) => (
+                      <div
+                        key={`${stage.key}-${index}`}
+                        className={stageColor(stage.key)}
+                        style={{ width: `${(stage.durationMs / total) * 100}%` }}
+                        title={`${stage.label}: ${fmtDuration(stage.durationMs)}`}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                    {stages.map((stage, index) => (
+                      <span key={`${stage.key}-legend-${index}`} className="inline-flex items-center gap-1">
+                        <span className={`h-2 w-2 rounded-full ${stageColor(stage.key)}`} aria-hidden="true" />
+                        {stage.label} · {fmtDuration(stage.durationMs)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
