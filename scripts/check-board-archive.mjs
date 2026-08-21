@@ -31,8 +31,9 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` - ${detail}` : ''}`)
 }
 
-let browser, su, board
+let browser, su, board, board2
 const TITLE = `ZZ Archive Probe ${stamp}`
+const TITLE2 = `ZZ Archive Probe Two ${stamp}`
 try {
   const email = `bs-arch-${stamp}@goatlasgo.us`
   const password = `Probe!${stamp}aA`
@@ -44,6 +45,10 @@ try {
   const { data: b, error: be } = await admin.from('boards').insert({ title: TITLE, created_by: su.id }).select().single()
   if (be) throw be
   board = b
+  // A second board, so the in-flight guard can be shown to be per-board rather than global.
+  const { data: b2, error: be2 } = await admin.from('boards').insert({ title: TITLE2, created_by: su.id }).select().single()
+  if (be2) throw be2
+  board2 = b2
 
   browser = await chromium.launch()
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
@@ -144,6 +149,37 @@ try {
   check('a double-click on Archive does not double the board',
     afterDoubleArchive === 1 && await inDb() === 1, `${afterDoubleArchive} on screen`)
 
+  // ── the guard is per-board, not a single "something is moving" flag ──────
+  //
+  // The first fix for the duplicate used one movingBoardId. That silently dropped a click on a
+  // DIFFERENT board while the first write was outstanding: nothing happened and nothing said
+  // why, which is a worse failure than the duplicate it was preventing.
+  {
+    // The check above left the board archived; put it back so both boards start live.
+    await openArchived()
+    await page.getByRole('button', { name: /^Restore$/i }).first().click()
+    await page.waitForTimeout(1500)
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.waitForTimeout(1500)
+    const isArchived = async (t) =>
+      Boolean(((await admin.from('boards').select('archived_at').eq('title', t)).data[0] ?? {}).archived_at)
+
+    await page.getByLabel(`Actions for ${TITLE}`).first().click()
+    await page.getByRole('menuitem', { name: /archive/i }).click()
+    // No settle: the second click has to land while the first write is still outstanding.
+    await page.getByLabel(`Actions for ${TITLE2}`).first().click()
+    await page.getByRole('menuitem', { name: /archive/i }).click()
+    await page.waitForTimeout(3000)
+    const [one, two] = [await isArchived(TITLE), await isArchived(TITLE2)]
+    check('archiving a second board while the first is still saving still archives it',
+      one && two, `first=${one}, second=${two}`)
+
+    // Put the first board back so the reload check below reads the state it expects.
+    await openArchived()
+    await page.getByRole('button', { name: /^Restore$/i }).first().click()
+    await page.waitForTimeout(1500)
+  }
+
   // ── the list a reload produces is the one already on screen ──────────────
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForTimeout(1000)
@@ -154,6 +190,7 @@ try {
 } finally {
   if (browser) await browser.close()
   if (board) await admin.from('boards').delete().eq('id', board.id)
+  if (board2) await admin.from('boards').delete().eq('id', board2.id)
   if (su) await admin.auth.admin.deleteUser(su.id)
 }
 

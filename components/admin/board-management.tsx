@@ -35,9 +35,20 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
   const [boards, setBoards] = useState(initialBoards)
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
   const [archivedBoards, setArchivedBoards] = useState<any[]>([])
-  // Which board has an archive/restore write in flight. Both controls are optimistic, so a
+  // Which boards have an archive/restore write in flight. Both controls are optimistic, so a
   // second click before the first returns would run the whole handler again.
-  const [movingBoardId, setMovingBoardId] = useState<string | null>(null)
+  //
+  // Keyed by board rather than a single id: a lone "something is moving" flag would silently
+  // drop a click on a DIFFERENT board while the first write was outstanding, which is a worse
+  // failure than the duplicate it was added to prevent. Concurrent moves of two boards are
+  // safe - they touch different rows and both list updates go through prependUnique.
+  const [movingBoardIds, setMovingBoardIds] = useState<Set<string>>(new Set())
+  const beginMove = (id: string) => setMovingBoardIds((prev) => new Set(prev).add(id))
+  const endMove = (id: string) => setMovingBoardIds((prev) => {
+    const next = new Set(prev)
+    next.delete(id)
+    return next
+  })
   const [showArchived, setShowArchived] = useState(false)
   const [open, setOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -339,8 +350,8 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
       `Archive "${boardTitle}"?\n\nThe board and all its data are kept - it's just hidden from everyone except super admins. Only a super admin can restore it.`
     )
     if (!confirmed) return
-    if (movingBoardId) return
-    setMovingBoardId(boardId)
+    if (movingBoardIds.has(boardId)) return
+    beginMove(boardId)
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -359,15 +370,15 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
       alert('Failed to archive board. Please try again.')
       console.error('Archive board error:', err)
     } finally {
-      setMovingBoardId(null)
+      endMove(boardId)
     }
   }
 
   const handleRestoreBoard = async (boardId: string, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (movingBoardId) return
-    setMovingBoardId(boardId)
+    if (movingBoardIds.has(boardId)) return
+    beginMove(boardId)
 
     try {
       const { data, error } = await supabase
@@ -385,7 +396,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
       alert(err?.message || 'Failed to restore board. Please try again.')
       console.error('Restore board error:', err)
     } finally {
-      setMovingBoardId(null)
+      endMove(boardId)
     }
   }
 
@@ -787,11 +798,11 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
                   variant="outline"
                   size="sm"
                   className="gap-2 flex-shrink-0"
-                  disabled={movingBoardId === board.id}
+                  disabled={movingBoardIds.has(board.id)}
                   onClick={(e) => handleRestoreBoard(board.id, e)}
                 >
                   <ArchiveRestore className="w-4 h-4" />
-                  {movingBoardId === board.id ? 'Restoring...' : 'Restore'}
+                  {movingBoardIds.has(board.id) ? 'Restoring...' : 'Restore'}
                 </Button>
               </Card>
             ))}
