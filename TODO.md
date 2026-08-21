@@ -1,9 +1,12 @@
 # To Do - V's TaskApp MACD
 
 Board `49157eb8-7c29-43e4-a042-faf55bb89938`, read read-only from **production** on 2026-08-21.
-15 tasks sit in the To Do column. Status resolved through `columns.status_key` (the FK source of
-truth since migration `063`), not the raw `tasks.status` string. The two agree exactly here
-(42 done / 15 to_do / 0 in_progress / 1 cancelled), so there is no ambiguity about what is open.
+15 tasks sat in the To Do column. Status resolved through `columns.status_key` (the FK source of
+truth since migration `063`), not the raw `tasks.status` string. The two agreed exactly
+(42 done / 15 to_do / 0 in_progress / 1 cancelled), so there was no ambiguity about what was open.
+
+> **Closed 2026-08-22.** All 15 are done and have been moved to Completed. The board now reads
+> 0 to_do / 0 in_progress / 57 done / 1 cancelled, the same 58 tasks as before.
 
 > **The spreadsheet cannot answer this question.** `Marketing Project Management.xlsx`'s
 > `Vs PM Portal` tab has `TESTED` and `Approved` columns and both are empty for all 28 rows, with
@@ -217,9 +220,11 @@ Everything below was run green after the three fixes, against the dev sandbox:
 | `pnpm check:access-matrix` | all passed |
 | `scripts/audit-mobile-deep.mjs` | board, task modal, dialogs and dark mode all 390px/390px |
 
-Two migrations are involved, both dev-only: `110` (archive lockdown, not `--allow-prod`
-eligible) and `111` (board attachments, additive and eligible). Apply `111` to prod **before**
-merging, or the Files button renders and every upload fails.
+Two migrations are involved: `110` (archive lockdown) and `111` (board attachments). **Both are
+applied to production as of 2026-08-21**, `111` at 18:31:53 and `110` at 18:32:06, which is 74
+seconds ahead of the deploy that shipped the code depending on them. Prod and dev are both at
+`111`. `110` was not `--allow-prod` eligible on the additive rule and was applied as a deliberate
+owner decision, not by default.
 
 ## Re-audit, 2026-08-21
 
@@ -308,18 +313,50 @@ than quoting an average built on a tenth of the data as if it were the whole pic
 
 ## For Bobby
 
-**All 15 can move out of To Do.** Nothing in this list is outstanding.
+**All 15 are done and have been moved to Completed** (2026-08-22). The To Do and In Progress
+columns are both empty; Completed holds 57 and Cancelled 1, totalling the same 58 tasks the board
+had before, so nothing was created or lost. Each move wrote a `task.status_changed` row reading
+`changed status from "To Do" to "Completed"`, attributed to Vanshaj rather than left unattributed
+(see the note below).
 
 Two things need you rather than more code:
 
-1. **Migrations `110` and `111` are on dev only.** `111` (board files) is additive and safe to
-   apply to prod whenever you want it. `110` (archive lockdown) changes the behaviour of writes
-   that already happen, so it is a deliberate call: once applied, Tim, Kogan and Mendy can no
-   longer archive a board. That is what you asked for; confirming it is still worth doing.
+1. **Tim, Kogan and Mendy can no longer archive a board**, live since 2026-08-21. They keep every
+   other capability: creating boards, renaming, editing members, all task work. Nothing in the
+   app tells them why the option disappeared, so they are worth a message. That is what you
+   asked for; this is just the confirmation that it is in force.
 2. **"Many many more. talk later"** on the metrics list is the only genuinely open thread. The
    three you named are built. Worth knowing before that talk: the numbers are honest but thin,
    because status history only started accruing when `074` landed, so about a seventh of
    completed tasks have a recorded close. That improves on its own from here.
+
+## ⚠️ Closing tasks by script writes an unattributed history unless you set the claim
+
+Worth keeping, because it applies to any bulk task write this repo ever does again. `074`'s
+lifecycle trigger is the sole writer of status history and it stamps `actor_id := auth.uid()`
+([074:318](scripts/074_harden_task_lifecycle_activity_and_sharing.sql#L318)). A script
+authenticating with the **service role** has `auth.uid()` NULL, so closing 15 tasks that way
+would have written 15 status changes by nobody into the very Activity Timeline that item 7 on
+this list delivers - degrading the feature in the act of marking it done.
+
+The fix is one line before the UPDATE, inside the same transaction:
+
+```sql
+SELECT set_config('request.jwt.claims',
+  json_build_object('sub', :'actor', 'role', 'authenticated')::text, true);
+```
+
+`auth.uid()` reads that claim regardless of the role executing the statement, so the history is
+attributed correctly. The move was dry-run first with a `ROLLBACK`, which is what proved the
+claim took effect (`acting_as` returned the right uuid and all 15 activity rows carried it)
+before anything was committed.
+
+⚠️ **One honest caveat.** 14 of the 15 tasks were reachable by Vanshaj under real RLS as board
+creator or assignee. The 15th, *Project ID #'ers for HOUZZ & Quickbooks*, was created and
+assigned to someone else, so a genuine Vanshaj session would have been refused it. The script ran
+past RLS for all 15 uniformly. The recorded actor is still the person who did the work and
+directed the close, but that one row asserts a change through a path the UI would not have
+allowed.
 
 ## Reproducing this snapshot
 
