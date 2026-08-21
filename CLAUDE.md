@@ -565,6 +565,40 @@ deliberately left out.
     `size={1}` - an `<input>`'s intrinsic ~20-character width beats the `th`'s `w-[150px]`
     under `border-collapse`, so the column visibly widened as you typed and snapped back on
     save.
+- ⚠️ **Which calendar the Marketing tab opens on was decided by the alphabet** (2026-08-22).
+  The switcher defaulted to `activeCalendars[0]` and `useMarketingCalendars` orders by name, so
+  on production every visit landed on **"Kayla's Personal"** - 0 events, **0 members**, present in
+  the switcher only because `marketing_calendars`' SELECT policy lets an admin read every
+  calendar. Nothing was broken at the database; the screen simply opened on the wrong one, and
+  forgot the correction on the next visit.
+  - Selection now resolves in `resolveSelectedCalendarId` (pure, in
+    `marketing-calendar-state.ts`): live selection, then what this user last chose
+    (`localStorage`, keyed per user, per `097`'s rule that a view preference does not earn a
+    table), then a calendar they hold an actual `marketing_calendar_members` row on, then
+    first-by-name. **Only an explicit switch is stored** - persisting the resolver's own fallback
+    would pin the branch least likely to be right.
+  - Membership rides on the query the hook and `loadShellData` already run, embedded as
+    `marketing_calendar_members(user_id)`. Safe against the "hidden vs does not exist" trap for
+    the one question asked of it, because `085`'s SELECT policy **always** shows a member their
+    own row. The shared select + mapper are in `lib/marketing-calendar-summary.ts`, framework-free
+    for the same reason `lib/module-registry.ts` is: `shell-data.ts` runs in a Server Component.
+  - Gate: `pnpm check:marketing-calendar-default` (7, real browser). It was confirmed to drop to
+    4/7 with the old rule restored, rather than trusted to be meaningful.
+  - ⚠️ **Still data, not code: prod has two empty calendars.** "Kayla's Personal" (0 events, 0
+    members) and "TEST" (0 events, 3 members, created by Bobby). Kayla is the only member of the
+    real **Marketing Calendar** (1358 events), so Bobby and Vanshaj resolve to "TEST". Archiving
+    the two empties in Manage Calendars is the other half; that is an owner decision, not a fix.
+- ⚠️ **There is no working `localStorage` under vitest, and the bare global is the trap.**
+  Node 22 defines its own `localStorage` that is `undefined` without `--localstorage-file`, and
+  vitest's jsdom environment points `window` at `globalThis` - so `window.localStorage` resolves
+  to that same stub. Any `try { localStorage... } catch {}` therefore does nothing in tests and
+  says nothing about it: `marketing-calendar.test.tsx`'s `afterEach` had been calling
+  `localStorage.clear()` into its own catch since it was written, under a comment claiming jsdom
+  kept the value between tests. App code should use `window.localStorage` (already the convention
+  in `components/shell/use-density.ts`), and a test that needs real persistence must install an
+  in-memory Storage with `Object.defineProperty(globalThis, 'localStorage', ...)` - the worked
+  example is at the top of `marketing-calendar.test.tsx`. `loadViewMode` still reads the bare
+  global and is still untested.
 - ⚠️ **"Hidden from you" and "does not exist" arrive looking identical.** This is the shape
   behind several bugs in this repo, so it is worth naming. A client reads a table through RLS
   and gets a filtered list; nothing in the response says anything was withheld. Any UI logic
