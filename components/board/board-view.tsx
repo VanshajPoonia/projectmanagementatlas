@@ -1543,12 +1543,23 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                       }`}
                     >
                       <div
-                        className={`rounded-t-lg border-b px-4 py-3 ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                        /* A column header is a label for a stack, not an item in it. It used to
+                           be transparent on the column's own bg-muted/20 and set in the same
+                           weight as a task title, so the only thing separating the column's name
+                           from its contents was a hairline. It now gets its own band and the
+                           small tracked uppercase treatment, which no task card uses - the count
+                           rides in the same row rather than on a second line, so the header also
+                           costs less height than it did. `uppercase` is presentation only; the
+                           real label is untouched, so Rename Column still shows what was typed. */
+                        /* Deliberately NOT a flex container: the div below is already the flex
+                           row, and a second flex here would make that row a flex item, which does
+                           not shrink below its own content. */
+                        className={`rounded-t-lg border-b bg-muted/50 px-4 py-2.5 ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         {...columnProvided.dragHandleProps}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex min-w-0 items-center gap-2">
                               {isAdmin && (
                                 <GripVertical className="h-4 w-4 flex-shrink-0 text-muted-foreground/40" aria-hidden="true" />
                               )}
@@ -1556,11 +1567,20 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                 className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
                                 style={{ backgroundColor: column.color || '#3b82f6' }}
                               />
-                              <h2 className="truncate text-base font-semibold">{column.title}</h2>
+                              <h2 className="truncate text-xs font-semibold uppercase tracking-wider">{column.title}</h2>
+                              {/* `relative` is load-bearing. The sr-only text is position:absolute,
+                                  and an absolutely positioned box is only clipped by an overflow
+                                  ancestor that sits in its containing-block chain. Without a
+                                  positioned parent its containing block is the page, so it escaped
+                                  the kanban's overflow-x-auto and sat at the static position of a
+                                  column scrolled far off to the right - stretching the document to
+                                  1264px at a 390px viewport and making the whole page scroll
+                                  sideways. Measured with scripts/audit-mobile-deep.mjs. */}
+                              <span className="relative shrink-0 rounded-full bg-background px-1.5 py-0.5 text-[11px] font-medium leading-none tabular-nums text-muted-foreground">
+                                {visibleTasks.length}
+                                <span className="sr-only"> {visibleTasks.length === 1 ? 'task' : 'tasks'}</span>
+                              </span>
                             </div>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {visibleTasks.length} {visibleTasks.length === 1 ? 'task' : 'tasks'}
-                            </p>
                           </div>
                           <div className="flex items-center gap-1">
                             {/* Guests/clients previously saw nothing here, which reads as a
@@ -1713,11 +1733,13 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
               
               return (
                 <Card key={column.id} className="shadow-sm">
-                  <CardHeader className="pb-3 border-b">
+                  {/* Same treatment as the tile view's header, for the same reason: the column's
+                      name must not read like one of the rows underneath it. */}
+                  <CardHeader className="border-b bg-muted/50 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-3 h-3 flex-shrink-0 rounded-full" style={{ backgroundColor: column.color || '#3b82f6' }} />
-                      <CardTitle>{column.title}</CardTitle>
-                      <Badge variant="secondary">{columnTasks.length}</Badge>
+                      <CardTitle className="text-xs font-semibold uppercase tracking-wider">{column.title}</CardTitle>
+                      <Badge variant="secondary" className="px-1.5 text-[11px] leading-none tabular-nums">{columnTasks.length}</Badge>
                     </div>
                   </CardHeader>
                   <CardContent>
