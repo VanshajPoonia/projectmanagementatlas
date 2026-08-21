@@ -15,14 +15,14 @@ that file was written, which closes out last session's work.
 
 ## The short version
 
-Of the 15, **9 were already built and shipped**, 3 are built with a named gap, and **3 were
-genuinely open. All three are now fixed** (see below), so 12 of the 15 are done. Every "built" verdict is traced to a
+**All 15 are now done.** 9 were already built and shipped when this file was written, 3 were
+genuinely open and were fixed, and the 3 that had named gaps have since had those gaps closed. Every "built" verdict is traced to a
 control a human can actually reach, not to a database object, because this repo has been burned
 repeatedly by features that existed only in SQL.
 
 | # | Task | P | Due | Verdict |
 |---|------|---|-----|---------|
-| 1 | How archived boards behave after archived | 1 | 08-07 | Built |
+| 1 | How archived boards behave after archived | 1 | 08-07 | **Completed** (110) |
 | 2 | Search doesn't take you to the task | 1 | - | Built |
 | 3 | New "Cancel" status and how it will behave | 1 | 07-31 | Built |
 | 4 | Project ID #'ers for HOUZZ & Quickbooks | 1 | 08-14 | Built |
@@ -30,12 +30,12 @@ repeatedly by features that existed only in SQL.
 | 6 | Who entered the task or board | 2 | - | Built |
 | 7 | Activity Timeline | 2 | 07-31 | Built |
 | 8 | Archived Board Behavior | 2 | 07-31 | **Fixed this session** |
-| 9 | Super Admin Menu Items | 2 | 07-31 | **Partly** - metrics reports |
+| 9 | Super Admin Menu Items | 2 | 07-31 | **Completed** |
 | 10 | Microphone isn't realtime dictation | 2 | 08-21 | **Fixed this session** |
 | 11 | Column headers formatted differently | 2 | 08-31 | **Fixed this session** |
-| 12 | Attach Files/Photos to Board/Tile/Task | 3 | 07-15 | Built at task level |
+| 12 | Attach Files/Photos to Board/Tile/Task | 3 | 07-15 | **Completed** (111) |
 | 13 | Audio/Voice To Text Input | 3 | 07-31 | Built |
-| 14 | Custom Date Range in marketing event | 3 | 07-31 | Built, one variant missing |
+| 14 | Custom Date Range in marketing event | 3 | 07-31 | **Completed** |
 | 15 | Mobile version list view | 5 | 06-30 | Built |
 
 ---
@@ -206,16 +206,20 @@ Everything below was run green after the three fixes, against the dev sandbox:
 | Gate | Result |
 |------|--------|
 | `npx tsc --noEmit` | clean |
-| `pnpm test` | 688 passed, 43 files (was 668/41) |
+| `pnpm test` | 703 passed, 46 files (was 668/41) |
 | `pnpm check:dictation` | 14/14 (new) |
-| `pnpm check:board-archive` | 11/11 (new, negative-controlled twice) |
+| `pnpm check:board-archive` | 18/18 (negative-controlled twice) |
+| `pnpm check:board-attachments` | 23/23 (new) |
+| `pnpm check:schedule-grid` | 10/10 (new) |
+| `pnpm check:metrics` | 14/14 (new) |
 | `pnpm check:board-nav` | 17/17 |
 | `pnpm check:column-delete` | all passed |
 | `pnpm check:access-matrix` | all passed |
 | `scripts/audit-mobile-deep.mjs` | board, task modal, dialogs and dark mode all 390px/390px |
 
-No migration is involved in any of this, so there is no prod schema step to sequence before a
-merge.
+Two migrations are involved, both dev-only: `110` (archive lockdown, not `--allow-prod`
+eligible) and `111` (board attachments, additive and eligible). Apply `111` to prod **before**
+merging, or the Files button renders and every upload fails.
 
 ## Re-audit, 2026-08-21
 
@@ -241,18 +245,81 @@ Two things I checked and found clean rather than broken: the *task* restore in `
 refetches instead of prepending optimistically, so it cannot duplicate the way the board one did,
 and there is no hard-delete path for boards or tasks anywhere in the app.
 
+## Closing out the last three (2026-08-21)
+
+### 1 + 9.5 - only a super admin may archive OR un-archive  (migration `110`)
+`069` had done half of it: restore was locked to super admin, archiving was left open to any
+admin, stated in its own header as a decision. The asymmetry was the real problem. Archiving is
+this app's only way to remove a board (there is no delete path anywhere, by design), so a plain
+admin held a **one-way door** on other people's work: they could archive and then could not
+bring it back. `110` extends the same trigger rather than adding a second one, so both halves of
+the rule live in one function. It is a trigger and not the boards UPDATE policy because
+narrowing the policy would also stop a plain admin renaming a board or editing its members.
+Gate: `pnpm check:board-archive` (18), including a plain admin refused by the **database** with
+"Only a super admin can archive a board" and two controls proving the gate is specific.
+⚠️ Not `--allow-prod` eligible. Dev only; prod is a deliberate decision.
+
+### 12 - board-level attachments  (migration `111`)
+Task attachments shipped in `020`/`091`/`093`; the board half never existed. A board file is the
+home for what belongs to the project rather than to one card: the contract, the site plan, the
+brief. Storage-backed only, since boards have no legacy inline base64 column to preserve and
+inline bytes inflate ~33% in the row. One helper, `private.can_view_board`, reuses `070`'s
+predicate and is called by all six policies, so a board file is exactly as private as its board.
+Gate: `pnpm check:board-attachments` (23), including a real file uploaded through the real UI.
+`--allow-prod` eligible: one new table, one new bucket, nothing existing touched.
+
+Three things worth keeping:
+- The bucket's ceiling and MIME allowlist are **copied from `task-assets`**, not restated. The
+  first draft restated them and silently diverged by four types, which would have meant a PSD
+  being attachable to a task and refused on a board. The gate asserts parity, not a count.
+- The upload control keys off `platformRole`, **not `isAdmin`** - the latter is a surface flag
+  that `/dashboard/board/<id>` passes as `false` on purpose.
+- ⚠️ **Supabase blocks direct `DELETE` on `storage.objects` / `storage.buckets`** via
+  `storage.protect_delete()`. The first rollback script tried it and aborted halfway, which is
+  worse than not trying. `scripts/rollback/111_revert.sql` now drops the SQL objects and carries
+  the Storage-API snippet for the bucket.
+
+### 14 - pick the exact days on a calendar
+The capability already existed and was hard to find: the date list has always had a per-date
+skip button and an "Add date" input. The grid is a second **view** of that same schedule, never a
+second way to build one, so tapping a day routes to skipping it if the pattern generated it and
+to the added-dates list if it did not. Plain click rather than ctrl+click: a modifier is
+invisible to anyone not told about it and unreachable on a phone, and this dialog is used on
+both. Gate: `pnpm check:schedule-grid` (10).
+
+### 9.4 - metrics reports  (I was wrong about this one)
+TODO.md called this "the one substantial piece of unbuilt product left in this list". That was
+wrong: `metrics-view.tsx` already reported (a) entry to close, (b) average time in each status,
+and (c) personnel, and all three render with real data. Verified before building anything.
+
+What was genuinely missing was the **other reading of (b)**. "Entry date to progression on each
+status to close" also asks a per-task question, and an average cannot answer it: knowing In
+Progress takes 3d on average tells you the shape of the process, not where one specific piece of
+work actually sat. `buildTaskJourney` reconstructs one task's trip in order with dates, drawn as
+a proportional bar segmented by status with every stage named and timed. Gate:
+`pnpm check:metrics` (14), which walks a task across a real board so `074`'s trigger writes the
+history, then asserts the breakdown appears **inside the journey card** rather than anywhere on
+the page.
+
+⚠️ **The honest limit is data, not features.** Coverage currently reads "recorded close events
+cover 5 of 36 completed tasks", because status history only began accruing when `074` landed.
+That cannot be backfilled without inventing close times, and the report says so on screen rather
+than quoting an average built on a tenth of the data as if it were the whole picture.
+
 ## For Bobby
 
-**12 of the 15 can move out of To Do**: the 9 that were already built, plus the 3 fixed this
-session (the mic, the column headers, the restore duplicate). Three questions left:
+**All 15 can move out of To Do.** Nothing in this list is outstanding.
 
-1. **Who may archive a board?** You asked that only a super admin archive *and* un-archive.
-   Today any admin can archive; only restore is locked to super admin. Small change if you want
-   it tightened, but it is a real behaviour difference, not an oversight (item 1).
-2. **Board-level attachments** (item 12) and the **ctrl+click day picker** (item 14): wanted, or
-   is what shipped enough?
-3. **Metrics reports** (item 9.4) is the one substantial piece of unbuilt product left in this
-   list. "Many many more, talk later" needs that talk.
+Two things need you rather than more code:
+
+1. **Migrations `110` and `111` are on dev only.** `111` (board files) is additive and safe to
+   apply to prod whenever you want it. `110` (archive lockdown) changes the behaviour of writes
+   that already happen, so it is a deliberate call: once applied, Tim, Kogan and Mendy can no
+   longer archive a board. That is what you asked for; confirming it is still worth doing.
+2. **"Many many more. talk later"** on the metrics list is the only genuinely open thread. The
+   three you named are built. Worth knowing before that talk: the numbers are honest but thin,
+   because status history only started accruing when `074` landed, so about a seventh of
+   completed tasks have a recorded close. That improves on its own from here.
 
 ## Reproducing this snapshot
 
