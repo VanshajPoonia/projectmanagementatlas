@@ -5,6 +5,7 @@ import {
   BadgeCheck,
   CalendarDays,
   CalendarRange,
+  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -548,6 +549,10 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   // Channel column being dragged, and the column index it would land on.
   const [draggingChannelId, setDraggingChannelId] = useState<string | null>(null)
   const [channelDropIndex,  setChannelDropIndex]  = useState<number | null>(null)
+  // Channel column being renamed in place from its own grid header, and the text so far.
+  const [renamingChannelId, setRenamingChannelId] = useState<string | null>(null)
+  const [renameChannelValue, setRenameChannelValue] = useState('')
+  const [renameChannelBusy, setRenameChannelBusy] = useState(false)
 
   // Week board vs channel grid (localStorage)
   const [viewMode, setViewModeState] = useState<ViewMode>(loadViewMode)
@@ -917,6 +922,41 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     })
     return true
   }, [loadCalendar, loadChannels, supabase])
+
+  /**
+   * Rename a channel from its own column header.
+   *
+   * The dialog behind "Edit channels" could already do this, and could since migration 105 -
+   * but nothing on the grid said so. The column header is where you are standing when you
+   * notice the name is wrong, and it offered arrows for reordering and no way at all to
+   * change the text between them, so the obvious reading was that the names were fixed.
+   *
+   * Same RPC as the dialog, deliberately: marketing_calendar_items.channel is TEXT with no
+   * foreign key, so a rename that does not re-point its events orphans every post filed
+   * under the old name. There must not be a second, thinner path to this.
+   */
+  const startChannelRename = useCallback((channel: Channel) => {
+    setRenamingChannelId(channel.id)
+    setRenameChannelValue(channel.label)
+  }, [])
+
+  const cancelChannelRename = useCallback(() => {
+    setRenamingChannelId(null)
+    setRenameChannelValue('')
+  }, [])
+
+  const commitChannelRename = useCallback(async (channel: Channel) => {
+    const label = renameChannelValue.trim()
+    // An empty box is an abandoned edit, not a request to blank the column's name.
+    if (!label || label === channel.label) { cancelChannelRename(); return }
+
+    setRenameChannelBusy(true)
+    const ok = await renameChannel(channel, label)
+    setRenameChannelBusy(false)
+    // renameChannel has already explained the failure; staying in edit mode keeps the typed
+    // name on screen so it can be corrected rather than retyped.
+    if (ok) cancelChannelRename()
+  }, [cancelChannelRename, renameChannel, renameChannelValue])
 
   /**
    * Switch a channel column off or back on. Archiving, not deleting: the events are joined
@@ -2547,19 +2587,63 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                   {/* Columns are rearrangeable: drag a header, or use the arrows
                       (drag-and-drop is neither keyboard- nor touch-reachable). The
                       order is shared, so it moves for every member of the calendar. */}
-                  {channels.map((ch, index) => (
+                  {channels.map((ch, index) => {
+                    const isRenaming = renamingChannelId === ch.id
+                    return (
                     <th key={ch.channel}
-                      draggable
+                      // ⚠️ Not draggable while renaming. A drag started inside the input -
+                      // which is what selecting text with the mouse looks like to the browser -
+                      // picks the whole column up instead, so the edit is lost to a reorder
+                      // nobody asked for.
+                      draggable={!isRenaming}
                       onDragStart={handleChannelDragStart(ch.id)}
                       onDragOver={handleChannelDragOver(index)}
                       onDrop={handleChannelDrop(index)}
                       onDragEnd={handleChannelDragEnd}
                       aria-label={`${ch.label} column, position ${index + 1} of ${channels.length}`}
                       className={cn(
-                        'group/col sticky top-0 z-30 w-[150px] cursor-grab select-none border-b border-r bg-foreground/95 px-1 py-2 text-center text-xs font-semibold text-background',
+                        'group/col sticky top-0 z-30 w-[150px] select-none border-b border-r bg-foreground/95 px-1 py-2 text-center text-xs font-semibold text-background',
+                        isRenaming ? 'cursor-default' : 'cursor-grab',
                         draggingChannelId === ch.id && 'cursor-grabbing opacity-40',
                         channelDropIndex === index && draggingChannelId !== ch.id && 'ring-2 ring-inset ring-primary',
                       )}>
+                      {isRenaming ? (
+                        <div className="flex items-center gap-0.5">
+                          <input
+                            autoFocus
+                            // ⚠️ size={1}, not just min-w-0. An <input> carries an intrinsic
+                            // width of about 20 characters, and in a border-collapse table
+                            // that beats the th's w-[150px] - so the column visibly widened
+                            // the moment you started typing and snapped back when you saved.
+                            size={1}
+                            value={renameChannelValue}
+                            disabled={renameChannelBusy}
+                            onChange={e => setRenameChannelValue(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') { e.preventDefault(); void commitChannelRename(ch) }
+                              if (e.key === 'Escape') { e.preventDefault(); cancelChannelRename() }
+                            }}
+                            aria-label={`Rename ${ch.label}`}
+                            className="h-7 min-w-0 flex-1 rounded border border-background/30 bg-background px-1.5 text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
+                          />
+                          <button type="button"
+                            disabled={renameChannelBusy || !renameChannelValue.trim()}
+                            onClick={() => void commitChannelRename(ch)}
+                            aria-label="Save channel name"
+                            className="rounded p-0.5 text-background/70 transition hover:bg-background/10 hover:text-background disabled:opacity-40">
+                            {renameChannelBusy
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Check className="h-3.5 w-3.5" />}
+                          </button>
+                          <button type="button"
+                            disabled={renameChannelBusy}
+                            onClick={cancelChannelRename}
+                            aria-label="Cancel rename"
+                            className="rounded p-0.5 text-background/70 transition hover:bg-background/10 hover:text-background disabled:opacity-40">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : (
                       <div className="flex items-center justify-center gap-0.5">
                         <button type="button"
                           disabled={index === 0}
@@ -2568,7 +2652,15 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                           className="rounded p-0.5 text-background/50 opacity-0 transition hover:bg-background/10 hover:text-background focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-0 group-hover/col:opacity-100">
                           <ChevronLeft className="h-3.5 w-3.5" />
                         </button>
-                        <span className="truncate">{ch.label}</span>
+                        {/* The name is the control. A pencil sitting beside it would need a
+                            fourth icon in 150px, and the two arrows already own that space. */}
+                        <button type="button"
+                          onClick={() => startChannelRename(ch)}
+                          aria-label={`Rename ${ch.label}`}
+                          className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded px-0.5 py-0.5 transition hover:bg-background/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-background/60">
+                          <span className="truncate">{ch.label}</span>
+                          <Pencil className="h-3 w-3 flex-shrink-0 text-background/50 opacity-0 transition group-hover/col:opacity-100" aria-hidden="true" />
+                        </button>
                         <button type="button"
                           disabled={index === channels.length - 1}
                           onClick={() => moveChannel(index, index + 1)}
@@ -2577,8 +2669,9 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                           <ChevronRight className="h-3.5 w-3.5" />
                         </button>
                       </div>
+                      )}
                     </th>
-                  ))}
+                  )})}
                 </tr>
               </thead>
               <tbody>
