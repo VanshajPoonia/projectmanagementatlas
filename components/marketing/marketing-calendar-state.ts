@@ -152,6 +152,78 @@ export function buildCustomWeekdayDateKeys(
   return dates
 }
 
+/** One cell of the schedule picker grid. `null` pads the week to seven columns. */
+export interface ScheduleGridCell {
+  dateKey: string
+  /** Inside the [start, end] range the pattern was defined over. */
+  inRange: boolean
+}
+
+export interface ScheduleGridMonth {
+  /** First day of the month, as a date key, for labelling. */
+  monthKey: string
+  weeks: (ScheduleGridCell | null)[][]
+}
+
+/**
+ * Lay out the months spanned by [startDateKey, endDateKey] as Sunday-first calendar weeks.
+ *
+ * This exists so the schedule can be picked on a calendar rather than read off a vertical list
+ * of dates. Choosing "the 3rd, the 11th and the 24th, but not the 17th" out of a scrolling list
+ * of thirty is genuinely hard; on a month grid it is one glance.
+ *
+ * Cells outside the range are still emitted, with `inRange: false`, because a month that starts
+ * mid-week looks broken without its leading days and because greying them is how a reader sees
+ * where the range actually begins and ends. Callers must not make them clickable.
+ *
+ * Bounded on purpose: a range wider than `maxMonths` returns nothing rather than laying out an
+ * unbounded number of grids, and the caller falls back to the list. Same reasoning as
+ * buildCustomWeekdayDateKeys refusing an empty weekday set.
+ */
+export function buildScheduleGridMonths(
+  startDateKey: string,
+  endDateKey: string,
+  maxMonths = 12,
+): ScheduleGridMonth[] {
+  const start = dateKeyAsUtc(startDateKey)
+  const end = dateKeyAsUtc(endDateKey)
+  if (!start || !end || start > end || maxMonths <= 0) return []
+
+  const months: ScheduleGridMonth[] = []
+  let monthCursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1))
+  const lastMonth = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1))
+
+  while (monthCursor <= lastMonth) {
+    if (months.length >= maxMonths) return []
+
+    const monthStart = monthCursor
+    const daysInMonth = new Date(
+      Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0),
+    ).getUTCDate()
+
+    const weeks: (ScheduleGridCell | null)[][] = []
+    let week: (ScheduleGridCell | null)[] = new Array(monthStart.getUTCDay()).fill(null)
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), day))
+      week.push({ dateKey: utcDateKey(date), inRange: date >= start && date <= end })
+      if (week.length === 7) {
+        weeks.push(week)
+        week = []
+      }
+    }
+    if (week.length > 0) {
+      while (week.length < 7) week.push(null)
+      weeks.push(week)
+    }
+
+    months.push({ monthKey: utcDateKey(monthStart), weeks })
+    monthCursor = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1))
+  }
+
+  return months
+}
+
 export function dayLabelForDateKey(dateKey: string) {
   const date = dateKeyAsUtc(dateKey)
   return date ? DAY_LABELS[date.getUTCDay()] : ''

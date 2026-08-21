@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildCustomWeekdayDateKeys,
+  buildScheduleGridMonths,
   buildRecurringDateKeys,
   buildRecurringSeriesScheduleUpdates,
   centeredScrollLeft,
@@ -277,5 +278,56 @@ describe('imported weekend placeholders', () => {
       day_label: 'SUN',
       content: 'wk',
     })).toBe(false)
+  })
+})
+
+describe('buildScheduleGridMonths', () => {
+  const flat = (months: ReturnType<typeof buildScheduleGridMonths>) =>
+    months.flatMap((m) => m.weeks.flat()).filter((c): c is NonNullable<typeof c> => c !== null)
+
+  it('lays a single month out as Sunday-first weeks', () => {
+    const months = buildScheduleGridMonths('2026-08-01', '2026-08-31')
+    expect(months).toHaveLength(1)
+    expect(months[0].monthKey).toBe('2026-08-01')
+    // 2026-08-01 is a Saturday, so the first week is six nulls then the 1st.
+    expect(months[0].weeks[0].slice(0, 6)).toEqual([null, null, null, null, null, null])
+    expect(months[0].weeks[0][6]?.dateKey).toBe('2026-08-01')
+    expect(months[0].weeks.every((w) => w.length === 7)).toBe(true)
+  })
+
+  it('emits every day of the month exactly once', () => {
+    const cells = flat(buildScheduleGridMonths('2026-08-01', '2026-08-31'))
+    expect(cells).toHaveLength(31)
+    expect(new Set(cells.map((c) => c.dateKey)).size).toBe(31)
+  })
+
+  it('spans several months when the range does', () => {
+    const months = buildScheduleGridMonths('2026-08-20', '2026-10-03')
+    expect(months.map((m) => m.monthKey)).toEqual(['2026-08-01', '2026-09-01', '2026-10-01'])
+  })
+
+  it('marks days outside the range so they can be greyed and left unclickable', () => {
+    const cells = flat(buildScheduleGridMonths('2026-08-10', '2026-08-12'))
+    const inRange = cells.filter((c) => c.inRange).map((c) => c.dateKey)
+    expect(inRange).toEqual(['2026-08-10', '2026-08-11', '2026-08-12'])
+    // The rest of August is still laid out, just not selectable.
+    expect(cells.length).toBe(31)
+  })
+
+  it('handles a leap February', () => {
+    const cells = flat(buildScheduleGridMonths('2028-02-01', '2028-02-29'))
+    expect(cells).toHaveLength(29)
+    expect(cells.at(-1)?.dateKey).toBe('2028-02-29')
+  })
+
+  it('returns nothing for an inverted or unparseable range', () => {
+    expect(buildScheduleGridMonths('2026-08-31', '2026-08-01')).toEqual([])
+    expect(buildScheduleGridMonths('2026-02-30', '2026-03-10')).toEqual([])
+    expect(buildScheduleGridMonths('', '2026-03-10')).toEqual([])
+  })
+
+  it('refuses a range too wide to lay out, so the caller falls back to the list', () => {
+    expect(buildScheduleGridMonths('2026-01-01', '2027-06-30')).toEqual([])
+    expect(buildScheduleGridMonths('2026-01-01', '2026-12-31').length).toBe(12)
   })
 })

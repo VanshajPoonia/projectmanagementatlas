@@ -40,7 +40,8 @@
     "check:marketing-channel-ui": "node --env-file=.env.local scripts/check-marketing-channel-ui.mjs",
     "check:chat-composer": "node --env-file=.env.local scripts/check-chat-composer.mjs",
     "check:dictation": "node --env-file=.env.local scripts/check-dictation.mjs",
-    "check:board-archive": "node --env-file=.env.local scripts/check-board-archive.mjs"
+    "check:board-archive": "node --env-file=.env.local scripts/check-board-archive.mjs",
+    "check:schedule-grid": "node --env-file=.env.local scripts/check-marketing-schedule-grid.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",

@@ -50,6 +50,7 @@ import {
   validateMarketingAsset,
 } from '@/lib/marketing-assets'
 import { toast } from 'sonner'
+import { ScheduleDateGrid } from './schedule-date-grid'
 import {
   buildCustomWeekdayDateKeys,
   buildRecurringDateKeys,
@@ -669,7 +670,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
   const newScheduleInvalidReason: string | null =
     finalScheduleDates.length > 0 ? null
     : newRecurrence === 'custom' && newCustomWeekdays.length === 0
-      ? 'Select at least one weekday, or add specific dates below.'
+      ? 'Select at least one weekday, or tap the days you want on the calendar below.'
     : newRecurrenceDates.length === 0
       ? 'Repeat until must be on or after the first date.'
       : 'Every generated date was skipped. Add at least one date to continue.'
@@ -705,6 +706,23 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
   const removeNewAddedDate = (date: string) =>
     setNewAddedDates(prev => prev.filter(d => d !== date))
+
+  /**
+   * Toggle one day of the schedule, from the calendar grid.
+   *
+   * A day is in the schedule for one of two reasons and coming out of it needs the opposite
+   * move for each: a date the pattern generated is removed by SKIPPING it, and a date the user
+   * added by hand is removed by dropping it from the added list. Routing both through here
+   * keeps the grid and the date list below it reading and writing the same state, rather than
+   * the grid becoming a second way to describe a schedule.
+   */
+  const toggleNewScheduleDate = (date: string) => {
+    if (newRecurrenceDates.includes(date)) {
+      toggleNewSkippedDate(date)
+      return
+    }
+    setNewAddedDates(prev => prev.includes(date) ? prev.filter(d => d !== date) : [...prev, date].sort())
+  }
 
   const loadCalendar = useCallback(async () => {
     if (!selectedCalendarId) {
@@ -3064,6 +3082,27 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                         Narrow the range or select fewer channels. The limit is {MAX_SCHEDULED_MARKETING_POSTS.toLocaleString()} posts.
                       </p>
                     )}
+                  </div>
+                )}
+
+                {/* Bobby asked to be able to pick the exact days on a calendar rather than
+                    read them off a list, because a custom range often should NOT repeat the
+                    same weekdays every week. The grid and the list below are two views of one
+                    schedule: both write the same skipped/added state. The grid hides itself for
+                    a range too wide to lay out, and the list still handles that case. */}
+                {!newScheduleDateLimitReached && !newInteractiveScheduleTooLarge && (
+                  <div className="rounded-md border p-2">
+                    <ScheduleDateGrid
+                      startDateKey={newDate}
+                      endDateKey={newEndDate || newDate}
+                      patternDates={newRecurrenceDates}
+                      skippedDates={newSkippedDates}
+                      addedDates={newAddedDates}
+                      onToggle={toggleNewScheduleDate}
+                    />
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      Tap a day to add or remove it.
+                    </p>
                   </div>
                 )}
 
