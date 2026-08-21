@@ -149,28 +149,55 @@ ctrl+click-specific-days calendar, is not built. He wrote it as an alternative t
 ## Verified built
 
 - **1. `ab5cd104`** archived boards behave: migration `069` makes cancel archive automatically and
-  restricts un-archiving to super admins; the UI honours it.
+  restricts un-archiving to super admins; the UI honours it. ⚠️ **One deliberate divergence from
+  the literal ask.** Bobby wrote "only allow a super admin to archive and also to un-archive".
+  `069` gates only the *restore* transition on `is_super_admin_user()` and leaves *archiving* open
+  to any admin, which its own header states as a decision (lines 19-20), not an oversight. So a
+  plain admin can archive a board and cannot bring it back. If Bobby wants archiving locked down
+  too, that is a small change to the menu item plus a trigger clause; it has not been made.
+  Verified on prod: 5 archived boards, all titled some variant of "delete", so archive is already
+  being used as the delete substitute it was meant to be.
 - **2. `1a06471a`** search deep-link: `components/search/global-search.tsx:97` pushes
   `?task=<id>` and `components/board/board-view.tsx:176` opens that task on arrival. The ⌘K
-  palette does the same at `command-palette.tsx:158`.
+  palette does the same at `command-palette.tsx:158`. `task.board_id` is derived by the component
+  from its own join, not a column on `tasks` (there isn't one), so the link does resolve. Minor
+  smell, not a live bug: it hand-builds `/${isAdmin ? 'admin' : 'dashboard'}/board/...` instead of
+  calling `boardHref()`. Both call sites pass the viewer's real platform role
+  (`user-dashboard.tsx:76`), so it currently lands on the right surface, but this is the exact
+  shape CLAUDE.md warns about and it will break the day someone passes a surface flag.
 - **3. `6e25320d`** cancel status: `scripts/069_task_cancel_archive_super_admin.sql`. Moving a task
   into a cancelled-linked column archives it in the same transaction, and only a super admin can
-  move it back out. Nothing is ever deleted.
+  move it back out. **"Nothing is ever deleted" audited rather than assumed**: there is no
+  `.delete()` against `tasks` or `boards` anywhere in the app. The only deletion path in the repo
+  is `app/api/admin/delete-user/route.ts`, which reassigns boards before removing an account.
 - **4. `955ff4f7`** Project IDs: migration `090` plus `components/project-ids/project-ids-view.tsx`.
   `YYMMNNNN` format computed in America/Chicago, claimant taken from the login rather than a
-  dropdown, claimed numbers never reissued.
+  dropdown, claimed numbers never reissued. Confirmed in **live production data**: `26081111`
+  claimed for client "BB Kadish", `grabbed_by_name` "Bobby Shanks" resolved from the session.
 - **5. `fe66cd47`** CRM Phase II: `app/crm/` plus 8 components. **`app_modules.crm` is
   `enabled = true` on production and `crm_clients` holds real rows**, so it is live, not pending.
   CLAUDE.md still describes `103` as dev-only; that note is stale (prod's ledger is at 108).
+  ⚠️ The task says "SEE ATTACHMENT for HTML Mockup" and I cannot open that attachment, so I can
+  confirm a CRM exists and is live but **not** that it matches the design Bobby mailed over. That
+  comparison needs him.
 - **6. `145ff6fd`** who entered it: "Created by X on DATE" at `task-detail-modal.tsx:935`, and on
   board cards at `board-management.tsx:689`.
 - **7. `b0d18f64`** activity timeline: an Activity tab on the task modal reading `task_activity`,
   written by `lib/task-activity.ts` on rename, description, priority, visibility, due date and
-  recurrence changes, each with actor and timestamp.
+  recurrence changes, each with actor and timestamp. **Status transitions are covered too**, which
+  was Bobby's explicit "New status vs. old status": the client deliberately does not log them
+  (`task-card.tsx:161`, it would double-count in timing metrics) because `074`'s lifecycle trigger
+  is their sole writer, into structured columns on `task_activity` itself plus a readable
+  `action`. Confirmed against **live production rows**, not just the SQL: three
+  `task.status_changed` entries reading `changed status from "In Progress" to "Completed"`,
+  stamped 2026-08-21 14:43, which is Bobby closing out last session's three tasks.
 - **13. `7586789a`** voice to text: `VoiceInputButton` on both the task detail modal and the
   create-task dialog, desktop and mobile. See item 10 for the quality complaint against it.
-- **15. `d536ccc1`** mobile list view: the list branch has a dedicated mobile layout at
-  `board-view.tsx:1723` (`space-y-2 md:hidden`), separate from the desktop table.
+- **15. `d536ccc1`** mobile list view: the list branch has a dedicated mobile layout
+  (`space-y-2 md:hidden`), separate from the desktop table. **Measured at 390px in a real
+  browser** rather than inferred from the class: the same task card is 274px wide in tile view and
+  229px in list view, zero desktop tables render, and neither view scrolls sideways. Bobby's
+  complaint was specifically "it doesnt change from tile", so this one was worth measuring.
 
 ## Gates
 
@@ -181,7 +208,7 @@ Everything below was run green after the three fixes, against the dev sandbox:
 | `npx tsc --noEmit` | clean |
 | `pnpm test` | 688 passed, 43 files (was 668/41) |
 | `pnpm check:dictation` | 14/14 (new) |
-| `pnpm check:board-archive` | 10/10 (new, negative-controlled) |
+| `pnpm check:board-archive` | 11/11 (new, negative-controlled twice) |
 | `pnpm check:board-nav` | 17/17 |
 | `pnpm check:column-delete` | all passed |
 | `pnpm check:access-matrix` | all passed |
@@ -189,6 +216,29 @@ Everything below was run green after the three fixes, against the dev sandbox:
 
 No migration is involved in any of this, so there is no prod schema step to sequence before a
 merge.
+
+## Re-audit, 2026-08-21
+
+Every verdict above was re-checked rather than carried forward from the first pass. What changed:
+
+- **One defect found in my own fix.** The guard added to stop a double-clicked Restore from
+  duplicating a board was a single `movingBoardId`, so it also silently swallowed a click on a
+  *different* board while the first write was in flight. A dropped archive with no feedback is a
+  worse failure than the visible duplicate it was preventing. Now keyed per board, pinned by an
+  11th check, and negative-controlled: putting the global guard back fails that check alone.
+- **Item 1's verdict was softened.** Archiving is open to any admin by an explicit decision in
+  `069`; only restore is super-admin-only. Bobby asked for both.
+- **Items 4, 7 and 15 were upgraded from "reads correct" to "measured".** Project IDs and the
+  status timeline were confirmed against live production rows; the mobile list view was measured
+  in a real browser at 390px.
+- **Item 5 carries a caveat I cannot close.** The CRM is live, but the task references an HTML
+  mockup attachment I cannot open, so "matches what Bobby designed" is unverified.
+- **Item 2 gained a note.** The search deep-link works, but hand-builds its board href instead of
+  using `boardHref()`. Correct today because both call sites pass a real platform role.
+
+Two things I checked and found clean rather than broken: the *task* restore in `board-view.tsx`
+refetches instead of prepending optimistically, so it cannot duplicate the way the board one did,
+and there is no hard-delete path for boards or tasks anywhere in the app.
 
 ## For Bobby
 
