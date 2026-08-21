@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { prependUnique, withoutBoard } from '@/lib/board-archive'
 import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette, Archive, ArchiveRestore, Globe, Lock, ChevronDown, ChevronRight, LayoutGrid, List } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -34,6 +35,9 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
   const [boards, setBoards] = useState(initialBoards)
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
   const [archivedBoards, setArchivedBoards] = useState<any[]>([])
+  // Which board has an archive/restore write in flight. Both controls are optimistic, so a
+  // second click before the first returns would run the whole handler again.
+  const [movingBoardId, setMovingBoardId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
   const [open, setOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -335,6 +339,8 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
       `Archive "${boardTitle}"?\n\nThe board and all its data are kept - it's just hidden from everyone except super admins. Only a super admin can restore it.`
     )
     if (!confirmed) return
+    if (movingBoardId) return
+    setMovingBoardId(boardId)
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -347,17 +353,21 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
 
       if (error) throw error
 
-      setBoards(boards.filter(b => b.id !== boardId))
-      if (data) setArchivedBoards((prev) => [data, ...prev])
+      setBoards((prev) => withoutBoard(prev, boardId))
+      if (data) setArchivedBoards((prev) => prependUnique(prev, data))
     } catch (err) {
       alert('Failed to archive board. Please try again.')
       console.error('Archive board error:', err)
+    } finally {
+      setMovingBoardId(null)
     }
   }
 
   const handleRestoreBoard = async (boardId: string, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    if (movingBoardId) return
+    setMovingBoardId(boardId)
 
     try {
       const { data, error } = await supabase
@@ -369,11 +379,13 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
 
       if (error) throw error
 
-      setArchivedBoards((prev) => prev.filter(b => b.id !== boardId))
-      if (data) setBoards((prev) => [data, ...prev])
+      setArchivedBoards((prev) => withoutBoard(prev, boardId))
+      if (data) setBoards((prev) => prependUnique(prev, data))
     } catch (err: any) {
       alert(err?.message || 'Failed to restore board. Please try again.')
       console.error('Restore board error:', err)
+    } finally {
+      setMovingBoardId(null)
     }
   }
 
@@ -771,9 +783,15 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
                     </p>
                   )}
                 </div>
-                <Button variant="outline" size="sm" className="gap-2 flex-shrink-0" onClick={(e) => handleRestoreBoard(board.id, e)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 flex-shrink-0"
+                  disabled={movingBoardId === board.id}
+                  onClick={(e) => handleRestoreBoard(board.id, e)}
+                >
                   <ArchiveRestore className="w-4 h-4" />
-                  Restore
+                  {movingBoardId === board.id ? 'Restoring...' : 'Restore'}
                 </Button>
               </Card>
             ))}
