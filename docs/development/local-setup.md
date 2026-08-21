@@ -1,6 +1,7 @@
 # Local Development Setup
 
-_Audit date: 2026-07-23. This is the documented, reproducible way to launch the system locally._
+_Audit date: 2026-07-23. Database and run sections revised 2026-08-21._
+_This is the documented, reproducible way to launch the system locally._
 
 > **Architecture note.** There is **no Docker/compose stack and no local Postgres.** Local
 > development runs the Next.js app against the **hosted Supabase project**. That is intentional for a
@@ -48,6 +49,11 @@ GEMINI_API_KEY=
 
 # --- AI web search (Tavily), if web mode is enabled ---
 TAVILY_API_KEY=
+
+# --- Postgres (SERVER ONLY - used by scripts/migrate.mjs and scripts/guard-db.mjs,
+#     never by the app itself). See "Connecting with psql directly" in section 4:
+#     this must be the regional pooler URL on port 5432, not db.<ref>.supabase.co. ---
+POSTGRES_URL_NON_POOLING=
 ```
 
 **Secret hygiene:** everything except the two `NEXT_PUBLIC_*` values is server-only. `.env.local` is
@@ -55,34 +61,66 @@ git-ignored. Never prefix a secret with `NEXT_PUBLIC_`; never commit keys (risk 
 
 ## 4. Database
 
-> ⛔ **On the `platform` branch, ignore the `vercel env pull` instructions below.** This worktree's
-> `.env.local` is deliberately repointed at a separate dev Supabase project (see `CLAUDE.md`) so
-> destructive tenancy migrations can't reach production. Running `vercel env pull` here would
-> silently overwrite it with production credentials and defeat that safeguard entirely - there is
-> no `.vercel/` link in this worktree on purpose. Never run `vercel env pull` or `vercel link` here.
-> Use `pnpm migrate` (see `scripts/migrate.mjs`), not raw `psql` - it enforces the same dev-only
-> guard and is the source of truth for what's been applied (`public.applied_migrations`).
+> ⛔ **Never run `vercel env pull` or `vercel link` in this folder.** `.env.local` points at a
+> **separate dev Supabase project** (a full clone of production) so that migrations and local dev
+> cannot reach the live database. `vercel env pull` would overwrite it with production credentials
+> and defeat that safeguard entirely; there is no `.vercel/` link here on purpose.
 
-The hosted Supabase project already has the schema applied. To reproduce it on a fresh Supabase
-project, apply `scripts/0*.sql` **in numeric order** (`001` → `062`) via the Supabase SQL editor or
-`psql`. There is no migration runner - ordering by filename is the contract (risk R-04). *(This
-paragraph describes the `main` branch's process - outdated for `platform`, see the warning above.)*
+**There is a migration runner. Use it, not raw `psql`.** `scripts/migrate.mjs` applies
+`scripts/NNN_*.sql` in numeric order and records each one in `public.applied_migrations`, which is
+the only source of truth for what has run where. It refuses to open a connection until
+`scripts/guard-db.mjs` has confirmed the target.
 
-To apply/inspect against prod (main branch only - NOT this worktree), the established path is:
 ```bash
-vercel env pull .env.local           # pull current env
-psql "$POSTGRES_URL_NON_POOLING"     # run SQL on the hosted DB
+pnpm guard             # which project does the current environment resolve to?
+pnpm migrate:status    # applied / pending counts for that target
+pnpm migrate           # apply everything pending (dev sandbox)
+pnpm migrate --only=110 --allow-prod   # one file, against PRODUCTION, deliberately
 ```
-New schema changes go in the **next numbered file** (`064_*.sql` on `platform`), forward-only.
+
+Dev is always allowed. **Production requires the explicit `--allow-prod` flag** and prints an
+unmissable banner. Only additive, non-destructive migrations may ever use it: anything that
+rewrites an RLS policy or changes a constraint on an existing table is destructive until proven
+otherwise, and stays on the dev sandbox. New schema changes go in the **next numbered file**,
+forward-only. See `CLAUDE.md` for the full guardrail and the per-migration history.
+
+### Connecting with `psql` directly
+
+Both `db.<ref>.supabase.co` hosts are **IPv6-only**, and a machine without an IPv6 route cannot
+reach them. The failure is misleading: libpq reports
+`could not translate host name ... nodename nor servname provided`, which looks like DNS but is not
+(`dig +short db.<ref>.supabase.co AAAA` returns the address fine). Use the regional Supavisor
+pooler over IPv4 instead, on **port 5432 (session mode)**:
+
+```
+postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+Port **6543 is transaction mode and will break migrations** - these files own their own
+`BEGIN; ... COMMIT;`, which transaction pooling does not hold across statements. If the pooler
+answers `(ENOTFOUND) tenant/user postgres.<ref> not found`, that means the **wrong region**, not
+that pooling is disabled. The guard understands both URL shapes, so switching to a pooler URL keeps
+the dev/prod allowlist intact.
 
 ## 5. Run
 
 ```bash
 pnpm dev        # Next.js dev server (Turbopack) → http://localhost:3000
+pnpm test       # vitest unit suite (also what CI runs)
 pnpm build      # production build
 pnpm start      # serve the production build
-pnpm lint       # eslint
+pnpm lint       # ⚠️ currently fails: no eslint flat config exists (see KNOWN-ISSUES.md)
 ```
+
+⚠️ **`pnpm build` and `pnpm start` talk to PRODUCTION.** Next loads `.env.$(NODE_ENV).local` ahead
+of `.env.local`, and this repo has a `.env.production.local` holding prod credentials, so a
+production build bakes prod's Supabase URL into the client bundle. `pnpm dev` is unaffected and
+uses the dev sandbox. See `CLAUDE.md` before browser-testing against `pnpm start`.
+
+Beyond the unit suite, each permission-sensitive feature has a real-RLS harness run against the dev
+sandbox (`pnpm check:access-matrix`, `check:board-roles`, `check:crm`, and ~30 more; see
+`package.json`). A passing harness proves the database refuses what it should - it does **not**
+prove a human can reach the feature, which is a distinction this repo has been bitten by.
 
 First admin: create a user in Supabase Auth, then set that row's `profiles.role = 'admin'` (see
 `SETUP.md`). Public signup is disabled; admins provision users from `/admin`.

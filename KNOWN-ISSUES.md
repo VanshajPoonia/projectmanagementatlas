@@ -4,32 +4,26 @@ Running list of bugs found, trade-offs accepted, and things deliberately left
 undone. Add to it rather than fixing silently - the point is that nothing gets
 rediscovered from scratch six months later.
 
-Last updated: 2026-07-23
+Last updated: 2026-08-21
 
 ---
 
 ## Open - infrastructure
 
-### No test runner, no CI
+### `pnpm lint` cannot run - there is no eslint config
 
-There is no test framework, no `test` script, and no GitHub Actions workflow.
-Logic added so far was verified with throwaway `tsx` scripts and a scratch
-Postgres instance, both discarded after use. Nothing re-runs on push.
+`package.json` defines `lint` as `eslint .`, but the repo has no
+`eslint.config.*` and no `.eslintrc*`, so the command exits with
+"ESLint couldn't find an eslint.config.(js|mjs|cjs) file." It has been this way
+long enough that `.github/workflows/ci.yml` documents it as the reason lint is
+not in the pipeline.
 
-**Why it matters:** the multi-tenant work planned in `../pm-platform` is exactly
-where a silent mistake leaks one company's data to another, and it would surface
-via a customer rather than a failing build.
+**Consequence:** the only automated gates are `pnpm test` (in CI) and
+`tsc --noEmit` (run by hand). Style and unused-code drift is uncaught.
 
-**Fix:** add Vitest + a `pnpm test` script, port the throwaway checks
-(work-next ranking, `isTaskOwnedBy`, subtask DB behaviour), and run them in CI.
-
-### Migrations are hand-applied with no record of what has run
-
-`scripts/` holds 60 numbered `.sql` files applied manually via
-`vercel env pull` + `psql $POSTGRES_URL_NON_POOLING`. Nothing records which have
-been applied to which database. Correct ordering depends entirely on memory.
-
-**Fix:** a migration runner backed by an `applied_migrations` table.
+**Fix:** add a flat config, then add the `lint` step to CI. Expect a backlog of
+findings on first run; land the config with rules calibrated to what the repo
+already does rather than to a default preset.
 
 ### `pnpm-workspace.yaml` placeholders keep coming back
 
@@ -46,43 +40,10 @@ before committing.
 
 ## Open - correctness
 
-### Statuses have two competing sources of truth
-
-`task_statuses` (a real admin-managed table) and board `columns`, reconciled by
-fuzzy string matching in `lib/task-status.ts`:
-
-```ts
-if (status.includes('progress') || columnTitle.includes('going')) return 'in_progress'
-```
-
-This works only because this team happens to name columns "In Progress" and
-"Ongoing". Admins **can** create columns, so a board with a "WIP" column has
-every task in it silently classified `to_do` - no error, just wrong numbers in
-My Tasks, the overdue maths, reports, and the AI assistant's answers.
-
-**Severity:** latent today, guaranteed breakage the moment a second company
-names its columns differently.
-
-**Fix:** `columns.status_key` foreign key to `task_statuses(key)`, backfilled by
-running the existing normalizer once over column titles. The normalizer then
-reads the FK first and keeps string matching only as a legacy fallback.
-
-### Feature access is hardcoded to one person's email address
-
-- `components/user/user-dashboard.tsx` - `isKaylaMarketingUser` gates the whole
-  marketing module and also sets the accent colour
-- `components/marketing/marketing-calendar.tsx` - `KAYLA_EMAIL`, hard-fails with
-  "Kayla profile is not ready yet."
-- `lib/display-text.ts` - strips strings specific to
-  `Marketing Project Management.xlsx`
-
-**Fix:** the `org_modules` registry described in `../pm-platform/CLAUDE.md`.
-
-### Unique constraints assume a single tenant
-
-`task_statuses.key` is globally `UNIQUE` and `companies.code` has a global
-`unique(lower(code))`. Two organisations cannot both have a status keyed
-`review`. Must become composite with an org id before a second tenant exists.
+*(Nothing open here right now. Two of the three entries that used to sit here -
+the competing status sources and the hardcoded email gate - are under "Resolved"
+below with their reasoning intact. The third, single-tenant unique constraints,
+moved to "Deliberately not building": it is moot, not fixed.)*
 
 ---
 
@@ -134,22 +95,20 @@ DB access. This is the literal ask ("remove super admin and admin access"). If a
 org later needs oversight, add a scoped, audited override rather than restoring the
 blanket `is_admin_user()` bypass.
 
-### Column names of a private board are not hidden
-
-`061` gates board rows and every task/comment/attachment/link/tag (through
-`can_view_task`/`can_manage_task` plus a `task_hidden_by_board_privacy` join). It
-does **not** gate `public.columns`, so a non-member who already knows a private
-board's id could still read its column titles ("To Do", "In Progress"). No task
-content leaks - only the empty column labels. Left ungated because columns carry no
-sensitive data and gating them adds another board-privacy join to the hot board
-render path. Revisit if columns ever hold anything meaningful.
-
 ### Membership management is creator-only
 
-`board_members` INSERT/DELETE is now restricted to the board's creator (the admin
+`board_members` INSERT/DELETE is restricted to the board's creator (the admin
 bypass is gone - otherwise "remove admin access" was bypassable by self-adding).
-The board-management edit dialog's delete-all-then-reinsert member sync therefore
-only works for the creator; other admins can't see the board to edit it anyway.
+Still true, and deliberate.
+
+*Updated 2026-08-21:* this entry used to describe the edit dialog's
+delete-all-then-reinsert member sync. That sync is gone. It was actively harmful -
+the re-insert dropped `board_members.role`, so renaming a board silently promoted
+its guests to full members, and a non-creator's edits reported success while
+changing nothing (PostgREST does not treat a zero-row DELETE as an error).
+`lib/board-membership.ts` now computes a diff, asks for its rows back and compares
+the count, and `canManageMembership` swaps the picker for `MEMBERSHIP_LOCKED_REASON`
+rather than showing a non-creator an empty list. Pinned by `pnpm check:access-matrix`.
 
 ## Open - marketing "missed" items (shipped 2026-07-23)
 
@@ -176,6 +135,78 @@ grace period or timezone normalization.
 ---
 
 ## Resolved - kept for the reasoning
+
+### No test runner, no CI *(fixed 2026-07-23)*
+
+There was no test framework, no `test` script and no GitHub Actions workflow;
+logic was verified with throwaway `tsx` scripts that were discarded after use, so
+nothing re-ran on push. There is now a Vitest suite behind `pnpm test`, and
+`.github/workflows/ci.yml` runs it on every PR and on pushes to `main`.
+
+**Deliberately still not in CI:** `pnpm lint` (no eslint config - see above),
+`pnpm build` (needs Supabase env wired as Actions secrets) and `tsc --noEmit`
+(type-error backlog, `ignoreBuildErrors` still on). The `check:*` harnesses are
+also excluded on purpose: they write to the dev sandbox and create real auth
+users, which is not something to hand a CI runner a service-role key for.
+
+### Migrations were hand-applied with no record of what had run *(fixed by `scripts/migrate.mjs`)*
+
+60-odd numbered `.sql` files were applied by hand and nothing recorded which had
+been applied to which database, so correct ordering depended entirely on memory.
+`scripts/migrate.mjs` now applies them in numeric order and records each in
+`public.applied_migrations`; `scripts/guard-db.mjs` resolves the target first and
+refuses anything it does not recognise, with production behind an explicit
+`--allow-prod` flag.
+
+**The lesson that outlived the fix:** the ledger is the only truth. The migration
+notes in `CLAUDE.md` have been wrong about which database is at which number
+three separate times, which is why the standing rule is to run
+`pnpm migrate:status` rather than read any number written down anywhere.
+
+### Statuses had two competing sources of truth *(fixed in 063)*
+
+`task_statuses` and board `columns` were reconciled by fuzzy string matching in
+`lib/task-status.ts` - `status.includes('progress') || columnTitle.includes('going')`.
+It worked only by accident, because this team names its columns "In Progress" and
+"Ongoing"; a column named "WIP" would have silently classified every task on it as
+`to_do`, with no error and wrong numbers in My Tasks, the overdue maths, reports
+and the AI assistant's answers.
+
+`063` added `columns.status_key` as a foreign key to `task_statuses(key)` and the
+normalizer reads the FK first, keeping string matching only as a legacy fallback
+for un-backfilled columns. As of 2026-08-21 every column on the dev sandbox is
+linked (30/30, zero custom), so the fallback is effectively dead code.
+
+### Feature access was hardcoded to one person's email address *(fixed in 085)*
+
+`isKaylaMarketingUser` gated the whole marketing module, `marketing-calendar.tsx`
+hard-failed with "Kayla profile is not ready yet.", and `lib/display-text.ts`
+stripped strings specific to one literal spreadsheet filename. Marketing calendars
+are now admin-creatable, named, multiple instances with explicit member lists
+(`marketing_calendars` + `marketing_calendar_members`, mirroring
+`boards`/`board_members`), and `display-text.ts` matches the *shape* the importer
+writes rather than one filename.
+
+One literal-email check deliberately survives: the accent colour in
+`components/theme/accent-provider.tsx`. It is cosmetic personalization, not access
+control, and was left narrow on purpose.
+
+### Column names of a private board were not hidden *(fixed in 099)*
+
+`061` applied board privacy to tasks, comments, attachments, links and tags, but
+never to `public.columns`, which still carried `001`'s bare
+`USING (auth.uid() IS NOT NULL)`. Any signed-in user who knew a private board's id
+could read its column titles and order. No task content leaked, so this disclosed
+the *shape* of private work rather than its contents - which is why it sat
+unnoticed, originally written up here as an accepted trade-off ("columns carry no
+sensitive data").
+
+Write policies on `columns` were deliberately left alone at the time so the
+status-rename sweep could still reach private boards. **That reasoning was wrong**,
+and `107` had to fix it: Postgres applies the SELECT policy to an `UPDATE ... WHERE`
+too, because the row has to be read to be found, so narrowing SELECT here silently
+stopped that sweep from touching private boards at all.
+
 
 ### PostgREST self-referencing embeds are ambiguous *(avoided, never shipped)*
 
@@ -235,3 +266,10 @@ feature, and none serves the goal of reducing time spent *managing* work.
   Cron instead (overdue → notify owner; all subtasks done → complete parent;
   recurring task spawn, since the `is_recurring` columns from `025` are unused)
 - More than two integrations - Google Calendar (one-way export) and Slack
+- Multi-tenant / organization-switching machinery. Per the owner's 2026-07-24
+  ruling this product serves **exactly one organisation, permanently**, so the
+  old note here that "`task_statuses.key` is globally UNIQUE and `companies.code`
+  has a global `unique(lower(code))`, which must become composite with an org id
+  before a second tenant exists" is moot rather than outstanding. `companies`
+  (SRG/AGC) is a business-unit label used by the marketing calendar, **not** a
+  tenant - do not overload it into one.

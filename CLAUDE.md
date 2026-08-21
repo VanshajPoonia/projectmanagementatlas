@@ -316,10 +316,9 @@ deliberately left out.
   As of 2026-08-19, verified by running the runner against both: **dev and prod were BOTH fully
   applied at `107` - all 107 files, zero pending on either.** `105`–`107` went to prod with
   `--only=105,106,107 --allow-prod`, which is what the runner's `--only` flag exists for.
-  **Verified again 2026-08-20 by reading both ledgers: dev is at `109`, prod is at `108`.**
-  `109` is the one gap, and it is deliberate - see its entry below. Prod's ledger was read
-  through the REST API rather than the runner, because the direct DB host is IPv6-only and
-  the pooler is disabled on the dev project, so no `psql` path existed from that machine.
+  **Verified again 2026-08-21 with the runner against dev and a read-only REST count against
+  prod: dev is at `109` (109 files, 0 pending), prod is at `108` (108 rows).**
+  `109` is the one gap, and it is deliberate - see its entry below.
   ⚠️ **The per-migration notes below saying a given number is "dev-only" are HISTORICAL** -
   each was true the day it was written and most have since been applied. `087`, `096`–`102`
   and `104` are all on prod now. The ledger is the only truth; those notes are kept for the
@@ -327,6 +326,31 @@ deliberately left out.
   lives. This block has been wrong twice before (it said prod was at `095` when it was at
   `101`, then at `101` when it was at `104`), which is why the rule above is to run
   `pnpm migrate:status` rather than read this sentence.
+- ⚠️ **Both `db.<ref>.supabase.co` hosts are IPv6-ONLY, and this Mac has no IPv6 route** - only
+  link-local addresses on its VPN `utun` interfaces. macOS `getaddrinfo` drops an AAAA it cannot
+  route, so libpq reports **`could not translate host name ... nodename nor servname provided`**,
+  which reads like a DNS failure and is not one: `dig` returns the AAAA fine. On 2026-08-20 that
+  was misdiagnosed as "the pooler is disabled on the dev project, so no `psql` path exists" and
+  the ledger was read over REST instead. **That was wrong** - the pooler was never disabled, the
+  wrong region had been tried. Supavisor answers per region and returns
+  `(ENOTFOUND) tenant/user postgres.<ref> not found` for a project hosted elsewhere, which is
+  indistinguishable from "off" unless you try the right one.
+  - **Dev lives in `ap-southeast-2`, prod in `us-east-1`** (guess the region from the AAAA
+    prefix: dev `2406:da1c` = ap-southeast-2, prod `2600:1f18` = us-east-1). `.env.local`'s
+    `POSTGRES_URL_NON_POOLING` now points at
+    `postgres.pxzpewaerhjwnwsbaklc@aws-0-ap-southeast-2.pooler.supabase.com:5432`, which is
+    IPv4-reachable, and `pnpm migrate:status` / `pnpm migrate` work again.
+    `.env.production.local` already used `aws-1-us-east-1.pooler.supabase.com:5432`, so prod
+    migrations were never actually blocked from here.
+  - **Port 5432 is session mode and is the one to use.** Port 6543 is transaction mode and will
+    break a migration: these files own their own `BEGIN; ... COMMIT;`, which transaction pooling
+    does not hold across statements.
+  - **The guard already understands the pooler shape** - `extractRefs` matches `postgres.<ref>`
+    in the username as well as `db.<ref>.supabase.co` in the host, so switching to a pooler URL
+    keeps the dev/prod allowlist fully intact. Verified: `pnpm guard` still resolves the dev
+    sandbox. **If you ever add a third connection shape, extend `extractRefs` first** - a ref it
+    cannot see is a ref the allowlist cannot police, and `refs.length === 0` aborts but a
+    *partial* match would not.
 - **`103` (CRM) is dev-only and purely additive** - seven new tables, one `app_modules` row,
   no existing table, policy, grant or row touched. That makes it `--allow-prod` eligible on
   this repo's own rule, unlike `098`–`102`. The module seeds **`enabled = false`**, so
@@ -484,6 +508,63 @@ deliberately left out.
   whatever tab they last had open. There is now one `dashboardHost(role)` in
   `components/shell/workspace-nav.ts` and every `?tab=` link is built from it. **Any new
   surface that builds a tab link must call it rather than writing the path.**
+  - ⚠️ **`boardHref(role, id)` is the same rule for board links, and the board page was the
+    last place still getting it wrong** (2026-08-21). The two board routes are not
+    interchangeable: `app/dashboard/board/[id]/page.tsx` passes `isAdmin={false}` on purpose,
+    so an admin sent to `/dashboard/board/<id>` loses Add Column, the column menu and the
+    board rename with nothing on screen saying why. `board-view.tsx` built **five** hrefs
+    from that surface flag rather than from the viewer's role - the ⌘K "copy link" action,
+    the deep-link `router.replace`, the Recents entry and the favourite. The last two are
+    the durable ones: both store the href they were created from, so one visit through
+    `/dashboard` pinned that admin into the stripped surface for as long as the star existed.
+    Now `boardHref(platformRole, id)` from `workspace-nav.ts`, next to `dashboardHost`.
+  - ⚠️ **A board renders outside AppShell, so its header nav is a second copy of the nav and
+    it had drifted exactly as `/admin`'s did.** Two hardcoded arrays keyed off `isAdmin`,
+    written before `appointments`/`crm` existed: no My Work at all, Marketing offered to
+    every admin whether or not the module was on, and `handleNavChange` pushing a bare
+    `/admin` | `/dashboard` picked from the surface flag - so an admin clicking "Boards" from
+    a board wrote the wrong `sessionStorage` key, landed on `/dashboard`, was redirected to
+    `/admin` with the query dropped, and arrived on whatever tab they last had open. It calls
+    `buildWorkspaceNav` now and navigates by each item's own `href`; the `sessionStorage` tab
+    hack is gone, because `?tab=` already does that job correctly.
+  - ⚠️ **And that fix broke the header until the strip became a menu.** The nav was rendered
+    as a row of unlabelled icon buttons, which was fine at four entries and destroyed the
+    header at twelve: measured on dev, the board title was squeezed out of its own page and
+    the description reflowed to one word per line. One `DropdownMenu` costs one button's
+    width whatever the workspace has switched on, and it can carry the labels the strip never
+    could. **A nav sourced from a module registry has no fixed length - do not render it as a
+    fixed-width strip.** Pinned by `pnpm check:board-nav`, which asserts the page does not
+    scroll sideways and the title still measures over 100px.
+- ⚠️ **Renaming a board column renames the STATUS, and that is not a shortcut - it is the
+  only correct scope** (2026-08-21). A column linked to a status is *named by* that status:
+  `107`'s cascade renames every linked column on every board whenever the status is renamed,
+  deliberately, so two boards can never disagree about what the same thing is called. So
+  writing `columns.title` on one board produces a name that looks saved and is silently
+  reverted by the next status rename. The column menu's **Rename Column** therefore updates
+  `task_statuses.label` and then calls `rename_columns_for_status` - the same two calls
+  `status-management.tsx` makes, in the same order, surfaced where you actually notice the
+  wrong name. A column with **no** `status_key` is custom and renames on its own board only.
+  - `task_statuses` is **super-admin-only** (`069`) while `columns` is admin-writable, so a
+    plain admin can rename a custom column and not a linked one. The dialog says so and
+    disables the button rather than letting the write be refused, and rather than writing
+    `columns.title` anyway. Gate: `pnpm check:board-nav` (16 checks), whose plain-admin case
+    is the control proving the gate is role-specific and not a blanket break.
+  - **Every column on dev is linked (30/30, 0 custom)**, so the linked path is the only one
+    anyone will hit in practice. Per-board custom names would need a `columns.title_custom`
+    flag and a rewrite of `107`'s function; that was scoped out, not overlooked.
+- **The marketing grid's channel headers rename in place** (2026-08-21). `105` gave the
+  calendar a rename path and the grid header never offered it - the only route was a dialog
+  behind "Edit channels" that nothing on the grid pointed at, so the names read as fixed.
+  The header's own label is now the button. Same `rename_marketing_channel` RPC as the
+  dialog, deliberately: `marketing_calendar_items.channel` is TEXT with no FK, so a rename
+  that does not re-point its events orphans every post filed under the old name, and there
+  must not be a second thinner path to that. Gate: `pnpm check:marketing-channel-ui` (8).
+  - Two things a rename inside a draggable `<th>` needs, both found in a real browser and
+    neither visible in code review: the header must stop being `draggable` while editing
+    (selecting text with the mouse otherwise picks the whole column up), and the input needs
+    `size={1}` - an `<input>`'s intrinsic ~20-character width beats the `th`'s `w-[150px]`
+    under `border-collapse`, so the column visibly widened as you typed and snapped back on
+    save.
 - ⚠️ **"Hidden from you" and "does not exist" arrive looking identical.** This is the shape
   behind several bugs in this repo, so it is worth naming. A client reads a table through RLS
   and gets a filtered list; nothing in the response says anything was withheld. Any UI logic

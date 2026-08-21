@@ -44,10 +44,13 @@ narrower snapshot of one specific backlog, not a replacement for those.
   current codebase on 2026-07-24*, not a guarantee. Confidence is stated explicitly per item. **Verify
   against the live app/code before assuming something is or isn't already fixed** - do not skip a task
   just because this file guesses it's done, and do not re-build something that already exists.
-- Regenerate this snapshot rather than trusting it indefinitely once things start getting fixed: query
-  production read-only (`vercel env pull` + `psql "$POSTGRES_URL_NON_POOLING"`, delete the pulled env
-  file immediately after) for `to_do`/`in_progress` tasks on this board assigned to Vanshaj, matching
-  the query shape used to build this file.
+- Regenerate this snapshot rather than trusting it indefinitely once things start getting fixed:
+  query production **read-only** for `to_do`/`in_progress` tasks on this board assigned to Vanshaj,
+  matching the query shape used to build this file. Do **not** run `vercel env pull` in this folder -
+  it overwrites `.env.local`'s dev-sandbox credentials with production ones and defeats the DB
+  guardrail (see `CLAUDE.md`). Read prod through `.env.production.local`, and note that
+  `db.<ref>.supabase.co` is IPv6-only: use the pooler URL that file already carries, or the REST
+  API, whichever is to hand.
 
 ## Session log
 
