@@ -3,13 +3,15 @@
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, ShieldCheck, Users, Building2, SlidersHorizontal, UsersRound, ToggleLeft } from 'lucide-react'
+import { ArrowLeft, ShieldCheck, Users, Building2, SlidersHorizontal, UsersRound, ToggleLeft, Shapes, Table2 } from 'lucide-react'
 import { ThemeControls } from '@/components/theme/theme-controls'
 import EnhancedUserManagement from './enhanced-user-management'
 import CompanyManagement from './company-management'
 import StatusManagement from './status-management'
 import TeamManagement from './team-management'
 import ModuleManagement from './module-management'
+import WorkItemTypeManagement from './work-item-type-management'
+import FieldManagement from './field-management'
 
 interface SuperAdminDashboardProps {
   users: any[]
@@ -54,11 +56,12 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
 
       <main className="container mx-auto px-3 py-5 sm:px-4 sm:py-8">
         <Tabs defaultValue="companies" className="space-y-6">
-          {/* Five equal columns cannot hold five icon-and-word labels on a 390px screen - at
-              12px text they collided with their own icons. Below `sm` the strip scrolls
-              sideways at its natural width instead, which is the one place horizontal scroll
-              is the right answer: the row is the control. */}
-          <TabsList className="-mx-3 flex h-auto w-auto max-w-full justify-start gap-1 overflow-x-auto rounded-none px-3 sm:mx-0 sm:grid sm:w-full sm:max-w-3xl sm:grid-cols-5 sm:gap-0 sm:rounded-lg sm:px-1 sm:py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* Equal columns cannot hold seven icon-and-word labels on a 390px screen - at 12px
+              text they collided with their own icons. Below `sm` the strip scrolls sideways at
+              its natural width instead, which is the one place horizontal scroll is the right
+              answer: the row is the control. `max-w-3xl` is gone with the seventh tab - the
+              grid needs the full container width to fit them. */}
+          <TabsList className="-mx-3 flex h-auto w-auto max-w-full justify-start gap-1 overflow-x-auto rounded-none px-3 sm:mx-0 sm:grid sm:w-full sm:grid-cols-7 sm:gap-0 sm:rounded-lg sm:px-1 sm:py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TabsTrigger value="companies" className="shrink-0 gap-1.5 px-3 py-2 text-xs whitespace-nowrap sm:min-w-0 sm:shrink sm:gap-2 sm:px-3 sm:text-sm">
               <Building2 className="h-4 w-4" />
               Companies
@@ -78,6 +81,14 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
             <TabsTrigger value="modules" className="shrink-0 gap-1.5 px-3 py-2 text-xs whitespace-nowrap sm:min-w-0 sm:shrink sm:gap-2 sm:px-3 sm:text-sm">
               <ToggleLeft className="h-4 w-4" />
               Modules
+            </TabsTrigger>
+            <TabsTrigger value="types" className="shrink-0 gap-1.5 px-3 py-2 text-xs whitespace-nowrap sm:min-w-0 sm:shrink sm:gap-2 sm:px-3 sm:text-sm">
+              <Shapes className="h-4 w-4" />
+              Types
+            </TabsTrigger>
+            <TabsTrigger value="fields" className="shrink-0 gap-1.5 px-3 py-2 text-xs whitespace-nowrap sm:min-w-0 sm:shrink sm:gap-2 sm:px-3 sm:text-sm">
+              <Table2 className="h-4 w-4" />
+              Fields
             </TabsTrigger>
           </TabsList>
 
@@ -99,6 +110,14 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
 
           <TabsContent value="modules">
             <ModuleManagement />
+          </TabsContent>
+
+          <TabsContent value="types">
+            <WorkItemTypeManagement />
+          </TabsContent>
+
+          <TabsContent value="fields">
+            <FieldManagement />
           </TabsContent>
         </Tabs>
       </main>

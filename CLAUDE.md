@@ -309,16 +309,20 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `110`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `116`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
   As of 2026-08-19, verified by running the runner against both: **dev and prod were BOTH fully
   applied at `107` - all 107 files, zero pending on either.** `105`–`107` went to prod with
   `--only=105,106,107 --allow-prod`, which is what the runner's `--only` flag exists for.
-  **Verified again 2026-08-21 with the runner against dev and a read-only REST count against
-  prod: dev is at `109` (109 files, 0 pending), prod is at `108` (108 rows).**
-  `109` is the one gap, and it is deliberate - see its entry below.
+  **Verified again 2026-08-23 with the runner against BOTH: dev and prod are both at `115`,
+  0 pending on each.** `112`-`115` (Prompt C) were applied to prod on 2026-08-23 - see that
+  section below.
+  ⚠️ The line above this one used to say prod stopped at `108` and that `109` was a
+  deliberate gap. **Both halves are now false** - `109`, `110` and `111` are all on prod. It
+  is the third time this block has gone stale, which is exactly why the rule is to run
+  `pnpm migrate:status` rather than read any sentence here.
   ⚠️ **The per-migration notes below saying a given number is "dev-only" are HISTORICAL** -
   each was true the day it was written and most have since been applied. `087`, `096`–`102`
   and `104` are all on prod now. The ledger is the only truth; those notes are kept for the
@@ -897,6 +901,132 @@ deliberately left out.
   schema change prod depends on *before* merging. To confirm what is actually live, read the commit
   sha from `gh api repos/VanshajPoonia/projectmanagementatlas/deployments` - `vercel inspect` does
   not print it, and matching timestamps by eye is a guess.
+
+### Prompt C - the canonical work-item domain (`112`-`115`, dev AND prod, 2026-08-23)
+
+Four migrations that together answer the plan's "one work item, configurable" requirement.
+**All four are applied to dev AND prod** (prod on 2026-08-23, on the owner's explicit
+instruction, one file at a time via `--only=NNN --allow-prod`, verified between each). ⚠️ Note
+`113` was applied to prod **despite not being `--allow-prod` eligible on this repo's own rule**
+- it adds a trigger to `tasks`. That was a deliberate owner decision after the risk was stated,
+not an oversight; do not read it as precedent that the rule has changed.
+
+⚠️ **The app code hard-depends on all four**: `useTaskStatuses` selects
+`category, is_closed, icon`, `subtask-list.tsx` writes `tasks.type_key`, and two new panels
+query `field_definitions` / `task_relations_expanded`. That dependency is satisfied on prod
+now. `114` validates `applies_to_types` against `work_item_types`, so `113` is a hard
+prerequisite of it - keep that order for any future rebuild.
+
+**What the prod run found that dev could not.** Prod carries a **fifth status,
+`pending_approval` ("Pending Approval")**, active and linked to a real column; dev has four.
+`112`'s catch-all backfill gave it `planned`, which is byte-for-byte the bucket the old
+substring heuristic already resolved it to (`to_do`), so nothing changed on deploy. **It is
+very likely mis-categorised as a matter of meaning** - work awaiting sign-off reads as
+`started` - and that is now a one-click edit in Super Admin → Statuses → Means. Left as-is
+deliberately: changing it during a migration would have silently moved that column's tasks
+between the "open" and "in progress" buckets on every dashboard and report.
+Prod also had **one** pre-existing subtask, correctly re-typed to `subtask` by `113`'s
+backfill (171 tasks before and after; every table's row count identical before and after all
+four migrations). Pre-migration backup:
+`~/Code/prod-backup-pre-112to115-20260823-205453.dump` (custom format, `public` schema,
+`pg_restore --list`-verified, chmod 444).
+
+Gates: `pnpm check:work-items` (94, real RLS) and `pnpm check:work-items-ui` (31, real
+browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
+
+- **`112` - `task_statuses.category`.** Additive (three columns, no policy/row/grant touched),
+  so `--allow-prod` eligible. Five normalized categories - `backlog|planned|started|
+  completed|cancelled` - plus `is_closed` as a **GENERATED** column, because open-vs-closed is
+  a function of the category and a writable copy of a derived fact is a copy that can be set
+  to disagree with it.
+  - **What it closes:** `063` made `columns.status_key` decide *which* status a task holds, and
+    `lib/task-status.ts` then decided what that status *means* with
+    `bucketFromText(status_key)` - a substring match for "progress"/"done"/"cancel". It was
+    right only by coincidence: the four seeded keys each happen to contain a word it looks
+    for. A status named `review`, `blocked`, `wip`, `qa` or `waiting` fell through every
+    branch and counted as To Do, so blocked work reported as not started. The status screen's
+    own placeholder - "e.g. Escalate to Mgmt." - is one of the names it gets wrong.
+  - The heuristic is **kept as a last resort**, not deleted: callers holding a bare status
+    string with no catalog still need an answer. `getNormalizedTaskStatus(task, statuses?)`
+    takes an optional catalog and consults the category first; without one it behaves exactly
+    as before. Both behaviours are pinned, including the wrong answers.
+  - ⚠️ **`subtask-list.tsx` had a live bug this fixes.** Its "done" key was the first status
+    whose *bucket* was `done`, and `cancelled` shares that bucket with `completed` by design -
+    so on a workspace that ordered Cancelled above Completed, ticking a subtask's checkbox
+    would have **cancelled** it. It asks for the `completed` category now.
+  - The category is reachable: `status-management.tsx` has a **Means** picker on both create
+    and edit, and shows it on every row. Without that, every status added from now on would
+    silently take the default - the same "no human can get there" defect as `app_modules`.
+
+- **`113` - `work_item_types` + `tasks.type_key`.** ⚠️ **NOT `--allow-prod` eligible**: it puts
+  a trigger on `tasks`, which changes the behaviour of writes that already happen (the same
+  reasoning that held `098` back). Eleven types seeded, **only `task` and `subtask` active** -
+  the other nine exist, are editable, and appear in no picker, per the plan's "build the
+  extensibility first, do not activate all types immediately".
+  - Hierarchy is enforced in **two** triggers on purpose. `060` owns hierarchy by SHAPE (no
+    self-parent, no cycle, one level deep) and is untouched; `113` adds hierarchy by KIND
+    (`can_have_children` / `can_be_child` / `allowed_parent_type_keys`). Keeping them apart
+    means `060`'s guarantees stay independently verifiable.
+  - ⚠️ The trigger is `BEFORE INSERT OR UPDATE **OF type_key, parent_task_id**`. Both columns
+    are named because of `104`'s lesson that an `OF` clause cannot police what it does not
+    fire on: re-typing a PARENT to a type that cannot have children is an UPDATE of `type_key`
+    on the parent row, which a `parent_task_id`-only trigger would never see.
+  - `is_system` protects `task`/`subtask` from being deactivated, deleted or re-keyed -
+    otherwise switching off `task` leaves every row pointing at a type no picker offers.
+  - Backfill moves existing subtasks to type `subtask`; `subtask-list.tsx` now writes
+    `type_key: 'subtask'` so new ones do not diverge from the backfilled ones.
+
+- **`114` - custom fields.** Purely additive (two new tables), `--allow-prod` eligible, and
+  seeds **zero** fields, so applying it changes nothing anyone can see. FEATURES.md Phase 1.
+  - One row per `(task, field)`, value in `jsonb`. Not one JSON document per task, because
+    that makes a value unaddressable and turns every edit into a read-modify-write that loses
+    concurrent changes; not twelve typed columns, because a CHECK cannot see which type
+    applies (the type lives on the other table).
+  - **Validation is a trigger**, so a `number` cannot hold text whatever wrote it - UI,
+    import, psql or a future automation. `is_required` is enforced at the VALUE, never at the
+    task: blocking task creation would mean ticking "required" on a new field retroactively
+    invalidates every task that already exists.
+  - ⚠️ **Write policy is `is_super_admin_user()`, narrowed from `is_admin_user()` before it
+    ever left dev**, because the only screen that manages fields is on `/admin/super-admin`.
+    Shipping a policy that grants an ability no screen exposes is the guest/client defect
+    again, just pointing the other way. Widen it the day a plain admin needs it.
+  - Values mirror `task_links`' policy shape exactly, so guests and clients get read-only
+    custom fields for free through `can_manage_task` - nothing new had to learn about board
+    roles.
+  - **The mirror between `lib/custom-fields.ts` and the trigger is a gate, not a claim.**
+    `lib/custom-fields.cases.mjs` holds ~59 cases; `custom-fields.parity.test.ts` asserts the
+    TypeScript validator agrees, and `check-work-items.mjs` writes every case to the real
+    database and asserts the trigger agrees. Confirmed to fail on both sides when one case was
+    deliberately flipped, rather than trusted to be meaningful.
+
+- **`115` - `task_relations`.** Purely additive, `--allow-prod` eligible, seeds nothing.
+  Seven relations, four stored rows: `blocks`/`precedes`/`duplicates` each derive their
+  inverse, `relates_to` is symmetric and normalised to `source < target` by a trigger. Storing
+  both directions is the obvious alternative and it rots - two rows that must agree forever.
+  - ⚠️ **`task_links` is NOT this.** Despite the name it holds external URL bookmarks. Anyone
+    reaching for "the links table" to answer "what blocks this" finds the wrong one.
+  - ⚠️ **`task_relations_expanded` is `WITH (security_invoker = true)` and that is load-bearing.**
+    A Postgres view runs as its OWNER by default, which would hand every signed-in user every
+    relation between every task including private boards. The migration's post-conditions
+    assert the option is set, because it is invisible in the view definition itself.
+  - SELECT needs `can_view_task` on **both** ends, or the id of a task you cannot see leaks
+    through the join. INSERT needs manage on the source and view on the target. DELETE needs
+    manage on **either** end, deliberately wider: being wrongly marked as blocking someone
+    else's work is a claim about your item too. There is no UPDATE policy or grant - changing
+    an end or the type makes it a different relation.
+  - Cycles are refused by a recursive walk in a `SECURITY DEFINER` trigger, so a loop passing
+    through a task the caller cannot see is still caught.
+
+⚠️ **Two harness traps this work turned up, both worth knowing before writing the next one.**
+  - **A CONTROL case that passes for the wrong reason is worse than no case.** Two checks here
+    were asserted against a `?task=` deep link after `page.reload()` - but `board-view.tsx`
+    opens the modal and then `router.replace`s the param away, so the reload landed on a board
+    with no modal at all. One check failed and the one after it *passed*, because the banner it
+    was asserting absent was absent for the wrong reason. Re-navigate rather than reload, and
+    assert the panel is on screen before asserting anything about its contents.
+  - **A filter written against `source_task_id` is direction-dependent** once `relates_to`
+    normalises the pair by uuid order, so the check passes or fails by how two random uuids
+    happen to sort. Query either end, or use a directional relation type in the fixture.
 
 ### Migration `087` - was held back from prod on purpose; it is now applied (2026-08-19)
 

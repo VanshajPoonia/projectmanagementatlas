@@ -142,9 +142,33 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   change** - so the UI now signs you out and sends you to `/login` rather than claiming you
   stay signed in. Gates: `pnpm check:task-move` (19/19), 23/23 real-browser checks, 503 unit
   tests, and `board-roles`/`access-matrix`/`task-lifecycle`/`deactivation` all re-run green.
-- NEXT actual work is NOT decided - ASK THE OWNER. The pack's own order says **Prompt B**
-  (finish single-org access control; its one honest gap is membership **audit events**) then
-  **Prompt C** (canonical work-item + custom fields = FEATURES Phase 1). Also still open: the
+- **Prompt C is BUILT and its migrations are ON PROD (`112`-`115`, applied 2026-08-23).** The canonical
+  work-item domain: normalized status **categories** (retiring the substring heuristic that
+  read `wip`/`review`/`blocked` as To Do), **work item types** (`work_item_types` +
+  `tasks.type_key`, eleven seeded, two active), the **custom field engine**
+  (`field_definitions` + `field_values`, all 12 types, validated by a database trigger), and
+  **relations** (`task_relations` - blocks/precedes/duplicates/relates to, with the inverses
+  derived by a `security_invoker` view rather than stored twice). UI shipped with it: Super
+  Admin gained **Types** and **Fields** tabs, the Statuses tab gained a **Means** picker, and
+  the work-item modal gained a **Details** section and a **Relations** panel.
+  Gates: `pnpm check:work-items` (94, real RLS), `pnpm check:work-items-ui` (31, real
+  browser), 893 unit tests, and `task-lifecycle`/`board-roles`/`access-matrix`/`task-move`/
+  `column-delete`/`grants`/`board-columns` all re-run green.
+  **Dev and prod are both at `115`, 0 pending.** Applied one file at a time with
+  `--only=NNN --allow-prod`, verified between each; every table's row count was identical
+  before and after, and a `pg_restore --list`-verified backup was taken first
+  (`~/Code/prod-backup-pre-112to115-20260823-205453.dump`). Prod is currently running the
+  PREVIOUS code against the new schema, which is fine - the migrations are additive and the
+  old query shapes were re-checked against prod directly.
+  ⚠️ **One judgement call is waiting for the owner.** Prod has a fifth status,
+  **"Pending Approval"**, that dev does not. It was categorised `planned` to preserve exactly
+  today's behaviour; it very likely means `started`. Changing it is one click in
+  Super Admin → Statuses → Means, and it will move that column's tasks between the "open" and
+  "in progress" buckets on every dashboard - which is why it was not changed automatically.
+- NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **Prompt B**'s one honest
+  gap (membership **audit events**), **Prompt D** (quick capture, bulk creation, recurrence -
+  the pack says it needs Prompt C's foundation, which now exists), **Prompt E** (saved views
+  and the table view, which is where custom fields start paying off). Also still open: the
   **Inbox** (Prompt F) - needs **no new table**, `task_notifications` (migration `035`) already
   exists with 169 prod rows and inbox-shaped RLS, and now that the toast no longer eats them
   unread state finally accumulates (open question: what to do with the ~121 already-unread

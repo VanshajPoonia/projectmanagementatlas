@@ -40,6 +40,8 @@ import {
   validateTaskAttachment,
 } from '@/lib/task-attachments'
 import SubtaskList from './subtask-list'
+import TaskCustomFields from './task-custom-fields'
+import TaskRelationsPanel from './task-relations-panel'
 
 // Mirrors the marketing calendar's custom-recurrence weekday row (and the booking
 // restriction dialog it was itself borrowed from) - 0=Sunday..6=Saturday.
@@ -291,7 +293,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const loadTaskDetails = async () => {
     const { data: taskData } = await supabase
       .from('tasks')
-      .select('*, assigned_user:profiles!tasks_assigned_to_fkey(id, full_name, email), creator:profiles!tasks_created_by_fkey(full_name, email), task_tags(tag:tags(*))')
+      .select('*, column:columns(id, board_id, status_key, title), assigned_user:profiles!tasks_assigned_to_fkey(id, full_name, email), creator:profiles!tasks_created_by_fkey(full_name, email), task_tags(tag:tags(*))')
       .eq('id', taskId)
       .single()
 
@@ -1306,6 +1308,23 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               </>
             )}
           </div>
+
+          {/* Custom fields (114). Renders nothing at all when no field applies to this work
+              item, so a workspace that has defined none sees the modal exactly as before. */}
+          {task && (
+            <TaskCustomFields
+              taskId={taskId}
+              boardId={board?.id ?? task?.column?.board_id ?? null}
+              typeKey={task?.type_key ?? null}
+              canEdit={canEdit}
+              currentUserId={currentUserId}
+              users={users}
+            />
+          )}
+
+          {/* Relations (115) - what blocks this, what it blocks, what it duplicates. Distinct
+              from Subtasks below (parts of this item) and from the Links tab (external URLs). */}
+          {task && <TaskRelationsPanel taskId={taskId} canEdit={canEdit} currentUserId={currentUserId} />}
 
           {/* Subtasks - only on top-level tasks; nesting is capped at one level (060). */}
           {task && !task.parent_task_id && (

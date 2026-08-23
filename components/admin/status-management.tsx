@@ -6,9 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Archive, ArchiveRestore, Plus, Pencil, Check, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { STATUS_CATEGORIES, STATUS_CATEGORY_LABELS, type StatusCategory } from '@/lib/task-status'
 
 interface TaskStatusRow {
   id: string
@@ -17,6 +19,20 @@ interface TaskStatusRow {
   color: string
   position: number
   is_archived: boolean
+  category: StatusCategory
+  is_closed: boolean
+}
+
+/**
+ * Short wording for the row badge. The full sentence in STATUS_CATEGORY_LABELS is what the
+ * picker shows, where there is room to explain; a row only has space for the word.
+ */
+const CATEGORY_SHORT: Record<StatusCategory, string> = {
+  backlog: 'Backlog',
+  planned: 'Planned',
+  started: 'Started',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
 }
 
 function slugify(label: string) {
@@ -27,10 +43,12 @@ export default function StatusManagement() {
   const [statuses, setStatuses] = useState<TaskStatusRow[]>([])
   const [newLabel, setNewLabel] = useState('')
   const [newColor, setNewColor] = useState('#6366f1')
+  const [newCategory, setNewCategory] = useState<StatusCategory>('planned')
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
   const [editColor, setEditColor] = useState('#6366f1')
+  const [editCategory, setEditCategory] = useState<StatusCategory>('planned')
   const supabase = createClient()
 
   const load = async () => {
@@ -60,7 +78,7 @@ export default function StatusManagement() {
     const nextPosition = statuses.length ? Math.max(...statuses.map((s) => s.position)) + 1 : 0
     const { error } = await supabase
       .from('task_statuses')
-      .insert({ key, label, color: newColor, position: nextPosition })
+      .insert({ key, label, color: newColor, position: nextPosition, category: newCategory })
     setSaving(false)
 
     if (error) {
@@ -69,6 +87,7 @@ export default function StatusManagement() {
     }
     setNewLabel('')
     setNewColor('#6366f1')
+    setNewCategory('planned')
     toast.success('Status added')
     load()
   }
@@ -90,6 +109,7 @@ export default function StatusManagement() {
     setEditingId(status.id)
     setEditLabel(status.label)
     setEditColor(status.color)
+    setEditCategory(status.category ?? 'planned')
   }
 
   const saveEdit = async (status: TaskStatusRow) => {
@@ -97,7 +117,7 @@ export default function StatusManagement() {
     if (!label) return
     const { error } = await supabase
       .from('task_statuses')
-      .update({ label, color: editColor })
+      .update({ label, color: editColor, category: editCategory })
       .eq('id', status.id)
     if (error) {
       toast.error('Could not save status')
@@ -154,6 +174,16 @@ export default function StatusManagement() {
             className="h-9 w-10 flex-shrink-0 cursor-pointer rounded border"
           />
           <Input value={editLabel} onChange={(e) => setEditLabel(e.target.value)} className="h-9" />
+          <Select value={editCategory} onValueChange={(v) => setEditCategory(v as StatusCategory)}>
+            <SelectTrigger className="h-9 w-40 flex-shrink-0" aria-label={`Meaning of ${status.label}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_CATEGORIES.map((c) => (
+                <SelectItem key={c} value={c}>{CATEGORY_SHORT[c]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button size="icon-sm" variant="ghost" onClick={() => saveEdit(status)} aria-label="Save">
             <Check className="h-4 w-4" />
           </Button>
@@ -167,6 +197,11 @@ export default function StatusManagement() {
             <span className="h-4 w-4 flex-shrink-0 rounded-full" style={{ backgroundColor: status.color }} />
             <span className="truncate font-medium">{status.label}</span>
             <code className="hidden text-xs text-muted-foreground sm:inline">{status.key}</code>
+            {status.category && (
+              <Badge variant="secondary" className="flex-shrink-0 text-[11px] font-normal">
+                {CATEGORY_SHORT[status.category]}
+              </Badge>
+            )}
             {status.is_archived && <Badge variant="outline" className="text-muted-foreground">Archived</Badge>}
           </div>
           <div className="flex flex-shrink-0 items-center gap-1">
@@ -189,6 +224,8 @@ export default function StatusManagement() {
         <CardTitle>Task Statuses</CardTitle>
         <CardDescription>
           Create or archive the statuses used across tasks. Archived statuses stay on existing tasks and remain searchable in reports - they just can&apos;t be picked for new work.
+          <br />
+          <strong>Means</strong> is how the rest of Atlas reads the status: it decides what counts as overdue, what shows as in progress, and what a completed subtask looks like. Set it deliberately - a status called &ldquo;Escalate to Mgmt.&rdquo; is <em>Started</em>, not Planned, and nothing can work that out from the name.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -214,6 +251,19 @@ export default function StatusManagement() {
               className="h-10 w-12 cursor-pointer rounded border"
               disabled={saving}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-status-category" className="text-xs">Means</Label>
+            <Select value={newCategory} onValueChange={(v) => setNewCategory(v as StatusCategory)} disabled={saving}>
+              <SelectTrigger id="new-status-category" className="h-10 w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_CATEGORIES.map((c) => (
+                  <SelectItem key={c} value={c}>{STATUS_CATEGORY_LABELS[c]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <Button type="submit" className="gap-2" disabled={saving || !newLabel.trim()}>
             <Plus className="h-4 w-4" />

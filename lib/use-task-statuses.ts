@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import type { StatusCategory } from '@/lib/task-status'
 
 export interface TaskStatus {
   id?: string
@@ -8,15 +9,25 @@ export interface TaskStatus {
   color: string
   position?: number
   is_archived?: boolean
+  /**
+   * Normalized meaning (migration 112). Every consumer that asks "is this open, started or
+   * closed" resolves it through this, not through the letters of `key` - see lib/task-status.ts.
+   * Optional on the type only because a caller may hand-build a status; the column is NOT NULL.
+   */
+  category?: StatusCategory
+  /** Generated in Postgres from `category`. Never written; never trust a local override. */
+  is_closed?: boolean
+  /** Optional lucide icon name. NULL means the consumer picks one from the category. */
+  icon?: string | null
 }
 
 // Used as a fallback whenever the managed list can't be loaded, so the Status
 // dropdowns are never empty (a task always has selectable statuses).
 export const DEFAULT_STATUSES: TaskStatus[] = [
-  { key: 'to_do', label: 'To Do', color: '#64748b' },
-  { key: 'in_progress', label: 'In Progress', color: '#ca8a04' },
-  { key: 'done', label: 'Completed', color: '#16a34a' },
-  { key: 'cancelled', label: 'Cancelled', color: '#dc2626' },
+  { key: 'to_do', label: 'To Do', color: '#64748b', category: 'planned', is_closed: false },
+  { key: 'in_progress', label: 'In Progress', color: '#ca8a04', category: 'started', is_closed: false },
+  { key: 'done', label: 'Completed', color: '#16a34a', category: 'completed', is_closed: true },
+  { key: 'cancelled', label: 'Cancelled', color: '#dc2626', category: 'cancelled', is_closed: true },
 ]
 
 /**
@@ -40,7 +51,7 @@ export function useTaskStatusList({ includeArchived = false }: { includeArchived
     const supabase = createClient()
     const { data } = await supabase
       .from('task_statuses')
-      .select('id, key, label, color, position, is_archived')
+      .select('id, key, label, color, position, is_archived, category, is_closed, icon')
       .order('position', { ascending: true })
       .order('label', { ascending: true })
 

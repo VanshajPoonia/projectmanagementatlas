@@ -65,13 +65,21 @@ Lean into: content calendar + campaign goals + client portal + AI-generated week
 
 Ordering rationale: **custom fields** is the highest-leverage technical enabler (it unlocks views, automations, and forms), so it goes first. The **wedge** items (marketing/AI/portal) are interleaved because they're the differentiation.
 
-### Phase 1 - Custom fields engine  ⏳ NOT STARTED
+### Phase 1 - Custom fields engine  ✅ SHIPPED to dev (migrations 112-115, 2026-08-22)
 The single highest-leverage change. Turn hardcoded board columns into configurable field primitives.
-- [ ] Schema: `field_definitions` (per board/workspace) + `field_values` (per task); types: text, number, select, multi-select, person, date, status, checkbox, relation
-- [ ] RLS on new tables (inherit board visibility via existing chokepoint functions)
-- [ ] Task detail modal: render + edit custom fields
-- [ ] Board view: show selected fields on cards / as columns
-- [ ] Migration + backfill existing status/priority into the new model (or bridge)
+Delivered as Prompt C of the ATLAS pack - see CLAUDE.md's "Prompt C" section for the full design
+notes and the prod-ordering hazard.
+- [x] Schema: `field_definitions` (global or per board) + `field_values` (per task); all 12 types - text, long text, number, date, datetime, checkbox, select, multi-select, person, url, email, relation
+- [x] RLS on new tables (values mirror `task_links`' `can_view_task`/`can_manage_task` shape, so guests are read-only for free)
+- [x] Task detail modal: render + edit custom fields (`components/board/task-custom-fields.tsx`)
+- [x] Admin UI to define fields (`components/admin/field-management.tsx`, Super Admin → Fields)
+- [x] Value validation **in the database**, mirrored client-side and gated by a shared parity case list
+- [x] **Work item types** (`work_item_types` + `tasks.type_key`): one domain, eleven kinds, two active
+- [x] **Normalized status categories** (`task_statuses.category`), retiring the substring heuristic
+- [x] **Relations** (`task_relations`): blocks/blocked by, precedes/follows, duplicates/duplicated by, relates to - kept separate from parent/child
+- [ ] Board view: show selected fields on cards / as columns *(deferred - this is Phase 2 view work)*
+- [ ] Filter/sort a view by a custom field *(deferred to Phase 2, where saved views land)*
+- ~~Migration + backfill existing status/priority into the new model~~ *(deliberately NOT done: status and priority stay first-class columns. Re-homing them into the field engine would rewrite every query in the app to buy nothing - the plan's "do not rewrite a working feature to make it resemble a competitor".)*
 
 ### Phase 2 - Multiple views over one dataset  ⏳ NOT STARTED
 Same tasks, more lenses. Mostly frontend once Phase 1 lands.

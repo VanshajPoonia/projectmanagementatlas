@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { createClient } from '@/lib/supabase/client'
 import { getAssigneeIds, getAssignees } from '@/lib/assignees'
-import { getNormalizedTaskStatus } from '@/lib/task-status'
+import { getNormalizedTaskStatus, statusCategoryOf } from '@/lib/task-status'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { logTaskActivity } from '@/lib/task-activity'
 import { sendTaskAssignmentEmail } from '@/lib/email'
@@ -75,10 +75,23 @@ export default function SubtaskList({
 
   // Statuses are admin-managed, so the done/undone keys can't be hardcoded - resolve
   // them from the live list and fall back to the well-known defaults.
-  const doneKey = statuses.find((s) => getNormalizedTaskStatus({ status: s.key }) === 'done')?.key ?? 'done'
-  const openKey = statuses.find((s) => getNormalizedTaskStatus({ status: s.key }) === 'to_do')?.key ?? 'to_do'
+  //
+  // ⚠️ These resolve on CATEGORY (migration 112), and that is a correctness fix, not tidying.
+  // The previous rule took the first status whose *bucket* was `done`, and `cancelled` shares
+  // that bucket with `completed` by design - so on a workspace that ordered Cancelled above
+  // Completed, ticking a subtask's checkbox would have CANCELLED it. Asking for the
+  // `completed` category cannot pick a cancelled status however the list is ordered.
+  const doneKey = statuses.find((s) => statusCategoryOf(s) === 'completed')?.key
+    ?? statuses.find((s) => getNormalizedTaskStatus({ status: s.key }) === 'done')?.key
+    ?? 'done'
+  // Un-ticking returns a subtask to work, so it wants a not-yet-started status: planned
+  // first (the everyday "To Do"), then backlog, then the legacy bucket match.
+  const openKey = statuses.find((s) => statusCategoryOf(s) === 'planned')?.key
+    ?? statuses.find((s) => statusCategoryOf(s) === 'backlog')?.key
+    ?? statuses.find((s) => getNormalizedTaskStatus({ status: s.key }) === 'to_do')?.key
+    ?? 'to_do'
 
-  const isDone = (subtask: any) => getNormalizedTaskStatus(subtask) === 'done'
+  const isDone = (subtask: any) => getNormalizedTaskStatus(subtask, statuses) === 'done'
   const doneCount = subtasks.filter(isDone).length
 
   const handleAdd = async () => {
@@ -90,6 +103,10 @@ export default function SubtaskList({
     // board and is readable by exactly the people who can already see the parent.
     const { error } = await supabase.from('tasks').insert({
       title,
+      // Typed explicitly (migration 113). tasks.type_key DEFAULTs to 'task', and 113's
+      // backfill moved every pre-existing subtask to 'subtask' - so without this line, work
+      // created here would be the only subtasks in the database still typed as tasks.
+      type_key: 'subtask',
       parent_task_id: parentId,
       column_id: parentTask.column_id,
       created_by: currentUserId,

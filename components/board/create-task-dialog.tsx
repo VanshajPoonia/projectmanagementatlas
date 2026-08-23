@@ -14,8 +14,10 @@ import { sendTaskAssignmentEmail } from '@/lib/email'
 import { LinkIcon, Plus, X, Tag } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
+import { useWorkItemTypes } from '@/lib/work-item-types'
+import { topLevelTypes, TASK_TYPE_KEY } from '@/lib/work-item-type-registry'
 import { isDirty, useUnsavedChanges } from '@/components/shell/unsaved-changes'
-import { findExactColumnForStatus, statusesAvailableOnBoard } from '@/lib/task-status'
+import { findExactColumnForStatus, statusesAvailableOnBoard, statusesForCreation } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
 
 interface CreateTaskDialogProps {
@@ -37,6 +39,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
   // Per the PM portal spec: priority/status must be explicitly chosen, not silently defaulted.
   const [priority, setPriority] = useState<number | null>(null)
   const [status, setStatus] = useState('')
+  const [typeKey, setTypeKey] = useState<string>(TASK_TYPE_KEY)
   const [dueDate, setDueDate] = useState('')
   const [isRecurring, setIsRecurring] = useState(false)
   const [recurrencePattern, setRecurrencePattern] = useState<'daily' | 'weekly' | 'monthly'>('daily')
@@ -51,15 +54,27 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
   const taskStatuses = useTaskStatuses()
+  const workItemTypes = useWorkItemTypes()
+  /**
+   * Kinds of work this workspace has switched on, minus Subtask (which is created from inside
+   * its parent). 113 seeds only `task` active, so this is a single entry until a super admin
+   * turns something on in Super Admin → Types - and the picker below hides itself at one
+   * entry rather than asking a question with one answer.
+   */
+  const creatableTypes = useMemo(() => topLevelTypes(workItemTypes), [workItemTypes])
   /**
    * Only statuses this board actually has a column for. The submit handler below refuses
    * anything else, and used to do so *after* the whole form was filled in - with "ask an
    * admin" as the remedy even when the person reading it was the admin. Cancelled stays
    * excluded on top of that: it is an archive destination, reached by moving existing work
    * there, not somewhere new work is created.
+   *
+   * That exclusion asks the status's CATEGORY (migration 112), not whether its key is the
+   * literal string 'cancelled'. A workspace that adds a second cancelled-category status -
+   * "Won't Do", "Rejected" - would otherwise have it offered here as a place to file new work.
    */
   const creatableStatuses = useMemo(
-    () => statusesAvailableOnBoard(taskStatuses, columns).filter((s) => s.key !== 'cancelled'),
+    () => statusesForCreation(statusesAvailableOnBoard(taskStatuses, columns)),
     [taskStatuses, columns],
   )
 
@@ -72,8 +87,8 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
   // freshly opened dialog report itself dirty and prompt on every close. Only fields the user
   // has to type or pick count.
   const dirty = isDirty(
-    { title, description, assignees, dueDate, links, linkTitle, linkUrl, selectedTagIds, initialComment, priority },
-    { title: '', description: '', assignees: [], dueDate: '', links: [], linkTitle: '', linkUrl: '', selectedTagIds: [], initialComment: '', priority: null },
+    { title, description, assignees, dueDate, links, linkTitle, linkUrl, selectedTagIds, initialComment, priority, typeKey },
+    { title: '', description: '', assignees: [], dueDate: '', links: [], linkTitle: '', linkUrl: '', selectedTagIds: [], initialComment: '', priority: null, typeKey: TASK_TYPE_KEY },
   )
   const guardedClose = useUnsavedChanges(dirty, onOpenChange)
 
@@ -150,6 +165,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
         column_id: targetColumn.id,
         assigned_to: assignees[0] || null,
         created_by: user.id,
+        type_key: typeKey,
         priority,
         due_date: dueDate || null,
         status,
@@ -262,6 +278,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
       setVisibility('assigned')
       setPriority(null)
       setStatus('')
+      setTypeKey(TASK_TYPE_KEY)
       setDueDate('')
       setIsRecurring(false)
       setRecurrencePattern('daily')
@@ -498,6 +515,28 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Progressive disclosure: with one kind of work there is nothing to ask, so the
+                control is absent rather than disabled. It appears the moment a super admin
+                switches a second type on in Super Admin → Types - without which that toggle
+                would change nothing anyone could see. */}
+            {creatableTypes.length > 1 && (
+              <div className="space-y-2">
+                <label htmlFor="work-item-type" className="text-sm font-medium">
+                  Type
+                </label>
+                <Select value={typeKey} onValueChange={setTypeKey} disabled={loading}>
+                  <SelectTrigger id="work-item-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {creatableTypes.map((t) => (
+                      <SelectItem key={t.key} value={t.key}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <label htmlFor="status" className="text-sm font-medium">

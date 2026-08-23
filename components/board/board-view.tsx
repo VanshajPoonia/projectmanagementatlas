@@ -51,7 +51,12 @@ import { DensityToggle } from '@/components/shell/density-toggle'
 import { useDensity } from '@/components/shell/use-density'
 import { ThemeControls } from '@/components/theme/theme-controls'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
-import { getNormalizedTaskStatus, getTaskStatusLabel, statusesMissingFromBoard } from '@/lib/task-status'
+import {
+  getNormalizedTaskStatus,
+  getTaskStatusLabel,
+  statusesMissingFromBoard,
+  categoryForColumn,
+} from '@/lib/task-status'
 import { moveListItem } from '@/lib/reorder'
 import { useTaskStatusList } from '@/lib/use-task-statuses'
 import { useAppModules } from '@/lib/modules'
@@ -435,7 +440,9 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   }
 
   const handleOpenCreateDialog = (column: any) => {
-    if (column.status_key === 'cancelled') {
+    // By category, not by key literal - a second cancelled-category status ("Won't Do") is
+    // just as much an archive destination as the seeded one. See migration 112.
+    if (categoryForColumn(column, taskStatuses) === 'cancelled') {
       toast.info('Cancelled is an archive destination', {
         description: 'Create the task in an active status, then move it to Cancelled when needed.',
       })
@@ -840,7 +847,9 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       membersDecision: can(actor, 'members.manage', undefined, board),
       onCreate: () => {
         // Same guard the "+" button uses: cancelled is an archive destination.
-        const target = columns.find((c: any) => c.status_key && c.status_key !== 'cancelled') ?? columns[0]
+        const target = columns.find(
+          (c: any) => c.status_key && categoryForColumn(c, taskStatuses) !== 'cancelled',
+        ) ?? columns[0]
         if (target) handleOpenCreateDialog(target)
       },
       onFilter: () => setShowFilters(true),
@@ -926,10 +935,19 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   )
 
   const handleRestoreTask = async (task: any) => {
-    const destination = columns.find((column) => column.status_key === 'to_do')
+    // Restoring puts work back into play, so the destination must be a not-yet-started
+    // status - planned first, then backlog. Resolved by category (migration 112) rather than
+    // by the key literal 'to_do', so a workspace that renames or replaces its To Do status
+    // can still restore. The status string written below comes from the column's own FK for
+    // the same reason: hardcoding 'to_do' there would have written a status the board does
+    // not have.
+    const destination =
+      columns.find((column) => categoryForColumn(column, taskStatuses) === 'planned')
+      ?? columns.find((column) => categoryForColumn(column, taskStatuses) === 'backlog')
+      ?? columns.find((column) => column.status_key === 'to_do')
     if (!destination) {
-      toast.error('This board has no To Do column', {
-        description: 'Link a column to the To Do status before restoring this task.',
+      toast.error('This board has no column to restore into', {
+        description: 'Link a column to a planned or backlog status before restoring this task.',
       })
       return
     }
@@ -939,7 +957,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
         .from('tasks')
         .update({
           column_id: destination.id,
-          status: 'to_do',
+          status: destination.status_key ?? 'to_do',
           position: boardTasks(destination).length,
           archived_at: null,
           archived_by: null,
