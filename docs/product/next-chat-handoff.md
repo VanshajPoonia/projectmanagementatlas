@@ -160,11 +160,15 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   (`~/Code/prod-backup-pre-112to115-20260823-205453.dump`). Prod is currently running the
   PREVIOUS code against the new schema, which is fine - the migrations are additive and the
   old query shapes were re-checked against prod directly.
-  ⚠️ **One judgement call is waiting for the owner.** Prod has a fifth status,
-  **"Pending Approval"**, that dev does not. It was categorised `planned` to preserve exactly
-  today's behaviour; it very likely means `started`. Changing it is one click in
-  Super Admin → Statuses → Means, and it will move that column's tasks between the "open" and
-  "in progress" buckets on every dashboard - which is why it was not changed automatically.
+  **Prod has a fifth status, "Pending Approval", that dev does not.** The migration gave it
+  `planned` (behaviour-preserving); it was corrected to **`started`** on 2026-08-23 after the
+  deploy, as a separate visible step. One live task was affected. ⚠️ **Dev still has only four
+  statuses**, so anything that assumes dev and prod have the same status list is wrong.
+  **The code is DEPLOYED**: `main` is at `b88ed49`, Vercel Production deployment succeeded,
+  live bundle verified pointing at the prod project with zero console errors on first paint.
+  All nine non-system work item types are still switched OFF and no custom fields are defined -
+  deliberately, so the deploy changed nothing anyone sees. Turning one on is the first thing to
+  do when someone actually wants Bugs or Risks as a separate kind of work.
 - NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **Prompt B**'s one honest
   gap (membership **audit events**), **Prompt D** (quick capture, bulk creation, recurrence -
   the pack says it needs Prompt C's foundation, which now exists), **Prompt E** (saved views

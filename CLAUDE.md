@@ -920,11 +920,13 @@ prerequisite of it - keep that order for any future rebuild.
 **What the prod run found that dev could not.** Prod carries a **fifth status,
 `pending_approval` ("Pending Approval")**, active and linked to a real column; dev has four.
 `112`'s catch-all backfill gave it `planned`, which is byte-for-byte the bucket the old
-substring heuristic already resolved it to (`to_do`), so nothing changed on deploy. **It is
-very likely mis-categorised as a matter of meaning** - work awaiting sign-off reads as
-`started` - and that is now a one-click edit in Super Admin → Statuses → Means. Left as-is
-deliberately: changing it during a migration would have silently moved that column's tasks
-between the "open" and "in progress" buckets on every dashboard and report.
+substring heuristic already resolved it to (`to_do`), so nothing changed at migration time.
+**It was then corrected to `started` on 2026-08-23, after the deploy, on the owner's
+instruction** - work awaiting sign-off has begun, and `started` is the only one of the five
+categories that fits. One live task sits in that column, so the blast radius was one card
+moving from the "to do" bucket to "in progress" on dashboards and reports. It was done as a
+separate, visible step rather than folded into the migration, precisely so the migration
+itself changed no classification anywhere.
 Prod also had **one** pre-existing subtask, correctly re-typed to `subtask` by `113`'s
 backfill (171 tasks before and after; every table's row count identical before and after all
 four migrations). Pre-migration backup:
