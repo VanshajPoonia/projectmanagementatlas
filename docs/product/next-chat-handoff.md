@@ -169,7 +169,7 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   All nine non-system work item types are still switched OFF and no custom fields are defined -
   deliberately, so the deploy changed nothing anyone sees. Turning one on is the first thing to
   do when someone actually wants Bugs or Risks as a separate kind of work.
-- **Prompt D is BUILT, and its migrations are on DEV ONLY (`116`-`117`, 2026-08-24).** Quick
+- **Prompt D is SHIPPED to dev AND prod (`116`-`117`, 2026-08-24).** Quick
   capture (deterministic one-line parsing, no LLM, with every interpreted field shown as a
   removable chip carrying the absolute value), paste-a-list multi-create (previews first;
   indentation is reported, never acted on silently), bulk operations (plans before it runs, so
@@ -177,9 +177,23 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   refusal is never called a success), **real recurrence** (`recurrence_rules` +
   `recurrence_occurrences`, idempotent by a UNIQUE constraint) and **per-user private
   reminders** (`task_reminders`, no admin bypass on any policy).
-  ⚠️ **Both migrations are purely additive and `--allow-prod` eligible, and NEITHER IS ON PROD.**
-  The app code hard-depends on both, so apply them BEFORE merging. Rollbacks exist;
-  `116`'s destroys the occurrence ledger, which is the one thing that cannot be reconstructed.
+  **Both migrations are purely additive and were applied to prod on 2026-08-24**, one file at a
+  time with `--only=NNN --allow-prod`, verified between each, after a `pg_restore --list`-verified
+  backup (`~/Code/prod-backup-pre-116to117-20260824-204753.dump`, 51 tables). **Prod ledger is at
+  `117`.** Every row count was identical before and after: 171 tasks, 11 boards, 10 profiles.
+  `116`'s own post-conditions reported **10 rules backfilled, 4 recurring tasks skipped as
+  unschedulable, 0 occurrences generated** - so the deploy created no work on day one, because
+  every backfilled rule is `on_completion`. The code is DEPLOYED: `main` is at `a72120e`, the
+  Vercel Production deployment reported success, and the cron route was re-verified against the
+  LIVE site (401 with no header, 401 with a wrong secret) which also proves the `lib/email.ts`
+  import crash is not in production. Rollbacks exist; `116`'s destroys the occurrence ledger,
+  which is the one thing that cannot be reconstructed.
+  ⚠️ **Still an OWNER DECISION: the 4 recurring tasks on prod with no cadence** - "Before & After
+  Pix Constantly", "Begin and continuisouly develope a Handyman Handbook", "Get with Beth Smith
+  @ SGR to particpate more often", "Migrate AGC clients in HOUZZ to Brevo" (all on Marketing PM
+  Sheet, created 2026-06-18, no due dates). They read as ongoing efforts rather than scheduled
+  repeats, so the recommendation is to clear `is_recurring` rather than invent a cadence. They
+  deliberately got no rule and the panel says so on screen.
   **`CRON_SECRET` is set** in `.env.local` and in Vercel (Production + Development; Preview
   skipped on purpose, cron only fires on Production). The route was verified by curl: 401 with
   no header, 401 with a wrong secret, 200 and an honest report with the right one.
@@ -190,9 +204,20 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   nothing for months (14 such tasks on production, 4 with no pattern at all - those deliberately
   got NO rule rather than an invented cadence), and `lib/reminder-service.ts` was an unscheduled
   `'use server'` function with zero call sites, now **deleted**.
-  Gates: `pnpm check:recurrence` (84, real RLS), `pnpm check:recurrence-ui` (69, real browser),
-  1177 unit tests, and `work-items`/`task-lifecycle`/`access-matrix`/`board-roles`/`grants`/
-  `task-move`/`column-delete`/`board-nav`/`work-items-ui` all re-run green.
+  Gates: `pnpm check:recurrence` (84, real RLS), `pnpm check:recurrence-ui` (75, real browser),
+  1185 unit tests, and `work-items`/`task-lifecycle`/`access-matrix`/`board-roles`/`grants`/
+  `task-move`/`board-nav`/`work-items-ui`/`shell-actions` all re-run green.
+  **A completion pass on 2026-08-24 closed four gaps the first audit had called done:** editing a
+  schedule now states what happened to the tasks it already created (it never could rewrite them,
+  but the requirement is "not *silently*"); the bulk report offers **Retry N failed** with attempt
+  counts, consuming a `retryableIds` field that had sat unused since the engine was written; `C`
+  opens quick capture; and `HelpDialog` is now mounted on the board, which had never had it
+  because a board renders outside AppShell - so the only place shortcuts are documented was
+  unreachable from the screen the new one works on.
+  ⚠️ **The UI harness was flaky and passing by luck** - three consecutive runs of identical code
+  failed three different checks, and one pair made correct behaviour look broken by reading the
+  database before the write landed (`Run now` reported `0 created`, then `0 -> 5`). Every database
+  assertion polls now; stable at 75/75 across four consecutive runs.
   **Three things learned, all worth reading in CLAUDE.md:** (1) `REVOKE ALL ON FUNCTION ... FROM
   PUBLIC` does NOT make a function private here - `postgres` holds a default ACL granting EXECUTE
   to `authenticated` on every new function in `public`, and two SECURITY DEFINER functions

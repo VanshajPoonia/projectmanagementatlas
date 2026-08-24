@@ -309,7 +309,8 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `118`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `118`. **Dev and prod were both
+  verified fully applied at `117` on 2026-08-24**, 0 pending on each. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
@@ -1043,17 +1044,35 @@ calendar access", and that instruction is spent: someone applied it. Kept here b
 marketing calendar member is an admin and admins already read every check row (see the People
 section). Nothing about the feature changed when it landed.
 
-### Prompt D - capture, bulk editing, recurrence and reminders (`116`-`117`, DEV ONLY, 2026-08-24)
+### Prompt D - capture, bulk editing, recurrence and reminders (`116`-`117`, dev AND prod, 2026-08-24)
 
-Two migrations plus four pure libraries. **Both are applied to dev ONLY.** Both are purely
-additive - new tables and functions, no existing table, row, policy, grant or trigger touched -
-so both are `--allow-prod` eligible on this repo's own rule, unlike `113`. Nothing has been sent
-to prod yet.
+Two migrations plus four pure libraries. **Both are applied to dev AND prod** (prod on
+2026-08-24, one file at a time via `--only=NNN --allow-prod`, verified between each). Both are
+purely additive - new tables and functions, no existing table, row, policy, grant or trigger
+touched - so both were `--allow-prod` eligible on this repo's own rule, unlike `113`.
+
+**What the prod run produced.** `116`'s own post-conditions reported **10 rules backfilled, 4
+recurring tasks skipped as unschedulable, 0 occurrences generated**, and `117` reported
+**0 seeded, 0 delivered**. Every row count was identical before and after: 171 tasks, 11 boards,
+10 profiles, `is_recurring` still 14. Because every backfilled rule is `on_completion`, the
+deploy created no work on day one - the first new instance appears when someone completes one of
+those ten tasks. Pre-migration backup:
+`~/Code/prod-backup-pre-116to117-20260824-204753.dump` (custom format, `public` schema,
+`pg_restore --list`-verified at 51 tables, chmod 444). Deployed as `a72120e`; the cron route was
+re-verified against the LIVE site (401 with no header, 401 with a wrong secret), which is also
+the proof that the `lib/email.ts` import crash is not in production.
+
+⚠️ **The 4 recurring tasks with no cadence are still an owner decision, not a bug.** They are
+all on Marketing PM Sheet, created 2026-06-18, with no due dates, and they read as ongoing
+efforts rather than scheduled repeats. They deliberately got no rule, no row was modified, and
+the panel reports them as incomplete on screen. Clearing `is_recurring` is the recommendation;
+inventing a cadence for them is not.
 
 ⚠️ **The app code hard-depends on both**, and on `112`: the board's recurrence and reminders
 panels query `recurrence_rules` / `task_reminders`, the generator resolves open-vs-closed through
 `task_statuses.is_closed`, and `use-reminder-delivery.ts` calls `deliver_my_due_reminders()` on
-every page. Apply both to prod **before** merging.
+every page. That dependency is satisfied on prod now. Keep the `116` → `117` order for any
+future rebuild.
 
 Gates: `pnpm check:recurrence` (84, real RLS) and `pnpm check:recurrence-ui` (75, real browser,
 needs `pnpm dev` on :3000). Both counts were read off a run, not estimated.
