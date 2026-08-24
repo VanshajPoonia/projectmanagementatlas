@@ -133,8 +133,12 @@ Scoped read-only external view (our RLS + private-board work makes this achievab
 - [x] Undo-capable toasts on the two silent hard deletes (personal tasks, bookmarks) -
       `components/shell/undo-toast.ts`, act-then-reverse, restoring the original row id
 - [x] Unsaved-change protection on the create-task dialog (`beforeunload` + a guarded close)
-- [ ] Keyboard shortcuts for common actions
-- [ ] Fast task create (minimal friction) - Quick Add / parsed capture (Prompt D)
+- [~] Keyboard shortcuts for common actions - `⌘K`, `?`, `Esc`, `⌘Enter` and `C` (quick add on a
+      board). Every one is listed in the help panel's Shortcuts tab; an undocumented shortcut is
+      one nobody finds, so the panel and the handlers are added together or not at all.
+- [x] Fast task create (minimal friction) - Quick Add / parsed capture (Prompt D) - one-line
+      deterministic capture, chips showing every interpreted field with its ABSOLUTE value, and
+      paste-a-list multi-create. Reachable from the board toolbar, `⌘K`, and `C`.
 - [x] Information-density pass on board/table views - per-user Compact/Comfortable/Expanded
       (`components/shell/density.ts`), applied to board task cards. **Not yet:** list/table
       views and the dashboard task lists.
@@ -155,7 +159,7 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       see the changelog entry. **Deliberately deferred: pinned views**, which needs saved
       views (Prompt E) to exist first; `user_favorites.entity_type` already accepts `'view'`
       so that lands as a client change, not a migration.
-- [~] **2. Single-org access control** (Prompt B) - `lib/capabilities.ts` is the canonical
+- [x] **2. Single-org access control** (Prompt B) - `lib/capabilities.ts` is the canonical
       vocabulary; board/task checks all route through it; unavailable actions now explain
       themselves. **Teams UI shipped** (migration `094`, Super Admin > Teams - two seeded
       business units, people × teams grid, super-admin-only management, `pnpm check:teams`
@@ -164,12 +168,41 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       **Audit events shipped** (`098`/`100`/`101` + the Access log screen).
       **Re-audited 2026-08-19:** the vocabulary was two-thirds unconsumed and disagreed with
       RLS in one measured place (`comment.create` denied a guest the database allows) - all
-      corrected. Outstanding: **B3a** - `share_links` does not enforce `board_members.role`,
-      which needs an RLS rewrite and an owner decision. See
-      `docs/reviews/atlas-prompts-a-b-audit.md`.
-- [ ] **3. Canonical work-item + custom-field engine** (Prompt C) - = FEATURES Phase 1
+      corrected. **B3a closed** by migration `109` (dev **and** prod): the `share_links`
+      INSERT policy now refuses a guest/client on the board, so the boundary is the database
+      rather than a hidden Share button. Forward-only by design - a link minted before someone
+      is demoted keeps working. See `docs/reviews/atlas-prompts-a-b-audit.md`.
+- [x] **3. Canonical work-item + custom-field engine** (Prompt C) - = FEATURES Phase 1.
+      **SHIPPED to dev AND prod** (migrations `112`-`115`; prod 2026-08-23, one file at a time).
+      Gates: `pnpm check:work-items` (94), `pnpm check:work-items-ui` (31). The two unchecked
+      Phase 1 boxes above (fields on cards, filter/sort by a field) are Prompt E view work, not
+      gaps in this one.
 - [ ] **4. Shared filter/query/view model** (Prompt E) - = FEATURES Phase 2
-- [ ] **5. Quick capture** (Prompt D)
+- [x] **5. Quick capture, bulk editing, recurrence, reminders** (Prompt D) - **SHIPPED to dev
+      2026-08-24** (migrations `116`/`117`, both purely additive and `--allow-prod` eligible,
+      **not yet on prod**). Quick capture parses one line deterministically (no LLM) and shows
+      every field it interpreted as a removable chip carrying the ABSOLUTE value, so a wrong
+      guess is visible before saving; paste-a-list previews before it writes and reports
+      indentation rather than acting on it. Bulk operations plan before they run - the
+      confirmation says "18 of 30 will change", not "30 selected" - and a run with any refusal
+      is never reported as a success. **Recurrence became real**: `025`/`086`'s five columns had
+      a prominent toggle wired to nothing for months (14 such tasks on production, 4 of them
+      with no pattern at all), and are replaced by a rule + an occurrence ledger whose
+      `UNIQUE (rule_id, occurrence_date)` makes generation idempotent by construction.
+      Reminders are per-user and private, with no admin bypass. `lib/reminder-service.ts` -
+      unscheduled with zero call sites since it was written - is deleted in favour of a real
+      daily Vercel cron plus in-app delivery. **Completion pass 2026-08-24** closed the four
+      remaining gaps: editing a schedule now states what happened to the tasks it already
+      created (the requirement is "not silently", and "cannot" was only half of it); the bulk
+      report offers **Retry N failed** and shows attempt counts, consuming a `retryableIds`
+      field that had existed unused since the engine was written; `C` opens quick capture; and
+      `HelpDialog` is mounted on the board, which had never had it because a board renders
+      outside AppShell - so the only place shortcuts are documented was unreachable from the
+      screen the new one works on. Gates: `pnpm check:recurrence` (84),
+      `pnpm check:recurrence-ui` (75, stable across four consecutive runs after every
+      `waitForTimeout`-then-read assertion was replaced with polling - three different checks
+      had been failing on three consecutive runs of identical code). `CRON_SECRET` is set in Vercel (Production +
+      Development) and the sweep is verified end to end.
 - [~] **6. My Work + Inbox** (Prompt F) - `/my-work` shipped. Inbox not started, but **it needs
       no new table**: `task_notifications` already exists (migration `035`) with 169 rows on
       production, four writers, and RLS (`recipient_id = auth.uid()` on SELECT *and* UPDATE)

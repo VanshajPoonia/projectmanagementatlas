@@ -46,7 +46,9 @@
     "check:metrics": "node --env-file=.env.local scripts/check-metrics.mjs",
     "check:work-items": "node --env-file=.env.local scripts/check-work-items.mjs",
     "check:work-items-ui": "node --env-file=.env.local scripts/check-work-items-ui.mjs",
-    "check:marketing-calendar-default": "node --env-file=.env.local scripts/check-marketing-calendar-default.mjs"
+    "check:marketing-calendar-default": "node --env-file=.env.local scripts/check-marketing-calendar-default.mjs",
+    "check:recurrence": "node --env-file=.env.local scripts/check-recurrence.mjs",
+    "check:recurrence-ui": "node --env-file=.env.local scripts/check-recurrence-ui.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",

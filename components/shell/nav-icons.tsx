@@ -1,5 +1,6 @@
 import {
   Bell,
+  CheckSquare,
   Calendar,
   CalendarClock,
   Clock,
@@ -51,6 +52,7 @@ const ICONS: Record<string, LucideIcon> = {
   history: History,
   // Command-palette-only keys (commands.ts), not used by any nav item.
   plus: Plus,
+  check: CheckSquare,
   search: Search,
   clock: Clock,
   link: Link2,

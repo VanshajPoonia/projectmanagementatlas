@@ -3,7 +3,25 @@
 import { Resend } from 'resend'
 import { createClient } from '@/lib/supabase/server'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+/**
+ * Constructed on first send, never at module load.
+ *
+ * ⚠️ `new Resend(undefined)` THROWS - "Missing API key" - so building it here at module scope
+ * meant that merely IMPORTING this file crashed whenever RESEND_API_KEY was unset. The guard in
+ * sendEmail() below reads like it handles that case and could never run, because the throw
+ * happened first. Found when /api/cron/scheduled-work returned 500 to every request, including
+ * unauthenticated ones: it could not even reach its own auth check.
+ *
+ * That mattered well beyond email. The cron route also drives recurrence generation, so an
+ * unset email key would have silently disabled task generation - two unrelated features taken
+ * down by one missing variable. Four components import this file too.
+ */
+let client: Resend | null = null
+function getResend(): Resend | null {
+  if (!process.env.RESEND_API_KEY) return null
+  if (!client) client = new Resend(process.env.RESEND_API_KEY)
+  return client
+}
 
 // Set EMAIL_FROM to an address on a domain you've verified in Resend.
 // The resend.dev fallback only delivers to your own Resend account email.
@@ -64,7 +82,8 @@ async function isNotificationEnabled(recipientEmail: string, column: Notificatio
 }
 
 async function sendEmail(to: string, subject: string, html: string) {
-  if (!process.env.RESEND_API_KEY) {
+  const resend = getResend()
+  if (!resend) {
     console.error('[email] RESEND_API_KEY is not set; skipping email to', to)
     return
   }

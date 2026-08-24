@@ -23,11 +23,13 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Download, MessageSquare, Lock, Kanban, SlidersHorizontal, Archive, ArchiveRestore, GripVertical, Pencil, Check } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Download, MessageSquare, Lock, Kanban, SlidersHorizontal, Archive, ArchiveRestore, GripVertical, Pencil, Check, Zap, CheckSquare } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import TaskCard from './task-card'
 import CreateTaskDialog from './create-task-dialog'
+import QuickCaptureDialog from './quick-capture-dialog'
+import BulkActionBar from './bulk-action-bar'
 import { TaskDetailModal } from './task-detail-modal'
 import { ShareLinkDialog } from './share-link-dialog'
 import { BoardAttachmentsDialog } from './board-attachments-dialog'
@@ -50,6 +52,7 @@ import { useFavorites } from '@/lib/use-favorites'
 import { DensityToggle } from '@/components/shell/density-toggle'
 import { useDensity } from '@/components/shell/use-density'
 import { ThemeControls } from '@/components/theme/theme-controls'
+import { HelpDialog } from '@/components/shell/help-dialog'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import {
   getNormalizedTaskStatus,
@@ -154,6 +157,18 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     direction: 'asc' | 'desc'
   }>>([])
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [quickCaptureOpen, setQuickCaptureOpen] = useState(false)
+  /**
+   * Bulk selection. Off until the user turns it on, because a checkbox on every card is a
+   * permanent cost paid for an occasional action, and in selection mode a plain click
+   * selects rather than opens - two different meanings for one gesture, so the mode has to
+   * be explicit and visible.
+   */
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  /** Anchor for shift-click range selection, in the order tasks are currently rendered. */
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
+  const [boardTags, setBoardTags] = useState<any[]>([])
   const [taskDetailOpen, setTaskDetailOpen] = useState(false)
   const [taskDetailTab, setTaskDetailTab] = useState<'comments' | 'activity'>('comments')
   const [chatDialogOpen, setChatDialogOpen] = useState(false)
@@ -310,6 +325,82 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const createDecision = can(actor, 'task.create')
   const manageBoardDecision = can(actor, 'project.manage', undefined, board)
   const shareBoardDecision = can(actor, 'share.external', undefined, board)
+
+  /**
+   * `c` opens quick capture, matching the `?` handler in help-dialog.tsx rather than inventing
+   * a second convention. Three guards, and each one is load-bearing:
+   *
+   *  - a modifier means the user is reaching for a browser or OS command, not this;
+   *  - a text field means they are typing the letter c, which must never open a dialog;
+   *  - an open [role="dialog"] means something is already asking for their attention, and
+   *    stacking quick capture on top of a task modal is how a shortcut becomes a hazard.
+   *
+   * Gated on task.create so it cannot open a dialog whose Save would then be refused - the
+   * same decision the toolbar button uses, not a second copy of the rule.
+   */
+  useEffect(() => {
+    if (!createDecision.allowed) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'c' || e.metaKey || e.ctrlKey || e.altKey) return
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return
+      if (document.querySelector('[role="dialog"]')) return
+      e.preventDefault()
+      setQuickCaptureOpen(true)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [createDecision.allowed])
+  /** Every task currently on screen, in render order - the basis for shift-click ranges. */
+  const orderedVisibleTaskIds = useMemo(
+    () => columns.flatMap((c: any) => (c.tasks ?? []))
+      .filter((t: any) => !t.deleted_at && !t.archived_at)
+      .map((t: any) => t.id),
+    [columns],
+  )
+
+  const toggleSelect = useCallback((taskId: string, shiftKey: boolean) => {
+    setSelectedIds((prev) => {
+      // Shift-click extends from the last click through this one, which is the only way
+      // selecting twenty adjacent cards is not twenty clicks.
+      if (shiftKey && lastSelectedId && lastSelectedId !== taskId) {
+        const from = orderedVisibleTaskIds.indexOf(lastSelectedId)
+        const to = orderedVisibleTaskIds.indexOf(taskId)
+        if (from !== -1 && to !== -1) {
+          const range = orderedVisibleTaskIds.slice(Math.min(from, to), Math.max(from, to) + 1)
+          return Array.from(new Set([...prev, ...range]))
+        }
+      }
+      return prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]
+    })
+    setLastSelectedId(taskId)
+  }, [lastSelectedId, orderedVisibleTaskIds])
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds([])
+    setLastSelectedId(null)
+  }, [])
+
+  // Leaving selection mode must drop the selection with it. A hidden selection that a later
+  // bulk action still acts on is the worst possible state for this feature to be in.
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false)
+    clearSelection()
+  }, [clearSelection])
+
+  // The label picker needs every tag, not just the ones already on a task. Fetched lazily on
+  // entering selection mode rather than on every board load: most visits never bulk-edit, and
+  // this is one more query on the path to first paint if it runs eagerly.
+  useEffect(() => {
+    if (!selectionMode || boardTags.length > 0) return
+    let cancelled = false
+    supabase.from('tags').select('id, name').order('name').then(({ data }: { data: any[] | null }) => {
+      if (!cancelled) setBoardTags(data ?? [])
+    })
+    return () => { cancelled = true }
+  }, [selectionMode, boardTags.length, supabase])
+
   const canManageTask = useCallback((task: any) => {
     return allows(actor, 'task.edit', {
       created_by: task?.created_by,
@@ -857,6 +948,31 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       onCopyLink: () => copyToClipboard(`${window.location.origin}${boardHref}`, 'Board link'),
     })
 
+    // Quick capture, reachable from the keyboard. Prompt D asks for a global quick-add
+    // shortcut, and the palette is where every other create action on this board already
+    // lives - a second bespoke hotkey would be one more thing to discover and collide with.
+    if (createDecision.allowed) {
+      commands.push({
+        id: 'board:quick-capture',
+        group: 'create',
+        label: 'Quick add a task',
+        hint: 'Type a whole task on one line',
+        icon: 'plus',
+        keywords: ['quick', 'capture', 'add', 'natural', 'paste', 'bulk', 'multiple'],
+        run: () => setQuickCaptureOpen(true),
+        decision: createDecision,
+      })
+      commands.push({
+        id: 'board:select-mode',
+        group: 'context',
+        label: selectionMode ? 'Stop selecting tasks' : 'Select several tasks',
+        hint: selectionMode ? undefined : 'Then change them all at once',
+        icon: 'check',
+        keywords: ['bulk', 'multi', 'select', 'batch'],
+        run: () => (selectionMode ? exitSelectionMode() : setSelectionMode(true)),
+      })
+    }
+
     // Work-item actions only exist when something is open to act on. Offering them with no
     // target would be a menu of commands that quietly do nothing.
     const openTask = selectedTaskId
@@ -921,7 +1037,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
 
     return commands
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board, columns, selectedTaskId, actor, createDecision, manageBoardDecision, taskStatuses, isAdmin, runOnTask, copyToClipboard, boardHref, openTaskDetail])
+  }, [board, columns, selectedTaskId, actor, createDecision, manageBoardDecision, taskStatuses, isAdmin, runOnTask, copyToClipboard, boardHref, openTaskDetail, selectionMode, exitSelectionMode])
 
   const boardTasks = (column: any) =>
     (column.tasks || []).filter((task: any) => !task.deleted_at && !task.archived_at && !task.parent_task_id)
@@ -1166,7 +1282,13 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
         <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-4">
+            {/* ⚠️ lg:min-w-[13rem] is a FLOOR, not decoration. This block is `flex-1` next to
+                an actions strip that sizes to its content, so every button added to that strip
+                takes width from here - and `truncate` means the title collapses silently to 0px
+                rather than overflowing visibly. That is exactly what happened when Quick add and
+                Select were added: the board title vanished from its own page and the header grew
+                to three rows. Pinned by `pnpm check:board-nav`. */}
+            <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-4 lg:min-w-[13rem]">
               <Button
                 variant="outline"
                 size="sm"
@@ -1348,7 +1470,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
               the header one row tall and matches how the CRM sub-nav and the Super Admin tabs
               behave at the same width.
             */}
-            <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-0.5 lg:mx-0 lg:flex-wrap lg:justify-end lg:overflow-visible lg:px-0 lg:pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-0.5 lg:mx-0 lg:max-w-[62%] lg:flex-wrap lg:justify-end lg:overflow-visible lg:px-0 lg:pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {/* View Toggle */}
               <div className="flex shrink-0 items-center border rounded-md">
                 <Button
@@ -1380,6 +1502,12 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   opening a board was a one-way trip out of dark mode: the only way back was to
                   navigate to a dashboard, flip it there, and come back. */}
               <ThemeControls />
+
+              {/* Same reasoning as ThemeControls above, and it became load-bearing the moment
+                  `C` was added: the board is where that shortcut works, and the help panel is
+                  the only place any shortcut is written down. Without this, the feature was
+                  documented exclusively on the screens where it does nothing. */}
+              <HelpDialog />
 
               {/* This is a public-audience change, so the same capability and RLS rule
                   must gate board links and task links. In particular, a platform admin
@@ -1424,6 +1552,22 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
               <Button onClick={exportVisibleTasksToCSV} variant="outline" size="sm" className="gap-2">
                 <Download className="w-4 h-4" />
                 <span className="hidden sm:inline">Export CSV</span>
+              </Button>
+              {createDecision.allowed && (
+                <Button onClick={() => setQuickCaptureOpen(true)} variant="outline" size="sm" className="gap-2" title="Quick add a task (C)">
+                  <Zap className="w-4 h-4" />
+                  <span className="hidden sm:inline">Quick add</span>
+                </Button>
+              )}
+              <Button
+                onClick={() => (selectionMode ? exitSelectionMode() : setSelectionMode(true))}
+                variant={selectionMode ? 'default' : 'outline'}
+                size="sm"
+                className="gap-2"
+                aria-pressed={selectionMode}
+              >
+                <CheckSquare className="w-4 h-4" />
+                <span className="hidden sm:inline">{selectionMode ? 'Done selecting' : 'Select'}</span>
               </Button>
               {isAdmin && (
                 <Button onClick={() => setNewColumnDialogOpen(true)} size="sm" className="gap-2">
@@ -1709,6 +1853,9 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                       isDragging={snapshot.isDragging}
                                       onUpdate={refreshColumns}
                                       onOpenDetail={openTaskDetail}
+                                      selectable={selectionMode}
+                                      selected={selectedIds.includes(task.id)}
+                                      onToggleSelect={toggleSelect}
                                     />
                                   </div>
                                 )}
@@ -2100,6 +2247,27 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           initialTab={taskDetailTab}
         />
       )}
+
+      <QuickCaptureDialog
+        open={quickCaptureOpen}
+        onOpenChange={setQuickCaptureOpen}
+        boardId={board.id}
+        columns={columns}
+        users={users}
+        onCreated={refreshColumns}
+      />
+
+      <BulkActionBar
+        selectedIds={selectedIds}
+        tasks={columns.flatMap((c: any) => (c.tasks ?? []).map((t: any) => ({ ...t, column_id: c.id })))}
+        users={users}
+        tags={boardTags}
+        columns={columns}
+        currentBoardId={board.id}
+        actor={actor}
+        onClear={clearSelection}
+        onDone={refreshColumns}
+      />
 
       <CreateTaskDialog
         open={createDialogOpen}

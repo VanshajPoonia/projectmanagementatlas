@@ -42,6 +42,8 @@ import {
 import SubtaskList from './subtask-list'
 import TaskCustomFields from './task-custom-fields'
 import TaskRelationsPanel from './task-relations-panel'
+import TaskRecurrencePanel from './task-recurrence-panel'
+import TaskRemindersPanel from './task-reminders-panel'
 
 // Mirrors the marketing calendar's custom-recurrence weekday row (and the booking
 // restriction dialog it was itself borrowed from) - 0=Sunday..6=Saturday.
@@ -1077,87 +1079,51 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
             </div>
           )}
 
-          {/* Recurring */}
-          <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <Repeat className="w-4 h-4" />
-                Recurring Task
-              </label>
-              <button
-                type="button"
-                onClick={() => canEdit && setIsRecurring(!isRecurring)}
-                disabled={!canEdit}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  isRecurring ? 'bg-primary' : 'bg-muted-foreground/40'
-                } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
-                    isRecurring ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
+          {/*
+            Recurrence.
 
-            {isRecurring && (
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Pattern</label>
-                  <Select value={recurrencePattern} onValueChange={(val: any) => setRecurrencePattern(val)} disabled={!canEdit}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                      <SelectItem value="custom">Custom (specific days)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {recurrencePattern !== 'custom' && (
-                  <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground">Every (interval)</label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="30"
-                      value={recurrenceInterval}
-                      onChange={(e) => setRecurrenceInterval(parseInt(e.target.value) || 1)}
-                      className="h-9"
-                      disabled={!canEdit}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-            {isRecurring && recurrencePattern === 'custom' && (
-              <div className="space-y-2 pt-1">
-                <label className="text-xs text-muted-foreground">Repeat on</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {RECURRENCE_WEEKDAYS.map(day => {
-                    const active = recurrenceWeekdays.includes(day.value)
-                    return (
-                      <button key={day.value} type="button" aria-pressed={active} disabled={!canEdit}
-                        onClick={() => setRecurrenceWeekdays(prev =>
-                          prev.includes(day.value) ? prev.filter(d => d !== day.value) : [...prev, day.value])}
-                        className={`h-9 min-w-[3rem] rounded-md border px-2 text-sm font-medium transition-colors ${
-                          active ? 'border-foreground bg-foreground text-background' : 'border-input bg-background hover:bg-accent'
-                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                        {day.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-            {isRecurring && (
-              <p className="text-xs text-muted-foreground">
-                This task will repeat {describeRecurrence(recurrencePattern, recurrenceInterval, recurrenceWeekdays)}
-              </p>
-            )}
-          </div>
+            This used to be a toggle writing tasks.is_recurring plus four descriptive columns
+            that NOTHING read - a control that confirmed a repeat and produced no work, for
+            months. Migration 116 replaced it with a real rule and an occurrence ledger, and
+            this panel is the only way to reach them. The legacy columns are still written by
+            handleSave below so nothing that reads them breaks, but they are no longer the
+            source of truth; the panel takes them only to recognise a task flagged recurring
+            with no rule behind it.
+          */}
+          {task && (
+            <div className="rounded-lg border p-4 bg-muted/30">
+              <TaskRecurrencePanel
+                taskId={taskId}
+                canEdit={canEdit}
+                currentUserId={currentUserId}
+                legacy={{
+                  is_recurring: task.is_recurring,
+                  recurrence_pattern: task.recurrence_pattern,
+                  recurrence_interval: task.recurrence_interval,
+                  recurrence_weekdays: task.recurrence_weekdays,
+                  recurrence_end_date: task.recurrence_end_date,
+                  due_date: task.due_date,
+                  created_at: task.created_at,
+                }}
+                // onSubtaskChange, not onUpdate: callers wire onUpdate to CLOSE the modal,
+                // and generating next week's instance should refresh the board underneath
+                // rather than dismiss the task you are looking at. Same situation as ticking
+                // a subtask, which is why that callback already exists.
+                onGenerated={() => onSubtaskChange?.()}
+              />
+            </div>
+          )}
+
+          {/* Personal reminders. Private to the signed-in user - see 117's header. */}
+          {task && (
+            <div className="rounded-lg border p-4 bg-muted/30">
+              <TaskRemindersPanel
+                taskId={taskId}
+                currentUserId={currentUserId}
+                dueDate={dueDate || task.due_date}
+              />
+            </div>
+          )}
 
           {/* Assigned Users - Multiple Selection */}
           {canEdit && (

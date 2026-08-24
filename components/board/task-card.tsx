@@ -56,9 +56,19 @@ interface TaskCardProps {
    * open" while the answer lives inside a child it does not talk to.
    */
   onOpenDetail: (taskId: string, tab: 'comments' | 'activity') => void
+  /**
+   * Bulk selection, owned by the board.
+   *
+   * `selectable` is separate from `selected` on purpose: the checkbox only exists once the
+   * host is in selection mode, so an ordinary board is not covered in controls nobody asked
+   * for. Passing no handler leaves the card exactly as it was.
+   */
+  selectable?: boolean
+  selected?: boolean
+  onToggleSelect?: (taskId: string, shiftKey: boolean) => void
 }
 
-export default function TaskCard({ task, isAdmin, currentUserId, boardRole = null, density = DEFAULT_DENSITY, users, board, columns, subtasks, isDragging, onUpdate, onOpenDetail }: TaskCardProps) {
+export default function TaskCard({ task, isAdmin, currentUserId, boardRole = null, density = DEFAULT_DENSITY, users, board, columns, subtasks, isDragging, onUpdate, onOpenDetail, selectable = false, selected = false, onToggleSelect }: TaskCardProps) {
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState(task.title)
   const [editingDesc, setEditingDesc] = useState(false)
@@ -281,13 +291,34 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
   return (
     <>
       <Card
+        data-selected={selected || undefined}
         className={`group min-w-0 cursor-grab overflow-hidden active:cursor-grabbing transition-colors hover:border-primary/40 hover:shadow-md ${densityCardClass(density)} ${
           isDragging ? 'shadow-xl opacity-80 cursor-grabbing' : ''
-        } ${isOverdue ? 'border-red-300 bg-red-50/30 dark:border-red-800 dark:bg-red-950/40' : ''}`}
-        onClick={() => onOpenDetail(task.id, 'comments')}
+        } ${isOverdue ? 'border-red-300 bg-red-50/30 dark:border-red-800 dark:bg-red-950/40' : ''} ${
+          selected ? 'ring-2 ring-primary ring-offset-1' : ''
+        }`}
+        onClick={(e) => {
+          // In selection mode the card IS the checkbox - requiring a 16px target for every
+          // one of forty cards is what makes bulk editing feel worse than doing it by hand.
+          if (selectable && onToggleSelect) {
+            onToggleSelect(task.id, e.shiftKey)
+            return
+          }
+          onOpenDetail(task.id, 'comments')
+        }}
       >
         <div className={density === 'compact' ? 'space-y-1.5' : 'space-y-2.5'}>
           <div className="flex min-w-0 items-start justify-between gap-2">
+            {selectable && (
+              <input
+                type="checkbox"
+                checked={selected}
+                aria-label={`Select ${task.title}`}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => onToggleSelect?.(task.id, (e.nativeEvent as MouseEvent).shiftKey)}
+                className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-input"
+              />
+            )}
             {editingTitle ? (
               <Input
                 autoFocus

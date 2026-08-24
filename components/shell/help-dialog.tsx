@@ -50,6 +50,7 @@ const FEATURE_GROUPS: { title: string; items: string[] }[] = [
 
 const SHORTCUTS: { keys: string[]; description: string }[] = [
   { keys: ['⌘', 'K'], description: 'Open search / jump to a board or task' },
+  { keys: ['C'], description: 'Quick add a task on the board you are viewing' },
   { keys: ['?'], description: 'Open this help panel' },
   { keys: ['Esc'], description: 'Close a dialog or cancel an in-progress edit' },
   { keys: ['⌘', 'Enter'], description: 'Save while editing a description field' },
