@@ -12,7 +12,7 @@
 // does not provision (cache / queue / dedicated search) are reported as N/A - a real
 // reflection of the system, not a failure.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -126,7 +126,33 @@ function checkNonProvisioned() {
   record('Cache', 'na', 'In-memory rate-limit only; no shared cache provisioned')
   record('Queue', 'na', 'No queue/broker in this architecture')
   record('Search', 'na', 'No dedicated search service; direct Postgres queries')
-  record('Worker (reminders)', 'warn', 'checkDueDateReminders exists but is UNSCHEDULED (risk R-07)')
+  // R-07 closed 2026-08-24. lib/reminder-service.ts was an unscheduled 'use server' function
+  // with zero call sites; it is deleted. The sweep is now /api/cron/scheduled-work, declared in
+  // vercel.json and guarded by CRON_SECRET, and it drives BOTH recurrence generation (116) and
+  // reminder delivery (117). This checks the three things that can each silently disable it.
+  const cronDeclared = (() => {
+    try {
+      const cfg = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'))
+      return (cfg.crons ?? []).some((c) => c.path === '/api/cron/scheduled-work')
+    } catch {
+      return false
+    }
+  })()
+  const routeExists = existsSync(new URL('../app/api/cron/scheduled-work/route.ts', import.meta.url))
+  const secretSet = Boolean(env.CRON_SECRET)
+
+  if (cronDeclared && routeExists && secretSet) {
+    record('Worker (scheduled work)', 'ok', 'Daily sweep declared in vercel.json, route present, CRON_SECRET set')
+  } else {
+    const missing = [
+      !cronDeclared && 'not declared in vercel.json',
+      !routeExists && 'route file missing',
+      // Without the secret the route refuses every request, so the cron fires into a 401
+      // and nothing runs - which looks identical to a healthy schedule from the outside.
+      !secretSet && 'CRON_SECRET not set (route will 401 and the sweep silently never runs)',
+    ].filter(Boolean).join('; ')
+    record('Worker (scheduled work)', 'warn', missing)
+  }
 }
 
 const ICON = { ok: '✅', fail: '❌', na: '➖', warn: '⚠️ ', skip: '⏭️ ' }

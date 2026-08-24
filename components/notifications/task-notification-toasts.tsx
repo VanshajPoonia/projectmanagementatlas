@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { useReminderDelivery } from './use-reminder-delivery'
 
 interface TaskNotificationToastsProps {
   userId: string
@@ -23,6 +24,11 @@ interface TaskNotificationRow {
 export default function TaskNotificationToasts({ userId, isAdmin = false }: TaskNotificationToastsProps) {
   const shownRef = useRef(false)
   const router = useRouter()
+
+  // Personal reminders (117) are delivered INTO this table, so the component that already
+  // surfaces notifications is the right place to make sure they exist. See the hook's header
+  // for why the app has to do this rather than leaving it entirely to the nightly cron.
+  useReminderDelivery(userId)
 
   useEffect(() => {
     if (shownRef.current) return

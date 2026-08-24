@@ -309,7 +309,7 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `116`. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `118`. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
@@ -1042,3 +1042,227 @@ calendar access", and that instruction is spent: someone applied it. Kept here b
 *reasoning* is still the useful part - the gap was harmless for as long as it lasted, because every
 marketing calendar member is an admin and admins already read every check row (see the People
 section). Nothing about the feature changed when it landed.
+
+### Prompt D - capture, bulk editing, recurrence and reminders (`116`-`117`, DEV ONLY, 2026-08-24)
+
+Two migrations plus four pure libraries. **Both are applied to dev ONLY.** Both are purely
+additive - new tables and functions, no existing table, row, policy, grant or trigger touched -
+so both are `--allow-prod` eligible on this repo's own rule, unlike `113`. Nothing has been sent
+to prod yet.
+
+⚠️ **The app code hard-depends on both**, and on `112`: the board's recurrence and reminders
+panels query `recurrence_rules` / `task_reminders`, the generator resolves open-vs-closed through
+`task_statuses.is_closed`, and `use-reminder-delivery.ts` calls `deliver_my_due_reminders()` on
+every page. Apply both to prod **before** merging.
+
+Gates: `pnpm check:recurrence` (84, real RLS) and `pnpm check:recurrence-ui` (75, real browser,
+needs `pnpm dev` on :3000). Both counts were read off a run, not estimated.
+
+**What was actually broken.** `025` and `086` put five recurrence columns on `tasks`, a toggle on
+two dialogs and a badge on the card - and `086`'s own comment states the position plainly:
+"nothing currently spawns task instances from it." Measured on production: **14 tasks carry
+`is_recurring = TRUE`, and 4 of them have a NULL pattern.** None has an end date. Separately,
+`lib/reminder-service.ts` was a `'use server'` function whose comment said it "should be called
+via a cron job" with **zero call sites**, no `vercel.json` and no cron. Third instance of the
+same defect after `profiles.is_active` (`101`) and `app_modules` (2026-08-15): a control that is
+present, prominent, believed, and wired to nothing.
+
+- **`116` - `recurrence_rules` + `recurrence_occurrences`.** The rule and the ledger are separate
+  tables because they are separate things. `UNIQUE (rule_id, occurrence_date)` is the entire
+  idempotency story and it is enforced by Postgres, not by the generator remembering to check -
+  so "a retried job must not duplicate an occurrence" is a property of the schema.
+  - `recurrence_occurrences.task_id` is **`ON DELETE SET NULL`, never CASCADE.** Deleting a
+    generated task must not erase the record that it was generated, or the next sweep produces
+    it again. "I deleted this week's instance" is not "make it again every run."
+  - `authenticated` holds **SELECT and nothing else** on the ledger, mirroring
+    `crm_order_status_history`. A ledger the application can write is one that can be made to
+    disagree with what happened, and every guarantee here rests on it being accurate.
+  - **No trigger on `tasks`**, deliberately. After-completion generation is handled inside
+    `run_recurrence_generation()` by asking whether the newest occurrence is closed, which is
+    what keeps this migration additive. The board calls the same function on completion so the
+    next instance appears immediately; the nightly sweep is the safety net; both are idempotent
+    so they cannot disagree.
+  - **The backfill made 6 rules on dev / expects 10 on prod, and deliberately skipped the 4 NULL
+    patterns.** `frequency` is NOT NULL and there is no defensible way to guess whether "repeats"
+    meant daily or monthly. Those tasks keep `is_recurring = TRUE`, no row was modified, and the
+    panel reports them as incomplete. Every backfilled rule is `on_completion`, so **day one
+    generates nothing** - horizon mode on the same rules would have created roughly 80 tasks
+    against a 171-task database.
+  - `112` is a hard prerequisite: the destination column for a new occurrence is resolved through
+    `task_statuses.category`, never a column title, and "closed" is `is_closed`. That is why
+    cancelling a task advances an `on_completion` rule exactly as completing it does.
+
+- **`117` - `task_reminders`.** Per-user, private, with **no admin bypass on any policy** - the
+  only table in this schema an admin deliberately cannot read, asserted by a post-condition so it
+  cannot be softened by accident. Prompt D's "a reminder is not necessarily a global task
+  property" is the whole design. `delivered_at` is stamped inside the same statement that selects
+  the row, so two overlapping runs cannot both deliver.
+
+⚠️ **`REVOKE ALL ON FUNCTION ... FROM PUBLIC` DOES NOT MAKE A FUNCTION PRIVATE IN THIS DATABASE.**
+The single most important thing learned here. `postgres` carries a **default ACL granting EXECUTE
+on every new function in `public` to `authenticated`** (`pg_default_acl`), which is a real grant
+that `REVOKE ... FROM PUBLIC` leaves untouched. `095` closed this for `anon` on TABLES; the
+function default was still wide open. Both new migrations shipped to dev with it before
+`has_function_privilege()` was actually queried rather than reasoned about:
+  - `create_recurrence_occurrence` is `SECURITY DEFINER` and was callable by any signed-in user,
+    which would have let anyone create an occurrence on any rule for any date, bypassing paused,
+    `ends_on`, `max_occurrences` **and RLS**.
+  - `deliver_due_reminders` is `SECURITY DEFINER`, sweeps every user's reminders and RETURNS
+    their ids, task titles and email status - a disclosure on the one table built to be private.
+  Both are now `REVOKE ... FROM PUBLIC, anon, authenticated`, and both migrations assert it with
+  `has_function_privilege()`. **Any new function in `public` must state its grants explicitly and
+  assert them; the default is not "nobody".**
+
+⚠️ **A CHECK constraint PASSES when its expression is NULL, and `array_length('{}', 1)` is NULL.**
+`recurrence_rules_weekdays_check` read `array_length(weekdays,1) BETWEEN 1 AND 7` and therefore
+accepted the empty array - precisely the value it was written to reject, a weekly rule that can
+never fire. It is `COALESCE(array_length(weekdays,1), 0)` now. Caught by `check-recurrence.mjs`,
+not by reading, which is why that migration's post-conditions now **try to insert the bad value**
+rather than assert the constraint exists. "The constraint exists" and "the constraint refuses
+this" are different claims.
+
+⚠️ **The Vercel project is on the HOBBY plan: cron jobs run once a day, maximum two.** Verified
+via `vercel api /v2/teams/... -> billing.plan`. That is a hosting fact that shapes the design:
+  - `vercel.json` (new) declares one daily job at `/api/cron/scheduled-work`, guarded by
+    `CRON_SECRET`. It drives recurrence generation and reminder delivery, and is the **only**
+    sender of reminder email.
+  - A daily sweep cannot honour "30 minutes before", so `117` also exposes
+    `deliver_my_due_reminders()` - the same delivery scoped to `auth.uid()`, with no parameter
+    that could widen it - and `components/notifications/use-reminder-delivery.ts` calls it on
+    mount, every 5 minutes, and on tab focus. In-app reminders are therefore near-real-time for
+    anyone using the app; email is a once-a-day guarantee and the reminder UI says so.
+  - **`CRON_SECRET` is set** (2026-08-24) in `.env.local` and in Vercel for Production and
+    Development. Preview was skipped deliberately: `vercel env add` wants a branch for it, and
+    Vercel Cron only fires on Production deployments. Without the secret the route returns 401
+    and the sweep silently never runs, which looks identical to a healthy schedule from outside,
+    so `pnpm healthcheck` asserts all three of route/vercel.json/secret (replacing the old
+    `Worker (reminders)` warning for risk R-07). `lib/reminder-service.ts` is **deleted**, not
+    repaired - a second, unfired path next to a working one is the confusion this work removes.
+    Verified by curl: no header -> 401, wrong secret -> 401, right secret -> 200 with a body
+    naming rules considered and reminders delivered.
+  - Upgrading the plan and tightening `vercel.json` is the entire upgrade path. Nothing in the
+    database or the app changes.
+
+**The four libraries are pure and heavily tested, deliberately** (`lib/recurrence.ts`,
+`lib/quick-capture.ts`, `lib/multi-create.ts`, `lib/bulk-operations.ts` - 1164 unit tests total
+across the repo now):
+  - `lib/recurrence.cases.mjs` is a **parity gate** in the same shape as
+    `lib/custom-fields.cases.mjs`: 43 date-math cases run against the TypeScript mirror by
+    `recurrence.parity.test.ts` AND against the real `public.next_occurrence_date()` by
+    `check-recurrence.mjs`. Neither side is the reference - one draws the editor's preview, the
+    other creates the work, and a preview that disagrees with the generator is worse than none.
+    Confirmed to fail on both sides when one case was deliberately flipped.
+  - **Quick capture never silently discards user text**, which is Prompt D's stated requirement
+    and is enforced as a property test, not by example: every character of the input ends up
+    either in the title or inside a returned match with verbatim start/end offsets. An `@name`
+    that matches nobody stays in the title and warns; an ambiguous one warns rather than
+    resolving to whoever sorts first. **No LLM** - the syntax is deterministic and a model that
+    gets "next Friday" right 97% of the time is unusable for scheduling.
+  - **Multi-create reports indentation, never acts on it.** Nesting is off by default even when
+    it looks unambiguous, and mixed tabs/spaces or many indent widths are reported as ambiguous.
+    `060` allows one level only, so deeper pastes are flattened **with a count**, not discovered
+    as a database error mid-batch.
+  - **`lib/bulk-operations.ts` plans before it runs.** An already-matching task is counted as
+    unchanged, not changed, so "18 of 30 will change" is the number the confirmation shows and
+    the number that then happens. A run with any refusal or error is **never** reported as a
+    success - the failure mode being guarded against is a green toast over a batch that
+    half-worked, which is easy here because an RLS refusal returns zero rows and no error. The
+    execution loop takes its per-item write as a parameter so the retry and partial-failure
+    behaviour is unit-testable with a fake.
+
+⚠️ **The board header ran out of room again, and the failure is silent.** Adding Quick add and
+Select to the actions strip pushed the board title to **0px wide** and the header to three rows -
+the same lesson as the header nav in 2026-08-21, one layer out. The title block is `flex-1` next
+to a strip that sizes to its content, and `truncate` means it collapses to nothing rather than
+overflowing visibly. Fixed with a floor (`lg:min-w-[13rem]` on the title block) and a cap
+(`lg:max-w-[62%]` on the strip) so the NEXT button added cannot do it again. Pinned by
+`pnpm check:board-nav`, which measures the title's real width.
+
+**Ceilings are deliberately generous, and the harness asserts they ACCEPT.** `interval_count`
+1..1000, `horizon_days` 1..1095, `max_occurrences` 1..10000, reminder `offset_minutes` 0..525600
+(a full year - the first version capped it at 60 days, which would have refused the "three
+months before" that renewal and compliance work actually wants), reminder `note` 2000 chars.
+Sweep ceilings are per-CALL and not per-feature: `deliver_due_reminders` takes 5000 and
+`deliver_my_due_reminders` 1000, and because delivery is idempotent the only cost of hitting one
+is latency, never a lost reminder. A bounds check that only proves refusals cannot tell a
+generous ceiling from a broken table, so `check-recurrence.mjs` pins a schedule at the very top
+of every bound being accepted.
+
+⚠️ **A loop guard that truncates silently is a bug generator, not a safety net.** The catch-up
+walk in `run_recurrence_generation` stopped after 500 steps and then carried on with whatever
+date it had reached - so a daily rule older than 500 days would quietly create an occurrence
+dated in the **past**. And the schedule-mode fill guard was 400, fewer than a daily rule needs at
+even the old 365-day horizon, so it would have stopped filling part-way with no indication. Both
+are 20000 now (~54 years of daily, an order of magnitude above the 1095-day horizon ceiling that
+bounds the legitimate maximum), and exhausting the catch-up guard **reports a skip reason and
+continues** rather than fabricating a date. Pinned by a five-year-old rule in the harness.
+
+⚠️ **`lib/email.ts` crashed on IMPORT when `RESEND_API_KEY` was unset, and that took down
+recurrence.** `new Resend(undefined)` throws, and the client was constructed at module scope -
+so the `if (!process.env.RESEND_API_KEY) return` guard inside `sendEmail()` could never run. Any
+file importing it died, including `/api/cron/scheduled-work`, which returned **500 to every
+request including unauthenticated ones**: it could not reach its own auth check. Two unrelated
+features taken out by one missing variable, since that route also drives task generation. The
+client is lazy now (`getResend()`), which fixes the four components that import it too. Found by
+curling the route, not by reading it.
+
+⚠️ **`unassign`, `unlabel` and `move` were implemented in `lib/bulk-operations.ts` and had no
+button.** Working code behind no route a human could take - the same defect as
+`board_members.role` and `app_modules`, and a union type cannot catch it because an incomplete
+array of a union is still a valid array. The bar's list is now **derived** from the engine's
+exported `ALL_OPERATIONS` rather than restated, so a new kind can at worst appear in the wrong
+position, never vanish. Also fixed the mirror of it: `117` granted UPDATE on a reminder's own
+columns and no screen used it, so reminders are now editable in place (a *delivered* one stays
+read-only - it records a notification that was really sent).
+
+⚠️ **Two browser-harness traps, both already recorded in other words and both bit again.**
+  - **`page.locator('button[role="combobox"]').first()` finds a control on the page BEHIND the
+    dialog.** It is visible, enabled and permanently un-clickable under the overlay, so the
+    failure reads as a 30s timeout rather than "wrong element". Every control in
+    `bulk-action-bar.tsx` now has an explicit id and the harness locates by id.
+  - **A fixed `waitForTimeout` after a React state update is a flaky assertion**, and a flaky
+    assertion is worse than none because it teaches you to re-run until green. The chip-dismiss
+    check passed, then failed, then passed on identical code. It uses `waitForFunction` on the
+    actual value now.
+
+**Prompt D completion pass (2026-08-24) - four gaps closed after the first audit called it done.**
+The migrations and libraries were finished; what was missing was reachability and disclosure,
+which is the half this repo keeps getting wrong.
+  - **Editing a schedule never said what happened to the work it had already produced.** The
+    behaviour was always right - `authenticated` holds SELECT and nothing else on
+    `recurrence_occurrences`, so an edit *cannot* rewrite history - but Prompt D's requirement is
+    that it must not do so **silently**, and "cannot" is only half of that. `handleDelete` had
+    always said "Tasks it already created were kept"; `handleSave` now says the same for an edit.
+  - ⚠️ **`retryPlanFrom` / `mergeRunReports` did not exist, and `BulkRunReport.retryableIds` had
+    been sitting there since the file was written with a comment calling it "the input to
+    'retry the rest'".** A field built for a purpose, believed, and consumed by nothing - the
+    same defect as `board_members.role` and `app_modules`, in miniature. The report dialog now
+    offers **Retry N failed** and shows an attempt count on any row that took more than one try.
+    Refusals are deliberately excluded from that set and the dialog says why, because retrying a
+    policy refusal just asks the same question again.
+  - **`C` opens quick capture**, matching `?`'s guard shape in `help-dialog.tsx` rather than
+    inventing a second convention. Guarded three ways: a modifier means the user wants the
+    browser, a text field means they are typing the letter, and an open `[role="dialog"]` means
+    something already has their attention. Gated on `task.create` so it cannot open a dialog
+    whose Save would be refused.
+  - ⚠️ **And that immediately exposed a real gap: `HelpDialog` lives in `AppTopbar` → `AppShell`,
+    and a board renders OUTSIDE AppShell.** So `?` did nothing on a board, and the only place any
+    shortcut is written down was unreachable from the screen where the new one works. Third
+    instance of the board-is-not-in-the-shell problem after `ThemeControls` and the header nav.
+    `HelpDialog` is mounted next to `ThemeControls` now. `pnpm check:board-nav` still passes
+    (title 165px, header 113px), but that header has now blown up twice - **check it after
+    adding anything to it.**
+
+⚠️ **The UI harness was flaky and had been passing by luck.** Three consecutive runs of
+IDENTICAL code failed three DIFFERENT checks (`quick capture really creates a task`, `the
+indented lines became real subtasks`, `the bulk change really lands in the database`), and one
+pair failed in a way that made the behaviour look broken when it was not: `Run now` reported
+`0 created` and then `0 -> 5`, because the first read happened before generation finished and
+the second after. Every database assertion in `check-recurrence-ui.mjs` was
+`click(); waitForTimeout(2500); read()`. They all use a polling `until(read, accept)` helper
+now, and the idempotency check additionally waits to SEE the "Nothing to create" message -
+otherwise "nothing changed" passes for the trivial reason that nothing has happened yet. Also
+worth keeping: **a document-level `keydown` listener does not exist until React has hydrated,
+and `waitForSelector` returns on server-rendered HTML**, so the first `C` press landed on a page
+with no handler; the check presses until it opens or the budget is spent. Confirmed stable
+across four consecutive full runs at 75/75.

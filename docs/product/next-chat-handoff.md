@@ -169,10 +169,42 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   All nine non-system work item types are still switched OFF and no custom fields are defined -
   deliberately, so the deploy changed nothing anyone sees. Turning one on is the first thing to
   do when someone actually wants Bugs or Risks as a separate kind of work.
+- **Prompt D is BUILT, and its migrations are on DEV ONLY (`116`-`117`, 2026-08-24).** Quick
+  capture (deterministic one-line parsing, no LLM, with every interpreted field shown as a
+  removable chip carrying the absolute value), paste-a-list multi-create (previews first;
+  indentation is reported, never acted on silently), bulk operations (plans before it runs, so
+  the confirmation says "18 of 30 will change" rather than "30 selected"; a run with any
+  refusal is never called a success), **real recurrence** (`recurrence_rules` +
+  `recurrence_occurrences`, idempotent by a UNIQUE constraint) and **per-user private
+  reminders** (`task_reminders`, no admin bypass on any policy).
+  ⚠️ **Both migrations are purely additive and `--allow-prod` eligible, and NEITHER IS ON PROD.**
+  The app code hard-depends on both, so apply them BEFORE merging. Rollbacks exist;
+  `116`'s destroys the occurrence ledger, which is the one thing that cannot be reconstructed.
+  **`CRON_SECRET` is set** in `.env.local` and in Vercel (Production + Development; Preview
+  skipped on purpose, cron only fires on Production). The route was verified by curl: 401 with
+  no header, 401 with a wrong secret, 200 and an honest report with the right one.
+  ⚠️ **The Vercel project is on the HOBBY plan** (verified via the API): cron runs once a day,
+  max two jobs. That is why `117` also exposes `deliver_my_due_reminders()` and the app calls it
+  every 5 minutes while open - in-app reminders are near-real-time, email is once a day.
+  **What it replaced:** `025`/`086`'s five recurrence columns had a prominent toggle wired to
+  nothing for months (14 such tasks on production, 4 with no pattern at all - those deliberately
+  got NO rule rather than an invented cadence), and `lib/reminder-service.ts` was an unscheduled
+  `'use server'` function with zero call sites, now **deleted**.
+  Gates: `pnpm check:recurrence` (84, real RLS), `pnpm check:recurrence-ui` (69, real browser),
+  1177 unit tests, and `work-items`/`task-lifecycle`/`access-matrix`/`board-roles`/`grants`/
+  `task-move`/`column-delete`/`board-nav`/`work-items-ui` all re-run green.
+  **Three things learned, all worth reading in CLAUDE.md:** (1) `REVOKE ALL ON FUNCTION ... FROM
+  PUBLIC` does NOT make a function private here - `postgres` holds a default ACL granting EXECUTE
+  to `authenticated` on every new function in `public`, and two SECURITY DEFINER functions
+  shipped to dev callable by any signed-in user before that was measured. (2) A CHECK constraint
+  PASSES when its expression is NULL, and `array_length('{}',1)` is NULL - so the weekday
+  constraint accepted exactly the value it existed to reject. (3) `lib/email.ts` built its Resend
+  client at MODULE scope, so an unset `RESEND_API_KEY` made every importer crash - including the
+  cron route, which 500'd before its own auth check and took recurrence generation with it. It
+  is lazy now, which also fixes the four components that import it.
 - NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **Prompt B**'s one honest
-  gap (membership **audit events**), **Prompt D** (quick capture, bulk creation, recurrence -
-  the pack says it needs Prompt C's foundation, which now exists), **Prompt E** (saved views
-  and the table view, which is where custom fields start paying off). Also still open: the
+  gap (membership **audit events**), **Prompt E** (saved views and the table view, which is
+  where custom fields start paying off, and the natural follow-on from Prompt D). Also open: the
   **Inbox** (Prompt F) - needs **no new table**, `task_notifications` (migration `035`) already
   exists with 169 prod rows and inbox-shaped RLS, and now that the toast no longer eats them
   unread state finally accumulates (open question: what to do with the ~121 already-unread
