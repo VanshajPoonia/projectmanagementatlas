@@ -77,16 +77,27 @@ notes and the prod-ordering hazard.
 - [x] **Work item types** (`work_item_types` + `tasks.type_key`): one domain, eleven kinds, two active
 - [x] **Normalized status categories** (`task_statuses.category`), retiring the substring heuristic
 - [x] **Relations** (`task_relations`): blocks/blocked by, precedes/follows, duplicates/duplicated by, relates to - kept separate from parent/child
-- [ ] Board view: show selected fields on cards / as columns *(deferred - this is Phase 2 view work)*
-- [ ] Filter/sort a view by a custom field *(deferred to Phase 2, where saved views land)*
+- [x] Board view: show selected fields on cards / as columns *(Prompt E - the Fields control in
+      `/views` orders and toggles them, and every layout reads the same list)*
+- [x] Filter/sort a view by a custom field *(Prompt E - custom fields appear in the filter
+      builder as `custom:<key>`, typed from their `field_type`)*
 - ~~Migration + backfill existing status/priority into the new model~~ *(deliberately NOT done: status and priority stay first-class columns. Re-homing them into the field engine would rewrite every query in the app to buy nothing - the plan's "do not rewrite a working feature to make it resemble a competitor".)*
 
-### Phase 2 - Multiple views over one dataset  ⏳ NOT STARTED
-Same tasks, more lenses. Mostly frontend once Phase 1 lands.
-- [ ] Table/spreadsheet view (sort, filter, inline edit, grouped rows)
-- [ ] Timeline / Gantt-lite view (start/due, dependencies optional)
-- [ ] Saved views (per user: filters + sort + visible fields)
-- [ ] View switcher UI on boards
+### Phase 2 - Multiple views over one dataset  ✅ SHIPPED (Prompt E, 2026-08-25)
+Same tasks, more lenses. One config model (`lib/view-config.ts`) that four layouts render
+from, at `/views`. Migrations `118` (board hierarchy) and `119` (saved views).
+- [x] Table/spreadsheet view (sort, filter, inline edit, grouped rows, resize + reorder
+      columns, sticky title, bulk select)
+- [x] Saved views (personal or shared: layout + scope + descendant behaviour + filters + sort
+      + grouping + visible fields)
+- [x] View switcher UI - `components/views/saved-view-bar.tsx`, with an unsaved-changes dot
+      and a Discard that returns to what is stored
+- [x] List, Kanban (grouped by any field, not just board columns) and Calendar
+      (month/week/day + an unscheduled tray + drag to reschedule) over the same config
+- [x] **Dynamic descendant scope** - `boards.parent_board_id` plus none/direct/all, so a new
+      child board is in its ancestors' roll-ups with no view to update (ATLAS_01 4.6)
+- [ ] Timeline / Gantt-lite view (start/due, dependencies optional) - deliberately not built;
+      "Explicitly not building" lists Gantt, and `task_relations` (115) has no UI yet
 
 ### Phase 3 - Goals → Projects → Tasks hierarchy  ⏳ NOT STARTED
 Gives execs a reason to log in; ties work to outcomes.
@@ -177,10 +188,25 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       Gates: `pnpm check:work-items` (94), `pnpm check:work-items-ui` (31). The two unchecked
       Phase 1 boxes above (fields on cards, filter/sort by a field) are Prompt E view work, not
       gaps in this one.
-- [ ] **4. Shared filter/query/view model** (Prompt E) - = FEATURES Phase 2
+- [x] **4. Shared filter/query/view model** (Prompt E) - = FEATURES Phase 2. **SHIPPED to dev**
+      (migrations `118`/`119`, 2026-08-25). `lib/view-config.ts` is the single answer: one
+      normalized config (layout, board scope, descendant behaviour, filters, join, sort, group,
+      ordered visible fields, density, hierarchy, completed-item handling) and one evaluation
+      pipeline that every layout renders from. **The audit came first and found three
+      implementations of the same idea** - `reports-view.tsx` had nine `useState`s filtered in a
+      `useEffect` into a second state, `board-view.tsx` had an inline `filterTasks()`, and
+      `calendar-view.tsx` had no filters at all. They disagreed: reports offered Unassigned and
+      the board did not, the board offered overdue and reports did not. Both now route through
+      the shared engine, which also **fixed a real timezone bug in each** - the old code parsed a
+      `YYYY-MM-DD` DATE column into an instant, so a task due today read as overdue for a
+      five-hour window every evening. **Descendant scope needed schema**: `boards` had no parent
+      column at all, so `118` adds `parent_board_id` (cycle-guarded, `ON DELETE SET NULL`) plus
+      `board_descendants()`, and membership of "everything beneath this" is computed at read
+      time - never a stored list, which is precisely the Vikunja failure ATLAS_01 4.6 describes.
+      Gates: `pnpm check:views` (65, real RLS) and `pnpm check:views-ui` (38, real browser).
 - [x] **5. Quick capture, bulk editing, recurrence, reminders** (Prompt D) - **SHIPPED to dev
-      2026-08-24** (migrations `116`/`117`, both purely additive and `--allow-prod` eligible,
-      **not yet on prod**). Quick capture parses one line deterministically (no LLM) and shows
+      AND prod 2026-08-24** (migrations `116`/`117`, both purely additive and `--allow-prod`
+      eligible; applied one at a time with verification between). Quick capture parses one line deterministically (no LLM) and shows
       every field it interpreted as a removable chip carrying the ABSOLUTE value, so a wrong
       guess is visible before saving; paste-a-list previews before it writes and reports
       indentation rather than acting on it. Bulk operations plan before they run - the

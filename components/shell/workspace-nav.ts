@@ -91,6 +91,11 @@ export function buildWorkspaceNav({
   const items: NavItem[] = [
     { id: homeTab, label: 'Home', icon: 'home', href: tab(homeTab), status: 'live' },
     { id: 'my-work', label: 'My Work', icon: 'inbox-check', href: '/my-work', status: 'live' },
+    // Views is core, not a module. Prompt E's claim is that the view is not the data - the
+    // filter/sort/group model is the foundation the other surfaces sit on, so there is nothing
+    // coherent to switch off. A real route, like /my-work and /crm, so `?tab=`'s admin redirect
+    // cannot strip it.
+    { id: 'views', label: 'Views', icon: 'filter', href: '/views', status: 'live' },
   ]
 
   if (on('personal_tasks')) {

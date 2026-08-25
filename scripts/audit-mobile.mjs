@@ -40,6 +40,7 @@ const ROUTES = [
   ['admin-marketing', '/admin?tab=marketing'],
   ['super-admin', '/admin/super-admin'],
   ['my-work', '/my-work'],
+  ['views', '/views'],
   ['crm-dashboard', '/crm'],
   ['crm-orders', '/crm/orders'],
   ['crm-clients', '/crm/clients'],
@@ -165,7 +166,10 @@ try {
     await flat.goto(`http://localhost:3000${path}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
     const links = await flat.$$eval('nav[aria-label="Primary"] a', as => as.map(a => a.textContent.trim()))
     const has = l => links.includes(l)
-    const wanted = enabled.includes('crm') ? ['CRM', 'My Work'] : ['My Work']
+    // Views is core (not a module), so it must be in the server-rendered nav on every route.
+    // Reading the DOM after the page settles cannot tell a server-rendered sidebar from one the
+    // browser corrected a beat later - which is the whole point of the JS-disabled context.
+    const wanted = enabled.includes('crm') ? ['CRM', 'My Work', 'Views'] : ['My Work', 'Views']
     const missing = wanted.filter(l => !has(l))
     console.log(`${missing.length === 0 ? '  ok  ' : ' FAIL '} ${label} renders ${wanted.join(' + ')} server-side${missing.length ? ` - missing ${missing.join(', ')}` : ''}`)
   }

@@ -50,5 +50,5 @@ export default async function UserBoardPage({ params }: { params: Promise<{ id: 
     loadShellData(supabase),
   ])
 
-  return <BoardView board={board} columns={columns || []} users={users || []} isAdmin={false} isSuperAdmin={profile?.role === 'super_admin'} platformRole={profile?.role ?? 'user'} currentUserId={user.id} boardRole={membership?.role ?? null} boards={boards || []} shell={shell} />
+  return <BoardView board={board} columns={columns || []} users={users || []} isAdmin={false} isSuperAdmin={profile?.role === 'super_admin'} platformRole={profile?.role ?? 'user'} currentUserId={user.id} boardRole={membership?.role ?? null} boards={boards || []} shell={shell} now={new Date().toISOString()} />
 }

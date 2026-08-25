@@ -227,9 +227,49 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   client at MODULE scope, so an unset `RESEND_API_KEY` made every importer crash - including the
   cron route, which 500'd before its own auth check and took recurrence generation with it. It
   is lazy now, which also fixes the four components that import it.
-- NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **Prompt B**'s one honest
-  gap (membership **audit events**), **Prompt E** (saved views and the table view, which is
-  where custom fields start paying off, and the natural follow-on from Prompt D). Also open: the
+- **Prompt E is SHIPPED to dev ONLY (`118`-`119`, 2026-08-25).** One configuration model that
+  four layouts render from, at **`/views`** (a real route, in the nav for every role, next to
+  My Work). `lib/view-config.ts` holds the whole vocabulary - layout, board scope, descendant
+  behaviour, filters with the nine operators plus AND/OR, sort, grouping, an ordered visible-field
+  list, density, hierarchy and completed-item handling - and one `runView` pipeline every layout
+  calls, so the same question cannot give two answers on two screens. Layouts: **List**, **Table**
+  (resize + reorder columns, sticky title, sort by header, inline rename, bulk select),
+  **Kanban** grouped by ANY field rather than by the board's own columns, and **Calendar**
+  (month/week/day, an unscheduled tray, drag to reschedule).
+  ⚠️ **NEITHER MIGRATION IS ON PROD, and the code hard-depends on both.** `119` (`saved_views`)
+  is purely additive and `--allow-prod` eligible; **`118` is NOT** - it puts a trigger on
+  `boards`, the same reasoning that held `098` and `113` back, so it is an explicit owner
+  decision. `/views` is in the nav for everyone, so merging the code first gives every user a
+  link to a broken page. Apply `118` then `119`, in that order, BEFORE merging.
+  **The audit came first and found three implementations of one idea**: `reports-view.tsx` had
+  nine `useState`s reduced in a `useEffect` into a second state, `board-view.tsx` had an inline
+  `filterTasks()`, `calendar-view.tsx` had none. They disagreed - reports offered Unassigned and
+  the board did not, the board offered overdue and reports did not. Both now route through the
+  shared engine.
+  ⚠️ **Collapsing them fixed a LIVE timezone bug in both.** The old code parsed a `YYYY-MM-DD`
+  DATE column into an instant and compared it against a local midnight, so **a task due today
+  read as overdue for a five-hour window every evening**, and Reports' From/To boundaries
+  included or excluded a task depending on the reader's timezone. Same defect already recorded
+  for the CRM.
+  **`118` exists because `boards` had no parent column at all** - checked against dev and prod,
+  not assumed - so Prompt E's loudest requirement had nothing to stand on. Descendant membership
+  is COMPUTED by walking `parent_board_id` at read time, never stored, which is exactly the
+  Vikunja failure ATLAS_01 4.6 describes. An admin sets it in **Boards → New/Edit → Parent
+  board**, and the picker excludes the board and its subtree rather than offering something the
+  cycle guard will refuse.
+  Gates: `pnpm check:views` (65, real RLS) and `pnpm check:views-ui` (38, real browser, stable
+  across four consecutive runs), plus 1420 unit tests, a clean `next build` with the dev ref
+  confirmed baked, and `board-nav`/`work-items-ui`/`shell-actions`/`recurrence-ui`/`access-matrix`/
+  `board-roles`/`task-lifecycle`/`grants`/`work-items`/`column-delete` all re-run green.
+  ⚠️ **Four defects only the real browser found**, all fixed: a view saved while scoped to a
+  board was unreachable next visit (the picker filtered by a scope you had not selected yet);
+  the table's inline-rename control was permanently invisible to a mouse (`group-hover` with no
+  `group` ancestor); a React key warning from `TableLayout`; and `enforce_task_lifecycle` quietly
+  moving a seeded task out of its intended column, which had been testing the wrong fixture.
+- NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **applying `118`/`119` to
+  prod** (see the Prompt E entry above - `118` needs a deliberate decision), **Prompt F** (My
+  Work sections, WorkNext reasons, and the Inbox), **Prompt B**'s one honest gap (membership
+  **audit events**). Also open: the
   **Inbox** (Prompt F) - needs **no new table**, `task_notifications` (migration `035`) already
   exists with 169 prod rows and inbox-shaped RLS, and now that the toast no longer eats them
   unread state finally accumulates (open question: what to do with the ~121 already-unread
