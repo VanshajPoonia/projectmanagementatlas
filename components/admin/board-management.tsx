@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { prependUnique, withoutBoard } from '@/lib/board-archive'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { buildBoardTree, flattenBoardTree, invalidParentIds } from '@/lib/board-hierarchy'
 import { Plus, Kanban, Calendar, Trash2, MoreVertical, Edit, Palette, Archive, ArchiveRestore, Globe, Lock, ChevronDown, ChevronRight, LayoutGrid, List } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -30,6 +32,9 @@ interface BoardManagementProps {
   /** Needed to tell whether this admin created the board - see canManageMembership. */
   currentUserId?: string | null
 }
+
+/** Sentinel for "no parent". Radix Select cannot hold an empty-string value. */
+const NO_PARENT = '__none__'
 
 export default function BoardManagement({ boards: initialBoards, isSuperAdmin = false, currentUserId = null }: BoardManagementProps) {
   const [boards, setBoards] = useState(initialBoards)
@@ -57,6 +62,11 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
   const [description, setDescription] = useState('')
   const [boardColor, setBoardColor] = useState('#3b82f6')
   const [isPrivate, setIsPrivate] = useState(false)
+  // Migration 118. A board with a parent rolls up into its ancestors' views automatically -
+  // nothing stores a descendant list, so a board created today is in those views today. Without
+  // a control here the column would exist and be reachable only by hand-written SQL, which is
+  // this repo's most-repeated defect (board_members.role, app_modules, the recurrence toggle).
+  const [parentBoardId, setParentBoardId] = useState<string>(NO_PARENT)
   const [members, setMembers] = useState<MembershipRow[]>([])
   // What was actually in the database when the edit dialog opened. Kept separately from
   // `members` so the save can diff against it instead of rewriting every row - see
@@ -65,6 +75,14 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
   const [allUsers, setAllUsers] = useState<{ id: string; full_name: string | null; email: string | null }[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Candidates for the parent picker. 118's trigger refuses a cycle at the database, but a
+  // picker that offers a choice and then shows a database error is a picker that lied - so the
+  // board itself and its whole subtree are simply not offered (ATLAS_01 10.2).
+  const parentOptions = useMemo(() => {
+    const excluded = editingBoard ? new Set(invalidParentIds(boards, editingBoard.id)) : new Set<string>()
+    return flattenBoardTree(buildBoardTree(boards)).filter((node) => !excluded.has(node.board.id))
+  }, [boards, editingBoard])
   const supabase = createClient()
 
   useEffect(() => {
@@ -82,6 +100,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
     setTitle('')
     setDescription('')
     setIsPrivate(false)
+    setParentBoardId(NO_PARENT)
     setMembers([])
     setLoadedMembers([])
     setError(null)
@@ -106,6 +125,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
           created_by: user.id,
           updated_by: user.id,
           is_private: isPrivate,
+          parent_board_id: parentBoardId === NO_PARENT ? null : parentBoardId,
         })
         .select()
         .single()
@@ -194,6 +214,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
     setDescription(board.description || '')
     setBoardColor(board.color || '#3b82f6')
     setIsPrivate(board.is_private ?? false)
+    setParentBoardId(board.parent_board_id ?? NO_PARENT)
     setError(null)
     // Roles come back with the rows now; dropping them here is what made the old save
     // reset everyone to 'member'.
@@ -271,6 +292,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
           description: description.trim() || null,
           color: boardColor,
           is_private: isPrivate,
+          parent_board_id: parentBoardId === NO_PARENT ? null : parentBoardId,
           updated_at: updatedAt,
           updated_by: user.id,
         })
@@ -318,6 +340,7 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
       setDescription('')
       setBoardColor('#3b82f6')
       setIsPrivate(false)
+      setParentBoardId(NO_PARENT)
       setMembers([])
       setLoadedMembers([])
     } catch (err) {
@@ -440,6 +463,29 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
                 disabled={loading}
                 rows={3}
               />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="edit-parent-board" className="text-sm font-medium">
+                Parent board
+              </label>
+              <Select value={parentBoardId} onValueChange={setParentBoardId} disabled={loading}>
+                <SelectTrigger id="edit-parent-board">
+                  <SelectValue placeholder="No parent" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PARENT}>No parent (top level)</SelectItem>
+                  {parentOptions.map(({ board: candidate, depth }) => (
+                    <SelectItem key={candidate.id} value={candidate.id}>
+                      {'\u00a0'.repeat(depth * 2)}{candidate.title as string}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Work on this board rolls up into its parent&apos;s views. This board and
+                everything under it are left out of the list, because either would make the
+                hierarchy circular.
+              </p>
             </div>
             <div className="space-y-2">
               <label htmlFor="edit-color" className="text-sm font-medium flex items-center gap-2">
@@ -579,6 +625,28 @@ export default function BoardManagement({ boards: initialBoards, isSuperAdmin = 
                   disabled={loading}
                   rows={3}
                 />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="parent-board" className="text-sm font-medium">
+                  Parent board
+                </label>
+                <Select value={parentBoardId} onValueChange={setParentBoardId} disabled={loading}>
+                  <SelectTrigger id="parent-board">
+                    <SelectValue placeholder="No parent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PARENT}>No parent (top level)</SelectItem>
+                    {parentOptions.map(({ board: candidate, depth }) => (
+                      <SelectItem key={candidate.id} value={candidate.id}>
+                        {'\u00a0'.repeat(depth * 2)}{candidate.title as string}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Optional. A board with a parent rolls up into that parent&apos;s views
+                  automatically, with no view to keep updated.
+                </p>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Visibility</label>

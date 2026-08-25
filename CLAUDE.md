@@ -309,8 +309,8 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `118`. **Dev and prod were both
-  verified fully applied at `117` on 2026-08-24**, 0 pending on each. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `120`. **Dev and prod were both
+  verified fully applied at `119` on 2026-08-25**, 0 pending on each. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
@@ -1030,6 +1030,140 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
   - **A filter written against `source_task_id` is direction-dependent** once `relates_to`
     normalises the pair by uuid order, so the check passes or fails by how two random uuids
     happen to sort. Query either end, or use a directional relation type in the fixture.
+
+
+### Prompt E - the shared query/view engine (`118`-`119`, dev AND prod, 2026-08-25)
+
+One configuration model that four layouts render from, at `/views`. **Both are applied to dev
+AND prod** (prod on 2026-08-25, on the owner's explicit instruction, one file at a time via
+`--only=NNN --allow-prod`, verified between each). `119` is purely additive and `--allow-prod`
+eligible.
+
+⚠️ Note **`118` was applied to prod despite NOT being `--allow-prod` eligible on this repo's own
+rule** - it puts a trigger on `boards`, which changes the behaviour of writes that already
+happen, the same reasoning that held `098` back. That was a deliberate owner decision after the
+risk was stated, exactly as `113` was; **do not read it as precedent that the rule has changed.**
+
+⚠️ **The app code hard-depends on both**: `app/views/page.tsx` selects `boards.parent_board_id`,
+and the workspace reads and writes `saved_views`. `/views` is in the nav for every role, so the
+code could not ship before the migrations - that dependency is satisfied on prod now. Keep the
+`118` → `119` order for any future rebuild.
+
+Pre-migration backup: `~/Code/prod-backup-pre-118to119-20260825-225719.dump` (custom format,
+`public` schema, `pg_restore --list`-verified at 54 tables, chmod 444). Prod was at `117` with
+exactly these two pending before the run, and reported `applied: 119   pending: 0` after. Both
+migrations self-verify inside their own transaction, so a failure rolls back whole rather than
+half-applying; neither raised.
+
+⚠️ **Both seed nothing.** `118` leaves every board a root (its post-conditions assert it) and
+`119` creates zero views, so the deploy changed nothing anyone could see. The first hierarchy
+appears when an admin picks a parent in Boards → New/Edit.
+
+Gates: `pnpm check:views` (65, real RLS) and `pnpm check:views-ui` (38, real browser, needs
+`pnpm dev` on :3000 - confirmed stable across four consecutive runs). Both counts were read off
+a run, not estimated.
+
+**The audit found three implementations of one idea, and they disagreed.** Prompt E opens with
+"FIRST AUDIT ... find duplicated filter logic", and it was there: `reports-view.tsx` held NINE
+`useState`s reduced by a hand-written `applyFilters()` inside a `useEffect` that wrote into a
+SECOND state; `board-view.tsx` had an inline `filterTasks()` over four controls; and
+`calendar-view.tsx` had no filters at all. Reports offered Unassigned and the board did not; the
+board offered "overdue" and reports did not; reports could filter by tag and status and the
+board could not. All three now route through `lib/view-config.ts`.
+
+⚠️ **Collapsing them FIXED A LIVE TIMEZONE BUG in both screens.** The old code compared
+`new Date(task.due_date)` - a `YYYY-MM-DD` DATE column parsed as UTC MIDNIGHT - against a local
+midnight. West of Greenwich those are different days, so **a task due today counted as overdue
+for a five-hour window every evening**, and Reports' From/To boundaries included or excluded a
+task depending on the reader's timezone. Same defect already recorded for the CRM. Everything
+now compares calendar dates in `BUSINESS_TIME_ZONE`. Pinned by `lib/board-filters.test.ts`'s
+"the timezone bug this replaced" block, which asserts both instants agree.
+
+- **`118` - `boards.parent_board_id`.** `boards` had NO parent column at all - verified against
+  dev and prod, not assumed - so Prompt E's loudest requirement had nothing to stand on.
+  ATLAS_01 4.6 is specific about why the wording matters: Vikunja users maintain the descendant
+  list BY HAND in a saved filter, so a project created this morning is invisible to the roll-up
+  until somebody edits it. Here membership is **computed at read time** by walking the column,
+  so there is no list to update. `ON DELETE SET NULL`, never CASCADE: deleting a parent must not
+  destroy the work under it, and its children become roots.
+  - The cycle guard is `SECURITY DEFINER` for the same reason `115`'s is: a loop routed through
+    a board the caller cannot SELECT must still be caught, because `board_descendants` recurses
+    and a cycle in the data is an infinite loop in every view built on it.
+  - ⚠️ The trigger is `BEFORE INSERT OR UPDATE OF parent_board_id, **id**`. `id` is named for
+    `104`'s reason: an `OF column` clause cannot police the columns it does not fire on.
+  - **Privacy needed no new rule, deliberately.** `public.board_descendants` is SECURITY
+    INVOKER, so it returns exactly the boards the caller may SELECT - an unreadable child is
+    simply absent. This is the ONE place in this repo where "hidden looks identical to does not
+    exist" is the behaviour we want, because the alternative is announcing that the board
+    exists. Do not add an admin bypass to make the counts tidier.
+  - Reachable: `board-management.tsx` has a **Parent board** picker on both create and edit,
+    and it excludes the board itself and its whole subtree rather than offering a choice the
+    database will refuse (ATLAS_01 10.2). Without that control the column would have been
+    hand-written-SQL-only, which is this repo's most-repeated defect.
+
+- **`119` - `saved_views`.** The config is ONE jsonb document, **against this repo's own habit**,
+  and the trade is deliberate: `114` argued the opposite for custom field VALUES because a value
+  must be independently addressable by concurrent writers, and a view config is the opposite
+  kind of thing - read and written whole, by one owner. The cost is that Postgres cannot
+  type-check inside it, so a trigger validates the shape the renderer cannot survive without
+  (an object, a known layout, arrays where arrays are indexed) and deliberately **nothing more**,
+  so adding a field stays a code change rather than a migration.
+  - **A personal view is private, including from admins.** No admin term on any policy, and a
+    post-condition asserts the SELECT policy never grows one - the same guard as `117`'s
+    `task_reminders`. Admins can manage SHARED views only, because those are org furniture and
+    somebody has to tidy up after a departure.
+  - A board-scoped shared view is bounded by the board: the SELECT policy reads `boards` through
+    the CALLER's own policy, so a shared view on a private board is invisible to a non-member
+    without this policy knowing anything about board privacy. ⚠️ Residual, stated in the header
+    rather than hidden: a GLOBAL shared view is visible to every signed-in user and its config
+    may name private board uuids. That leaks ids, never content.
+  - ⚠️ Deleting a person CASCADEs their views. That is right for personal ones and wrong for
+    shared ones; `100`'s reasoning about reassigning boards applies, and the delete-user route
+    has NOT been updated for this yet.
+
+**`lib/view-config.ts` is the single answer, and four decisions in it are worth arguing with:**
+  1. **"current user" is a VALUE (`@me`), not an operator**, though Prompt E lists it beside
+     `is` and `before`. As an operator it can only say "assignee is me"; as a value it composes -
+     `is not @me`, `@me or Bob`, `created_by is @me` - and the operator list stays orthogonal to
+     the field list. Resolved at evaluation time, never baked in, so a SHARED view does not
+     silently mean "assigned to whoever saved it". The harness pins that it is stored verbatim.
+  2. **One ordered `fields` array**, not `visibleFields` + `fieldOrder`. Two arrays that must
+     agree forever is what `115` refused for relations: they rot, silently.
+  3. **No nested boolean groups.** Prompt E says to add them "only if the UI can explain them",
+     and that is a constraint, not a suggestion - one join applies to the whole bar so it reads
+     as one sentence. Several values on ONE condition cover "Ann or Bob" without loosening
+     every other row.
+  4. **`search` is deliberately NOT saved** with a view. A free-text box is what you are doing
+     this minute, not how you like to look at work.
+
+⚠️ **Virtualization is deliberately absent from the table, and the reason is a row count.** Prod
+holds 171 tasks. A windowed table at that size breaks the browser's own Cmd-F, Cmd-A, printing
+and the screen-reader row count, in exchange for a scroll that is already smooth. The honest
+trigger is thousands of rows in one view, plus a "showing N of M" line so the loss is visible.
+
+⚠️ **`enforce_task_lifecycle` rewrites `column_id` on INSERT, and it will silently break a test
+fixture.** `tasks.status` defaults to `'to_do'`; when it disagrees with the target column's
+`status_key`, the trigger MOVES the row to whichever column on that board carries the requested
+status. So seeding a "finished" task by `column_id` alone lands it in To Do, and every status
+assertion downstream then tests the wrong fixture - observed while building `check-views-ui`,
+which now asserts the row stayed where it was put. Set `status` to match the column.
+
+⚠️ **Four defects the real-browser pass found that review did not**, all now fixed and pinned:
+  - **A view saved while scoped to a board was unreachable on the next visit.** The picker was
+    filtered by the current scope (`viewsForBoard`), and `/views` opens with no board selected -
+    so it hid exactly the views that would SET that scope. Chicken-and-egg, invisible in code.
+  - **The table's inline-rename control was permanently invisible to a mouse.** It is
+    `opacity-0 group-hover:opacity-100`, and no ancestor carried `group`, so it was reachable
+    only by tabbing to it.
+  - **A React key warning from `TableLayout`** - the group map returned a bare `<>`.
+  - **`page.locator('table input').first()` matched the header's select-all checkbox**, not the
+    rename field. Same shape as the `button[role="combobox"]` trap already recorded.
+
+⚠️ **And one harness trap worth naming: a Radix dropdown will not reopen mid-close.** The first
+Options interaction passed and the very next one timed out on identical code, because Radix
+returns focus to the trigger as the menu unmounts and swallows a second open issued during it.
+`menuPick()` reopens until the item is really visible. Same family as the polling lesson - never
+`click(trigger); click(item)`.
 
 ### Migration `087` - was held back from prod on purpose; it is now applied (2026-08-19)
 

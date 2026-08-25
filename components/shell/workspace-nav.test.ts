@@ -9,12 +9,29 @@ function ids(groups: ReturnType<typeof buildWorkspaceNav>, groupId = 'sections')
 const base = { role: 'user' as const, modules: DEFAULT_MODULES, canUseMarketingCalendar: true }
 
 describe('buildWorkspaceNav', () => {
-  it('always offers Home and My Work, whatever the module configuration', () => {
+  // Home, My Work and Views are core. Views is not a module deliberately: Prompt E's claim is
+  // that the view is not the data, so the filter/sort/group model is the foundation the other
+  // surfaces sit on and there is nothing coherent to switch off.
+  it('always offers Home, My Work and Views, whatever the module configuration', () => {
     const off: AppModule[] = DEFAULT_MODULES.map((m) => ({ ...m, enabled: false }))
     expect(ids(buildWorkspaceNav({ ...base, modules: off, canUseMarketingCalendar: false }))).toEqual([
       'tasks',
       'my-work',
+      'views',
     ])
+  })
+
+  it('lists Views as a real route so an admin redirect cannot strip it', () => {
+    const item = buildWorkspaceNav(base)[0].items.find((i) => i.id === 'views')
+    expect(item?.status).toBe('live')
+    expect(item?.href).toBe('/views')
+    // A standalone route, so it must never appear in the ?tab= set.
+    expect(addressableTabs(buildWorkspaceNav(base))).not.toContain('views')
+  })
+
+  it('offers Views to an admin at the same route, not a /dashboard tab', () => {
+    const item = buildWorkspaceNav({ ...base, role: 'admin' })[0].items.find((i) => i.id === 'views')
+    expect(item?.href).toBe('/views')
   })
 
   it('lists My Work as a real destination, not a placeholder', () => {

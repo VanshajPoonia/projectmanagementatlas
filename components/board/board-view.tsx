@@ -60,6 +60,10 @@ import {
   statusesMissingFromBoard,
   categoryForColumn,
 } from '@/lib/task-status'
+// One filter/sort implementation, shared with Reports and the Views workspace. See
+// lib/board-filters.ts for what this replaced and why the date ranges are a behaviour fix.
+import { applyFilters as applyViewFilters, applySort as applyViewSort } from '@/lib/view-config'
+import { buildBoardConfig, boardActiveFilterCount, type BoardSort } from '@/lib/board-filters'
 import { moveListItem } from '@/lib/reorder'
 import { useTaskStatusList } from '@/lib/use-task-statuses'
 import { useAppModules } from '@/lib/modules'
@@ -90,6 +94,13 @@ interface BoardViewProps {
    */
   platformRole?: PlatformRole
   currentUserId: string
+  /**
+   * The server's instant, ISO. The date-range filter chips resolve "today" against it, so the
+   * server and client passes cannot disagree about which tasks are overdue - the hydration trap
+   * lib/use-now.ts exists for. Optional so an existing call site keeps working; when absent the
+   * clock is read on mount instead, which is safe because the range defaults to 'all'.
+   */
+  now?: string
   /** The caller's board_members row for this board, if any (null = no row = full default access). */
   boardRole?: 'member' | 'guest' | 'client' | null
   /**
@@ -116,7 +127,7 @@ const COLUMN_DRAG_TYPE = 'BOARD_COLUMN'
 // memo that consumes it for why these three and not simply the first few in nav order.
 const BOARD_BAR_PRIORITY = ['boards', 'chat', 'my-work']
 
-export default function BoardView({ board, columns: initialColumns, users, isAdmin, isSuperAdmin = false, platformRole = 'user', currentUserId, boardRole = null, boards = [], shell }: BoardViewProps) {
+export default function BoardView({ board, columns: initialColumns, users, isAdmin, isSuperAdmin = false, platformRole = 'user', currentUserId, now, boardRole = null, boards = [], shell }: BoardViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   // Feeds the shell's Recent section and the ⌘K palette's Recent group. Written here
@@ -177,6 +188,12 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
   const { density, setDensity } = useDensity(currentUserId)
+
+  // The instant the date-range chips resolve "today" against. Seeded from the server when the
+  // route supplies it so the first client render agrees by construction (lib/use-now.ts), and
+  // refreshed on mount so a tab left open overnight does not keep yesterday's idea of overdue.
+  const [viewNow, setViewNow] = useState(() => (now ? new Date(now) : new Date()))
+  useEffect(() => { setViewNow(new Date()) }, [now])
 
   // Favourites (migration 097). This page renders outside AppShell, so it gets no sidebar
   // Favourites block - but it is the natural place to *add* one, so the star lives by the
@@ -1105,55 +1122,46 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     return map
   }, [columns])
 
-  const filterTasks = (tasks: any[]) => {
-    return tasks.filter(task => {
-      const taskDescription = cleanTaskDescription(task.description)
-      const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           taskDescription.toLowerCase().includes(searchTerm.toLowerCase())
-      const matchesUser = filterUser === 'all' || getAssigneeIds(task).includes(filterUser)
-      const matchesPriority = filterPriority === 'all' || task.priority?.toString() === filterPriority
-      
-      // Date filtering
-      let matchesDate = true
-      if (filterDateRange !== 'all') {
-        if (!task.due_date) {
-          return false
-        }
+  // ⚠️ The board used to carry its own filter implementation here, and it disagreed with the
+  // Reports screen's - see lib/board-filters.ts. Both now route through lib/view-config.ts, so
+  // the same question asked on a board and in a report cannot give two answers. The filter bar
+  // above is unchanged; only where the answer comes from moved.
+  //
+  // `now` is the server's instant, taken once per render pass (useNow), so the date chips
+  // cannot resolve differently between the server and client passes.
+  const boardFilterState = useMemo(
+    () => ({
+      user: filterUser,
+      priority: filterPriority,
+      range: filterDateRange,
+      search: searchTerm,
+      sort: sortConfig as readonly BoardSort[],
+    }),
+    [filterUser, filterPriority, filterDateRange, searchTerm, sortConfig],
+  )
 
-        const dueDate = new Date(task.due_date)
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        
-        switch (filterDateRange) {
-          case 'overdue':
-            matchesDate = dueDate < today && getNormalizedTaskStatus(task) !== 'done'
-            break
-          case 'today':
-            matchesDate = dueDate.toDateString() === today.toDateString()
-            break
-          case 'week':
-            const weekFromNow = new Date(today)
-            weekFromNow.setDate(today.getDate() + 7)
-            matchesDate = dueDate >= today && dueDate <= weekFromNow
-            break
-          case 'month':
-            const monthFromNow = new Date(today)
-            monthFromNow.setMonth(today.getMonth() + 1)
-            matchesDate = dueDate >= today && dueDate <= monthFromNow
-            break
-        }
-      }
-      
-      return matchesSearch && matchesUser && matchesPriority && matchesDate
-    })
-  }
-      
-  const activeFiltersCount = [
-    filterUser !== 'all',
-    filterPriority !== 'all',
-    filterDateRange !== 'all',
-    searchTerm !== ''
-  ].filter(Boolean).length
+  const boardViewConfig = useMemo(
+    () => buildBoardConfig(boardFilterState, viewNow),
+    [boardFilterState, viewNow],
+  )
+
+  const boardEvalContext = useMemo(
+    () => ({
+      currentUserId: currentUserId ?? null,
+      statuses: taskStatuses,
+      users,
+      boards,
+      now: viewNow,
+    }),
+    [currentUserId, taskStatuses, users, boards, viewNow],
+  )
+
+  const filterTasks = useCallback(
+    (tasks: any[]) => applyViewFilters(tasks, boardViewConfig, boardEvalContext),
+    [boardViewConfig, boardEvalContext],
+  )
+
+  const activeFiltersCount = boardActiveFilterCount(boardFilterState)
 
   const clearFilters = () => {
     setSearchTerm('')
@@ -1192,40 +1200,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     setSortConfig(sortConfig.filter(s => s.column !== column))
   }
 
-  const sortTasks = (tasks: any[]) => {
-    if (sortConfig.length === 0) return tasks
-
-    return [...tasks].sort((a, b) => {
-      // Apply each sort in order until we find a difference
-      for (const { column, direction } of sortConfig) {
-        let comparison = 0
-
-        switch (column) {
-          case 'title':
-            comparison = (a.title || '').localeCompare(b.title || '')
-            break
-          case 'assigned':
-            const nameA = getAssigneeNames(a, users)[0] || 'Unassigned'
-            const nameB = getAssigneeNames(b, users)[0] || 'Unassigned'
-            comparison = nameA.localeCompare(nameB)
-            break
-          case 'priority':
-            comparison = (a.priority || 0) - (b.priority || 0)
-            break
-          case 'dueDate':
-            const dateA = a.due_date ? new Date(a.due_date).getTime() : 0
-            const dateB = b.due_date ? new Date(b.due_date).getTime() : 0
-            comparison = dateA - dateB
-            break
-        }
-
-        const result = direction === 'asc' ? comparison : -comparison
-        if (result !== 0) return result
-      }
-
-      return 0
-    })
-  }
+  const sortTasks = useCallback(
+    (tasks: any[]) => applyViewSort(tasks, boardViewConfig, boardEvalContext),
+    [boardViewConfig, boardEvalContext],
+  )
 
   const escapeCSVValue = (value: unknown) => {
     const stringValue = value == null ? '' : String(value)

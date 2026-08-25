@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,8 @@ import { getAssigneeIds, getAssigneeNames } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { getTaskStatusLabel } from '@/lib/task-status'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
+import { applyFilters } from '@/lib/view-config'
+import { UNASSIGNED_FILTER_VALUE, buildReportConfig, pickerDate } from '@/lib/report-filters'
 
 interface ReportsViewProps {
   tasks: any[]
@@ -23,11 +25,9 @@ interface ReportsViewProps {
   boards: any[]
 }
 
-const UNASSIGNED_FILTER_VALUE = '__unassigned__'
 const reportStatusKey = (task: any) => task.column?.status_key || task.status
 
 export default function ReportsView({ tasks, users, boards }: ReportsViewProps) {
-  const [filteredTasks, setFilteredTasks] = useState(tasks)
   const [filterUser, setFilterUser] = useState<string[]>([])
   const [filterTags, setFilterTags] = useState<string[]>([])
   const [filterPriority, setFilterPriority] = useState<string[]>([])
@@ -45,62 +45,39 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
     loadTags()
   }, [])
 
-  useEffect(() => {
-    applyFilters()
-  }, [filterUser, filterTags, filterPriority, filterStatus, filterBoard, dateFrom, dateTo, dueDateFrom, dueDateTo, tasks])
-
   const loadTags = async () => {
     const { data } = await supabase.from('tags').select('*').order('name')
     if (data) setAllTags(data)
   }
 
-  const applyFilters = () => {
-    let filtered = [...tasks]
+  const reportConfig = useMemo(
+    () => buildReportConfig({
+      users: filterUser,
+      tags: filterTags,
+      priorities: filterPriority,
+      statuses: filterStatus,
+      boards: filterBoard,
+      createdFrom: pickerDate(dateFrom),
+      createdTo: pickerDate(dateTo),
+      dueFrom: pickerDate(dueDateFrom),
+      dueTo: pickerDate(dueDateTo),
+    }),
+    [filterUser, filterTags, filterPriority, filterStatus, filterBoard, dateFrom, dateTo, dueDateFrom, dueDateTo],
+  )
 
-    if (filterUser.length > 0) {
-      filtered = filtered.filter(task => {
-        const ids = getAssigneeIds(task)
-        const matchesUnassigned = filterUser.includes(UNASSIGNED_FILTER_VALUE) && ids.length === 0
-        return matchesUnassigned || ids.some(id => filterUser.includes(id))
-      })
-    }
-
-    if (filterTags.length > 0) {
-      filtered = filtered.filter(task => 
-        task.task_tags?.some((tt: any) => filterTags.includes(tt.tag.id))
-      )
-    }
-
-    if (filterPriority.length > 0) {
-      filtered = filtered.filter(task => filterPriority.includes(task.priority?.toString()))
-    }
-
-    if (filterStatus.length > 0) {
-      filtered = filtered.filter(task => filterStatus.includes(reportStatusKey(task)))
-    }
-
-    if (filterBoard.length > 0) {
-      filtered = filtered.filter(task => filterBoard.includes(task.board_id))
-    }
-
-    if (dateFrom) {
-      filtered = filtered.filter(task => new Date(task.created_at) >= dateFrom)
-    }
-
-    if (dateTo) {
-      filtered = filtered.filter(task => new Date(task.created_at) <= dateTo)
-    }
-
-    if (dueDateFrom) {
-      filtered = filtered.filter(task => task.due_date && new Date(task.due_date) >= dueDateFrom)
-    }
-
-    if (dueDateTo) {
-      filtered = filtered.filter(task => task.due_date && new Date(task.due_date) <= dueDateTo)
-    }
-
-    setFilteredTasks(filtered)
-  }
+  // One filter implementation, shared with the board and the Views workspace. `now` is only
+  // read by relative operators, which this screen does not use; it is passed rather than
+  // defaulted so nothing here reaches for the ambient clock during a render.
+  const filteredTasks = useMemo(
+    () => applyFilters(tasks, reportConfig, {
+      currentUserId: null,
+      statuses: taskStatuses,
+      users,
+      boards,
+      now: new Date(0),
+    }),
+    [tasks, reportConfig, taskStatuses, users, boards],
+  )
 
   const toggleFilter = (filterArray: string[], setFilter: (arr: string[]) => void, value: string) => {
     if (filterArray.includes(value)) {
