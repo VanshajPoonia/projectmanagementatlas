@@ -309,8 +309,8 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `120`. **Dev is at `119`; prod is at
-  `117`** as of 2026-08-25 - `118` and `119` are dev-only, see the Prompt E section below. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `120`. **Dev and prod were both
+  verified fully applied at `119` on 2026-08-25**, 0 pending on each. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
@@ -1032,17 +1032,32 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
     happen to sort. Query either end, or use a directional relation type in the fixture.
 
 
-### Prompt E - the shared query/view engine (`118`-`119`, DEV ONLY, 2026-08-25)
+### Prompt E - the shared query/view engine (`118`-`119`, dev AND prod, 2026-08-25)
 
-One configuration model that four layouts render from, at `/views`. **Both migrations are on
-DEV ONLY.** `119` is purely additive and `--allow-prod` eligible; **`118` is NOT** - it puts a
-trigger on `boards`, which changes the behaviour of writes that already happen, the same
-reasoning that held `098` and `113` back. Decide it deliberately.
+One configuration model that four layouts render from, at `/views`. **Both are applied to dev
+AND prod** (prod on 2026-08-25, on the owner's explicit instruction, one file at a time via
+`--only=NNN --allow-prod`, verified between each). `119` is purely additive and `--allow-prod`
+eligible.
+
+⚠️ Note **`118` was applied to prod despite NOT being `--allow-prod` eligible on this repo's own
+rule** - it puts a trigger on `boards`, which changes the behaviour of writes that already
+happen, the same reasoning that held `098` back. That was a deliberate owner decision after the
+risk was stated, exactly as `113` was; **do not read it as precedent that the rule has changed.**
 
 ⚠️ **The app code hard-depends on both**: `app/views/page.tsx` selects `boards.parent_board_id`,
-and the workspace reads and writes `saved_views`. `/views` is in the nav for every role, so
-shipping the code without the migrations gives every user a link to a broken page. Apply
-`118` then `119` before merging.
+and the workspace reads and writes `saved_views`. `/views` is in the nav for every role, so the
+code could not ship before the migrations - that dependency is satisfied on prod now. Keep the
+`118` → `119` order for any future rebuild.
+
+Pre-migration backup: `~/Code/prod-backup-pre-118to119-20260825-225719.dump` (custom format,
+`public` schema, `pg_restore --list`-verified at 54 tables, chmod 444). Prod was at `117` with
+exactly these two pending before the run, and reported `applied: 119   pending: 0` after. Both
+migrations self-verify inside their own transaction, so a failure rolls back whole rather than
+half-applying; neither raised.
+
+⚠️ **Both seed nothing.** `118` leaves every board a root (its post-conditions assert it) and
+`119` creates zero views, so the deploy changed nothing anyone could see. The first hierarchy
+appears when an admin picks a parent in Boards → New/Edit.
 
 Gates: `pnpm check:views` (65, real RLS) and `pnpm check:views-ui` (38, real browser, needs
 `pnpm dev` on :3000 - confirmed stable across four consecutive runs). Both counts were read off

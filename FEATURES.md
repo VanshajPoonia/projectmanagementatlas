@@ -83,7 +83,7 @@ notes and the prod-ordering hazard.
       builder as `custom:<key>`, typed from their `field_type`)*
 - ~~Migration + backfill existing status/priority into the new model~~ *(deliberately NOT done: status and priority stay first-class columns. Re-homing them into the field engine would rewrite every query in the app to buy nothing - the plan's "do not rewrite a working feature to make it resemble a competitor".)*
 
-### Phase 2 - Multiple views over one dataset  ✅ SHIPPED (Prompt E, 2026-08-25)
+### Phase 2 - Multiple views over one dataset  ✅ SHIPPED (Prompt E, dev + prod, 2026-08-25)
 Same tasks, more lenses. One config model (`lib/view-config.ts`) that four layouts render
 from, at `/views`. Migrations `118` (board hierarchy) and `119` (saved views).
 - [x] Table/spreadsheet view (sort, filter, inline edit, grouped rows, resize + reorder
@@ -188,8 +188,9 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       Gates: `pnpm check:work-items` (94), `pnpm check:work-items-ui` (31). The two unchecked
       Phase 1 boxes above (fields on cards, filter/sort by a field) are Prompt E view work, not
       gaps in this one.
-- [x] **4. Shared filter/query/view model** (Prompt E) - = FEATURES Phase 2. **SHIPPED to dev**
-      (migrations `118`/`119`, 2026-08-25). `lib/view-config.ts` is the single answer: one
+- [x] **4. Shared filter/query/view model** (Prompt E) - = FEATURES Phase 2. **SHIPPED to dev
+      AND prod** (migrations `118`/`119`; prod 2026-08-25, one file at a time, backup taken
+      first; `118` went in as a deliberate owner decision despite adding a trigger to `boards`). `lib/view-config.ts` is the single answer: one
       normalized config (layout, board scope, descendant behaviour, filters, join, sort, group,
       ordered visible fields, density, hierarchy, completed-item handling) and one evaluation
       pipeline that every layout renders from. **The audit came first and found three

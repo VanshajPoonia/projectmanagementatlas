@@ -227,7 +227,7 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   client at MODULE scope, so an unset `RESEND_API_KEY` made every importer crash - including the
   cron route, which 500'd before its own auth check and took recurrence generation with it. It
   is lazy now, which also fixes the four components that import it.
-- **Prompt E is SHIPPED to dev ONLY (`118`-`119`, 2026-08-25).** One configuration model that
+- **Prompt E is SHIPPED to dev AND prod (`118`-`119`, 2026-08-25).** One configuration model that
   four layouts render from, at **`/views`** (a real route, in the nav for every role, next to
   My Work). `lib/view-config.ts` holds the whole vocabulary - layout, board scope, descendant
   behaviour, filters with the nine operators plus AND/OR, sort, grouping, an ordered visible-field
@@ -236,11 +236,15 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   (resize + reorder columns, sticky title, sort by header, inline rename, bulk select),
   **Kanban** grouped by ANY field rather than by the board's own columns, and **Calendar**
   (month/week/day, an unscheduled tray, drag to reschedule).
-  ⚠️ **NEITHER MIGRATION IS ON PROD, and the code hard-depends on both.** `119` (`saved_views`)
-  is purely additive and `--allow-prod` eligible; **`118` is NOT** - it puts a trigger on
-  `boards`, the same reasoning that held `098` and `113` back, so it is an explicit owner
-  decision. `/views` is in the nav for everyone, so merging the code first gives every user a
-  link to a broken page. Apply `118` then `119`, in that order, BEFORE merging.
+  **Both migrations were applied to PROD on 2026-08-25**, one file at a time with
+  `--only=NNN --allow-prod`, after a `pg_restore --list`-verified backup
+  (`~/Code/prod-backup-pre-118to119-20260825-225719.dump`, 54 tables). Prod went 117 -> 119,
+  `pending: 0`. **Both seed nothing** - `118` leaves every board a root and `119` creates zero
+  views - so the deploy changed nothing anyone could see; the first hierarchy appears when an
+  admin picks a parent in Boards > New/Edit.
+  ⚠️ **`118` is NOT `--allow-prod` eligible on this repo's own rule** (it puts a trigger on
+  `boards`, the reasoning that held `098` back). It went to prod as a deliberate owner decision
+  after the risk was stated, exactly as `113` did. **Do not treat it as precedent.**
   **The audit came first and found three implementations of one idea**: `reports-view.tsx` had
   nine `useState`s reduced in a `useEffect` into a second state, `board-view.tsx` had an inline
   `filterTasks()`, `calendar-view.tsx` had none. They disagreed - reports offered Unassigned and
