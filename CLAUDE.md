@@ -869,7 +869,9 @@ deliberately left out.
     board and Reports **a task due today was returned by the `overdue` filter** and grouped under
     Overdue. Measured on 2026-08-27 by running the shipped engine against a real row shape:
     `taskDueDate('2026-08-27T00:00:00+00:00')` returned `2026-08-26`. Fixed the same day by
-    splitting `dueCalendarDate` (stored day) from `calendarDateOf` (true instant).
+    splitting `dueCalendarDate` (stored day) from `calendarDateOf` (true instant), and **live on
+    production as `2142cc8`** from 2026-08-27. The fix was code-only, no migration, so it was
+    safe to merge straight to `main`; prod stays at `119`.
   - ⚠️ **`/my-work` had its own older version of it**, via `new Date()` + LOCAL
     `setHours(0,0,0,0)` in `lib/my-work.ts` and `lib/work-next.ts`. Same one-day shift, every
     hour of every day rather than an evening window: the Overdue stat counted today's work as

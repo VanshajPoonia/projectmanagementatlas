@@ -270,18 +270,21 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   the table's inline-rename control was permanently invisible to a mouse (`group-hover` with no
   `group` ancestor); a React key warning from `TableLayout`; and `enforce_task_lifecycle` quietly
   moving a seeded task out of its intended column, which had been testing the wrong fixture.
-- ✅ **`118`/`119` are on prod** (2026-08-25) and **the pre-Prompt-F cleanup is done**
-  (2026-08-27, commit on `main`). That cleanup was meant to be three small items and turned up
-  **two live production bugs** instead - read the Prompt-F entry below before starting F.
+- ✅ **`118`/`119` are on prod** (2026-08-25) and **the pre-Prompt-F cleanup is done and
+  DEPLOYED** (merged to `main` as `2142cc8`, live 2026-08-27, deployment status `success`).
+  That cleanup was meant to be three small items and turned up **two live production bugs**
+  instead - read the Prompt-F entry below before starting F. It carried no SQL, so there was
+  no migration to sequence ahead of the merge; dev and prod both remain at `119`.
 - ⚠️⚠️ **`tasks.due_date` is `TIMESTAMPTZ`, NOT a `DATE` column.** It stores MIDNIGHT on the
   chosen day, and there are two writers producing two shapes (`T00:00:00+00:00` from
   `create-task-dialog`'s `<input type="date">`, `T05:00:00+00:00` from `task-detail-modal`'s
   picker at Chicago midnight). **The intended day is the UTC date part**; resolving the instant
   through `businessDate()` lands on the day BEFORE. Use `dueCalendarDate` / `taskDueDate` from
   `lib/calendar-grid.ts`. `businessDate` stays correct for genuine instants like `created_at`.
-  - This was wrong on production from the Prompt E deploy until 2026-08-27: **`/views`, the
-    board and Reports returned a task due TODAY from the `overdue` filter.** `/my-work` had an
-    older variant of the same shift. Both fixed.
+  - This was wrong on production from the Prompt E deploy (2026-08-25) until the `2142cc8`
+    deploy on 2026-08-27: **`/views`, the board and Reports returned a task due TODAY from the
+    `overdue` filter.** `/my-work` had an older variant of the same shift. Both fixed and both
+    live.
   - It survived ~1420 passing tests because **every fixture used a shape the column never
     sends** - My Work's were `toISOString()` timestamps, Prompt E's were bare `'2026-08-25'`
     strings, and each suite tested the one shape its own bug could not reach. When writing a
