@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Lock, Plus, X, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
-import { shortDayLabel, taskDueDate } from '@/lib/calendar-grid'
+import { calendarDateLabel, taskDueDate } from '@/lib/calendar-grid'
 import { businessDate } from '@/lib/crm'
 import { showUndoableToast } from '@/components/shell/undo-toast'
 
@@ -163,7 +163,7 @@ export default function PersonalTasks({ userId }: PersonalTasksProps) {
                   isOverdue(task) ? 'text-red-600 font-medium dark:text-red-400' : 'text-muted-foreground'
                 }`}>
                   <Calendar className="w-3 h-3" />
-                  {shortDayLabel(taskDueDate(task)!)}
+                  {calendarDateLabel(taskDueDate(task)!)}
                 </span>
               )}
 

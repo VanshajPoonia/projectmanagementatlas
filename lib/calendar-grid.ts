@@ -5,7 +5,10 @@
 // right and is off by one for half the planet.
 //
 // ⚠️ EVERY VALUE HERE IS A `YYYY-MM-DD` STRING, NEVER AN INSTANT.
-// `tasks.due_date` is a DATE in Postgres and arrives as `YYYY-MM-DD`. `new Date('2026-08-25')`
+// ⚠️ `tasks.due_date` is NOT a DATE column - it is TIMESTAMPTZ storing midnight on the intended
+// day, and this header used to claim the opposite, which is the belief that produced the bug.
+// Convert an incoming value with `dueCalendarDate` FIRST, then stay in string space.
+// `new Date('2026-08-25')`
 // parses that as UTC midnight, which is 7pm on the 24th in America/Chicago - so a task lands on
 // the wrong cell for anyone west of Greenwich, and the server and browser disagree for a
 // five-hour window every day. This already bit the CRM (see CLAUDE.md).
@@ -102,6 +105,25 @@ export function shortDayLabel(value: string): string {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', {
     weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
   })
+}
+
+/**
+ * A due date as this company reads it: `8/27/2026`.
+ *
+ * ⚠️ This exists because the due-date fix quietly restyled every date in the app. The screens
+ * below had all rendered `toLocaleDateString('en-US')` for months, and swapping them to
+ * `shortDayLabel` changed `8/27/2026` into `Thu 27 Aug` on boards, dashboards, Reports, the
+ * share page and BOTH exports - **dropping the year**, so a task due next January displayed
+ * identically to one due this year, and a downloaded CSV lost information its Created Date
+ * column still carried. Fixing which DAY a date means was the job; changing how every date
+ * looks was not.
+ *
+ * Formatted from a UTC midnight with `timeZone: 'UTC'`, like every other label in this module,
+ * so the calendar day survives the reader's timezone.
+ */
+export function calendarDateLabel(value: string): string {
+  const { y, m, d } = parseIso(value)
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { timeZone: 'UTC' })
 }
 
 /**

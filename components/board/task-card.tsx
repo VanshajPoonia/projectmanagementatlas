@@ -24,7 +24,7 @@ import {
 } from '@/components/shell/density'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, findExactColumnForStatus, getEffectiveStatusKey, statusesForPicker } from '@/lib/task-status'
-import { daysBetween, dueDateAsPickerDate, shortDayLabel, taskDueDate } from '@/lib/calendar-grid'
+import { daysBetween, dueDateAsPickerDate, calendarDateLabel, taskDueDate } from '@/lib/calendar-grid'
 import { businessDate } from '@/lib/crm'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { sendTaskAssignmentEmail } from '@/lib/email'
@@ -600,7 +600,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
                     className="flex w-full items-center gap-2 rounded text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                   >
                     <Calendar className="w-3 h-3 shrink-0" />
-                    <span>{dueOn ? shortDayLabel(dueOn) : 'Set due date'}</span>
+                    <span>{dueOn ? calendarDateLabel(dueOn) : 'Set due date'}</span>
                   </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start" onClick={(e) => e.stopPropagation()}>
@@ -616,7 +616,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
               task.due_date && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Calendar className="w-3 h-3" />
-                  <span>{dueOn ? shortDayLabel(dueOn) : ''}</span>
+                  <span>{dueOn ? calendarDateLabel(dueOn) : ''}</span>
                 </div>
               )
             )}

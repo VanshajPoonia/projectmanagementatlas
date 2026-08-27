@@ -4,6 +4,7 @@ import {
   rangeDates, taskDueDate, stepAnchor, monthLabel, dayLabel,
   daysBetween,
   shortDayLabel,
+  calendarDateLabel,
   dueDateAsPickerDate,
 } from './calendar-grid'
 
@@ -274,6 +275,34 @@ describe('shortDayLabel', () => {
     // Nothing here touches the local zone, so this holds by construction; the test exists
     // because the version it replaced did not.
     expect(shortDayLabel('2026-08-30')).toBe(shortDayLabel('2026-08-30'))
+  })
+})
+
+describe('calendarDateLabel', () => {
+  it('keeps the year, because a due date outlives the year you are reading it in', () => {
+    // The regression this pins: every one of these screens rendered
+    // `toLocaleDateString('en-US')` for months, and the due-date fix swapped them to
+    // `shortDayLabel`, which has no year. A task due 5 Jan 2027 then displayed the same as one
+    // due 5 Jan 2026, and the Reports CSV lost the year while its Created Date column kept it.
+    expect(calendarDateLabel('2026-08-27')).toBe('8/27/2026')
+    expect(calendarDateLabel('2027-01-05')).toBe('1/5/2027')
+    expect(calendarDateLabel('2025-12-31')).toBe('12/31/2025')
+  })
+
+  it('renders the same string the app rendered before the due-date fix', () => {
+    // Byte-for-byte parity with the expression it restores, for a value whose UTC day and the
+    // reader's day agree. That is the whole claim: the DAY was wrong, the FORMAT was not.
+    expect(calendarDateLabel('2026-08-27')).toBe(
+      new Date(Date.UTC(2026, 7, 27)).toLocaleDateString('en-US', { timeZone: 'UTC' }),
+    )
+  })
+
+  it('carries a year where the compact chip carries none', () => {
+    expect(calendarDateLabel('2026-01-05')).not.toBe(calendarDateLabel('2027-01-05'))
+    expect(calendarDateLabel('2026-01-05')).toMatch(/\d{4}/)
+    // The chip states no year at all, which is fine for "Due Sat 29 Aug" a few days out and is
+    // why it stays on /my-work only. It is not a general-purpose date label.
+    expect(shortDayLabel('2026-01-05')).not.toMatch(/\d{4}/)
   })
 })
 

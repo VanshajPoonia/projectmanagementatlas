@@ -5,7 +5,7 @@ import { Eye, Calendar, Lock } from 'lucide-react'
 import { getTaskStatusLabel } from '@/lib/task-status'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { getContrastTextColor } from '@/lib/utils'
-import { shortDayLabel, taskDueDate } from '@/lib/calendar-grid'
+import { calendarDateLabel, taskDueDate } from '@/lib/calendar-grid'
 import {
   isPublicShareLinkActive,
   isPublicTaskAvailable,
@@ -82,7 +82,7 @@ function TaskChip({ task, statusLabel }: { task: any; statusLabel: string }) {
         )}
         {task.due_date && (
           <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <Calendar className="h-3 w-3" />{shortDayLabel(taskDueDate(task)!)}
+            <Calendar className="h-3 w-3" />{calendarDateLabel(taskDueDate(task)!)}
           </span>
         )}
         {(task.task_tags || []).slice(0, 3).map((tt: any) => tt.tag && (
@@ -201,7 +201,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
             {visibleTask.priority != null && <Badge variant="outline" className={priorityClass(visibleTask.priority)}>Priority {visibleTask.priority}</Badge>}
             {visibleTask.due_date && (
               <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                <Calendar className="h-4 w-4" />{shortDayLabel(taskDueDate(visibleTask)!)}
+                <Calendar className="h-4 w-4" />{calendarDateLabel(taskDueDate(visibleTask)!)}
               </span>
             )}
           </div>

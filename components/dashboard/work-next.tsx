@@ -7,7 +7,7 @@ import { Calendar, CornerDownRight, Kanban, Sparkles } from 'lucide-react'
 import { getWorkNext } from '@/lib/work-next'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { cn } from '@/lib/utils'
-import { shortDayLabel, taskDueDate } from '@/lib/calendar-grid'
+import { calendarDateLabel, taskDueDate } from '@/lib/calendar-grid'
 
 interface WorkNextProps {
   /** Tasks already narrowed to the current user; ranking handles the rest. */
@@ -99,7 +99,7 @@ export default function WorkNext({ tasks, basePath = '/dashboard', limit = 5 }: 
                   {task.due_date && (
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
-                      {shortDayLabel(taskDueDate(task)!)}
+                      {calendarDateLabel(taskDueDate(task)!)}
                     </span>
                   )}
                 </div>

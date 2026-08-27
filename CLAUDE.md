@@ -899,6 +899,22 @@ deliberately left out.
       overdue; and **both date PICKERS highlighted the previous day**
       (`new Date('2026-08-27T00:00:00Z')` is the 26th in Chicago), so opening a task showed a
       date the task did not have - `dueDateAsPickerDate` exists for exactly that.
+    - ⚠️ **And the fix itself broke every date on screen, which is the defect to learn from.**
+      All thirteen of those display sites had rendered `toLocaleDateString('en-US')` for months
+      (`8/27/2026`); the sweep swapped them to `shortDayLabel`, which is the compact `/my-work`
+      chip and **carries no year**. So from the `2142cc8` deploy until 2026-08-28, a board card,
+      dashboard, Reports row, the public share page and BOTH Reports exports read `Thu 27 Aug`,
+      and a task due 5 Jan 2027 displayed identically to one due 5 Jan 2026. The CSV was the
+      worst of it: its **Due Date** column lost the year while the **Created Date** column
+      beside it kept it, so one downloaded file carried two date formats and the sortable one
+      was the wrong column. `calendarDateLabel` restores the original format, computed from the
+      stored calendar day so the DAY fix survives. **Fixing what a value MEANS is not licence to
+      change how it LOOKS** - the day was wrong, the format never was, and a reformat that rides
+      along inside a correctness fix reaches production with nobody having agreed to it.
+      `shortDayLabel` is now used in exactly one place, `my-work-view.tsx`'s "Due Sat 29 Aug"
+      chip, where near-term context makes the missing year fine. Pinned by three cases in
+      `lib/calendar-grid.test.ts` including a year-boundary pair, and verified in a real browser
+      against a task due in 2027.
     - **Two sites were already correct and are now commented as such**, because both looked
       like the bug and a later "fix" would have broken them: `bulk-action-bar`'s date shift uses
       `setUTCDate`/`getUTCDate` deliberately, and `calendar-view` read the UTC date part.
