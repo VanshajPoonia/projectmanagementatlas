@@ -11,8 +11,9 @@ import { REFUSAL_MESSAGES, checkDeletion } from '@/lib/deprovision'
 // every delete with an opaque "Database error deleting user". Since every board here is
 // created by an admin, that meant no admin could ever be deprovisioned.
 //
-// With the schema fixed, the foreign keys handle nearly all of it. Boards are the exception
-// and are handled explicitly below.
+// With the schema fixed, the foreign keys handle nearly all of it. Two things are the
+// exception and are reassigned explicitly below: boards (whose creator owns a private board's
+// membership list) and SHARED saved views (which other people are using).
 
 export async function DELETE(request: Request) {
   const supabase = await createClient()
@@ -82,6 +83,38 @@ export async function DELETE(request: Request) {
       )
     }
 
+    // SHARED saved views are the second thing that must change hands, for the same reason and
+    // by the same rule as boards: migration 119 gives `saved_views.owner_id` an ON DELETE
+    // CASCADE, which is right for a PERSONAL view (it was private to them, including from
+    // admins, and nobody else can see it) and wrong for a SHARED one. A shared view is org
+    // furniture - it is on everyone's picker and someone else is using it today - so letting it
+    // vanish with its author destroys other people's work, silently and with no way back.
+    //
+    // Only `scope = 'shared'` is touched. Reassigning their personal views would be worse than
+    // deleting them: it would hand the deleting admin a private view they were never meant to
+    // see, on a table built with no admin bypass on any policy.
+    //
+    // There is no UNIQUE (owner_id, name) on this table - 119 declined it deliberately - so a
+    // transferred view cannot collide with one the new owner already has.
+    const { data: viewsMoved, error: viewsError } = await supabaseAdmin
+      .from('saved_views')
+      .update({ owner_id: user.id })
+      .eq('owner_id', userId)
+      .eq('scope', 'shared')
+      .select('id')
+
+    if (viewsError) {
+      return NextResponse.json(
+        {
+          error:
+            `Their boards transferred, but their shared views did not, so nothing was deleted: ` +
+            `${viewsError.message}`,
+          boardsTransferred: transferred?.length ?? 0,
+        },
+        { status: 500 }
+      )
+    }
+
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId)
     if (authError) {
       // The transfer already happened. Say so rather than reporting a clean failure - the
@@ -90,6 +123,7 @@ export async function DELETE(request: Request) {
         {
           error: `The account was not deleted: ${authError.message}`,
           boardsTransferred: transferred?.length ?? 0,
+          sharedViewsTransferred: viewsMoved?.length ?? 0,
         },
         { status: 500 }
       )
@@ -97,7 +131,11 @@ export async function DELETE(request: Request) {
 
     // The audit row is written by the trigger from migration 100, not from here, so it
     // cannot be skipped by any caller.
-    return NextResponse.json({ success: true, boardsTransferred: transferred?.length ?? 0 })
+    return NextResponse.json({
+      success: true,
+      boardsTransferred: transferred?.length ?? 0,
+      sharedViewsTransferred: viewsMoved?.length ?? 0,
+    })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

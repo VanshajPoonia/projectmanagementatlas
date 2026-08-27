@@ -46,5 +46,15 @@ export default async function MyWorkPage() {
   // rather than rendering the fallback and correcting itself. See lib/shell-data.ts.
   const shell = await loadShellData(supabase)
 
-  return <MyWorkView user={profile} tasks={tasks} shell={shell} loadFailed={Boolean(tasksError)} />
+  // The server's instant, so "today" means the same thing on both renders. Without it the page
+  // reads the wall clock during render and hydration disagrees across a day boundary.
+  return (
+    <MyWorkView
+      user={profile}
+      tasks={tasks}
+      shell={shell}
+      loadFailed={Boolean(tasksError)}
+      now={new Date().toISOString()}
+    />
+  )
 }

@@ -33,6 +33,33 @@ harness) or `assertMigrationTarget({ allowProd })` (the migration runner; prod r
 `psql`, the Supabase SQL editor, and any migration runner - if a task seems to need a migration
 applied and the script doesn't yet call the guard, add the guard call first, don't skip it.
 
+### ⚠️ The owner-override path, because the rule above has been overridden twice
+
+Read this before writing "NOT `--allow-prod` eligible, so it stays on dev" and moving on. As of
+2026-08-27 **two migrations that were not eligible are on production anyway** - `113` (trigger on
+`tasks`) and `118` (trigger on `boards`) - each after the risk was stated and the owner said go.
+Two exceptions in five days is not a rule being broken, it is a rule with a missing clause, and
+leaving it unwritten meant the docs claimed one thing while the ledger showed another.
+
+So, stated properly:
+
+- **The eligibility rule is unchanged and is still the default.** Nothing destructive reaches prod
+  on an agent's own judgement. `--allow-prod` on an ineligible migration is never a call to make
+  without asking.
+- **The owner may override it, per migration, in writing.** What that costs is a written statement
+  of the specific risk *first* (what the trigger changes about writes that already happen, what
+  breaks if it is wrong), a verified backup, and one file at a time with `--only=NNN`, verified
+  between each. That is exactly how `113` and `118` were done.
+- **An override is recorded where the migration is described**, naming it as an owner decision and
+  saying it is not precedent. Both existing ones do.
+- **What is still absolute:** no override for anything that drops or rewrites data, and the dev
+  sandbox stays the default target for everything. `assertMigrationTarget` is not weakened - the
+  flag, the banner and the one-file-at-a-time discipline are the whole mechanism.
+
+The honest summary is that "purely additive" was too narrow a test. A trigger on an existing table
+is riskier than a new column and safer than an RLS rewrite, and the rule had no middle. This is the
+middle: it is allowed, it costs a stated risk and a backup, and it is never the agent's call.
+
 ## What this branch is for
 
 `main` is a working PM tool for **one company** (Bobby's - business units SRG/AGC). This branch
@@ -173,11 +200,15 @@ above. It is kept as-is (harmless, still passes) but is not gating anything mean
   `admin-dashboard.tsx` - their tab lists and sidebar sections now gate on `isModuleEnabled(...)`
   (marketing stays additionally gated by the existing Kayla/admin check - untouched, that's §3/Phase
   2 territory). Browser-verified: nav renders identically to before (all seeded enabled=true).
-  **Not wired:** the floating `AiChatWidget` and the embedded `BookmarksSection` rail render
-  unconditionally in all three dashboard shells (user/admin/super-admin) - `ai_assistant` and
-  `bookmarks` exist as toggleable rows in `app_modules` but aren't consumed at those render sites
-  yet. Scoped out because it touches three more large files; pick up if a super_admin actually needs
-  to turn either off.
+  ⚠️ **This block used to end "Not wired: the floating `AiChatWidget` and the embedded
+  `BookmarksSection` rail render unconditionally in all three dashboard shells". That is FALSE
+  and has been since `368453f`** - both are gated by `isModuleEnabled(modules, …)` in
+  `user-dashboard.tsx` and `admin-dashboard.tsx`, and `super-admin-dashboard.tsx` renders
+  neither, so there is no third site to gate. The stale sentence outlived the fix by weeks and
+  was mirrored by a `NOT_YET_WIRED` badge in `module-management.tsx` reading "toggle not
+  consumed yet", which told a super admin that a working switch did nothing. Badge deleted
+  2026-08-27. **A control labelled broken is a control nobody touches** - the same defect as one
+  that really is broken, only harder to find, because nothing fails.
 
 **Phase 2 - de-hardcode.** Remove the three items in §3 above. Members/guests/clients are added to
 the one existing org directly (no "create org" step - there's nothing to create).
@@ -657,8 +688,9 @@ deliberately left out.
   - the guest/client lesson repeating exactly. Fixed by
   `components/admin/module-management.tsx`, a fifth **Modules** tab on `/admin/super-admin`.
   Its writes ask for their rows back and compare the count, because an RLS refusal returns
-  zero rows and no error. `ai_assistant` and `bookmarks` are labelled in that UI as not yet
-  consumed at their render sites, which is still true.
+  zero rows and no error. ⚠️ That UI used to badge `ai_assistant` and `bookmarks` as "not yet
+  consumed at their render sites"; **that was already false when it was written** and the badge
+  is gone (2026-08-27). Both toggles work - see the corrected note under Phase 1-C above.
 - ⚠️ **`102` is dev-only and rewrites an RLS policy, so it is destructive by this repo's own
   definition and must NOT use `--allow-prod`.** It is also a hard dependency of the
   "Move to another board" button on a task - without it `move_task_to_board` does not exist
@@ -709,13 +741,30 @@ deliberately left out.
   only the attribution goes. Personal bookmarks still cascade through `user_id`, which is
   correct. `share_links.created_by` is deliberately left `CASCADE` - a public share URL
   minted by someone who has been removed should stop working.
-  - **Boards are the one thing reassigned rather than nulled**, and that happens in
+  - **Boards are reassigned rather than nulled**, and that happens in
     `app/api/admin/delete-user/route.ts`, not in SQL. `boards.created_by` is not a byline:
     `061` makes it the sole authority over a private board's membership list, with no admin
     bypass, so a NULL creator would freeze that list permanently. The route transfers boards
     to the super admin doing the deletion first, then deletes the account. Tasks and
     comments are deliberately **not** reassigned - that would make them claim to have been
-    written by whoever ran the deletion. Gate: `pnpm check:deprovision` (20 checks).
+    written by whoever ran the deletion.
+  - ⚠️ **`119` added a second thing that must change hands, and the route did not learn about
+    it for two days** (fixed 2026-08-27). `saved_views.owner_id` is `ON DELETE CASCADE`, which
+    is right for a PERSONAL view - private to its owner, including from admins, so nothing
+    anyone else could see is lost - and destroys other people's work for a SHARED one, which
+    sits on every picker. Deprovisioning someone silently deleted every shared view they had
+    made. The route now transfers `scope = 'shared'` only, before the delete, exactly as it
+    does boards; personal views still cascade, because moving them would hand the deleting
+    admin a view built to be unreadable by admins. `describeDeletion` counts them separately
+    from boards so the confirmation says what is about to change hands.
+    - **The generalisable bit: a new table with an owner FK is a deprovisioning decision, not
+      just a schema one.** CASCADE, SET NULL and reassign are three different answers and the
+      right one depends on who else can see the row. Ask it when the table is created - this
+      one was missed because `119`'s own header flagged it ("the delete-user route has NOT
+      been updated for this yet") and nothing carried that forward.
+  - Gate: `pnpm check:deprovision` (25 checks as of 2026-08-27, was 20). The four new
+    shared-view checks were confirmed to FAIL when the transfer was removed, rather than
+    trusted to be meaningful.
 - ⚠️ **`098` and `099` are applied to dev only, and both need a decision before prod.**
   Neither is `--allow-prod` eligible on the "purely additive" rule.
   - `098` (audit events) adds a table, which is additive, but it also puts **triggers on five
@@ -801,6 +850,86 @@ deliberately left out.
     pipeline. The rule, now uniform: **queries fetch every row, lookups resolve against every
     row, and only pickers filter** (`activeStatuses()` in `lib/crm.ts`, which also keeps a
     record's own archived status in its picker so the control never renders blank).
+  - ⚠️⚠️ **`tasks.due_date` IS NOT A `DATE` COLUMN. It is `TIMESTAMPTZ`** (`001_initial_schema.sql`)
+    - and believing otherwise put the same one-day bug into three screens twice. Read this before
+    touching any due-date logic. Measured against the sandbox, not assumed: **49 of 53 rows are
+    `T00:00:00+00:00` and 4 are `T05:00:00+00:00`**, because there are two writers and they
+    disagree:
+    - `create-task-dialog.tsx` writes the raw string of an `<input type="date">`, so Postgres
+      casts `'2026-08-27'` to **UTC midnight**.
+    - `task-detail-modal.tsx` writes `Date.toISOString()` from a picker set to **local midnight**,
+      so a Chicago user produces `T05:00:00+00:00` on the same day.
+    Both encode *midnight on the day the person meant*, so **the intended day is the UTC date
+    part** - and resolving the instant through `America/Chicago` yields the day BEFORE for the
+    common shape. `dueCalendarDate()` / `taskDueDate()` in `lib/calendar-grid.ts` are the only
+    correct readers; `businessDate()` is still right for `created_at`, because which day an event
+    happened on genuinely does depend on where you stand, and which day something is due does not.
+  - ⚠️ **This shipped to production inside Prompt E, and the "timezone fix" recorded below made
+    it.** `lib/view-config.ts` resolved `due_date` through `businessDate()`, so on `/views`, the
+    board and Reports **a task due today was returned by the `overdue` filter** and grouped under
+    Overdue. Measured on 2026-08-27 by running the shipped engine against a real row shape:
+    `taskDueDate('2026-08-27T00:00:00+00:00')` returned `2026-08-26`. Fixed the same day by
+    splitting `dueCalendarDate` (stored day) from `calendarDateOf` (true instant).
+  - ⚠️ **`/my-work` had its own older version of it**, via `new Date()` + LOCAL
+    `setHours(0,0,0,0)` in `lib/my-work.ts` and `lib/work-next.ts`. Same one-day shift, every
+    hour of every day rather than an evening window: the Overdue stat counted today's work as
+    late, "Due today" showed tomorrow's, WorkNext labelled today's tasks "1 day overdue" and
+    scored them above genuinely late work, and `dueLabel` printed `2026-08-30` (a Sunday) as
+    "Due Sat 29 Aug". All fixed 2026-08-27.
+    - ⚠️ **Why ~1420 passing tests said nothing, in BOTH rounds: the fixtures were a shape the
+      column never sends.** My Work's were `toISOString()` timestamps (which survive the old
+      local-midnight maths unharmed); Prompt E's were bare `'2026-08-25'` strings (which survive
+      `businessDate` unharmed). Each suite tested the one shape its own bug could not touch.
+      **A fixture shape production never produces is not coverage - it is a second bug hiding
+      the first.** Both suites now use the real `T00:00:00+00:00` / `T05:00:00+00:00` forms, and
+      are run under `America/Chicago`, `UTC` and `Pacific/Auckland`.
+    - The shared primitives are `dueCalendarDate` / `taskDueDate` / `daysBetween(from, to)` /
+      `shortDayLabel`, all in `lib/calendar-grid.ts`. Every one builds its ends with `Date.UTC`,
+      so no DST transition can land between them. **Reach for these rather than writing date
+      maths again** - this is the fourth and fifth recorded instance of the same defect.
+    - ⚠️ **It was in SEVEN more places than the two screens above**, found by sweeping for
+      `new Date(*.due_date)` rather than by reasoning about it, and all fixed the same day:
+      `task-card.tsx` painted **every card due today red** (`new Date(due) < new Date()` is true
+      from one minute past the stored midnight) and printed the wrong day; `board-view.tsx`,
+      `user-dashboard.tsx`, `work-next.tsx`, `reports-view.tsx`, `personal-tasks.tsx` and the
+      public `share/[token]` page all displayed the day before; `personal_tasks` has the same
+      TIMESTAMPTZ column and the same bug; `ai-chat-tools.ts` told people work due today was
+      overdue; and **both date PICKERS highlighted the previous day**
+      (`new Date('2026-08-27T00:00:00Z')` is the 26th in Chicago), so opening a task showed a
+      date the task did not have - `dueDateAsPickerDate` exists for exactly that.
+    - **Two sites were already correct and are now commented as such**, because both looked
+      like the bug and a later "fix" would have broken them: `bulk-action-bar`'s date shift uses
+      `setUTCDate`/`getUTCDate` deliberately, and `calendar-view` read the UTC date part.
+      ⚠️ That same function built its grid key as `new Date(y, m, d).toISOString().slice(0,10)`,
+      which is a LOCAL midnight converted to UTC - right in Chicago, **off by one everywhere east
+      of Greenwich**. It uses `iso(y, m, d)` now.
+    - ⚠️ **`scripts/audit-mobile.mjs` REPORTS, it does not gate** - it exits 0 and prints
+    "N of 48 routes flagged", so "it passed" says nothing. On 2026-08-27 both `main` and this
+    branch flagged **32 of 48**, every flag a touch-target size on pre-existing shell chrome
+    (Skip to content, command palette, Appearance, Account, Sign Out), and **zero horizontal
+    overflow anywhere**. The only way to read it is to diff its FLAG lines against the same run
+    on `main`; 31 of 32 were identical. ⚠️ It is also flaky per-route: `admin-marketing`
+    measured **256** small targets at 390px and **6** at 320px in the SAME run, so a single
+    route's count moving is not evidence of anything.
+    - ⚠️ **And it dies with `ERR_CONNECTION_REFUSED` if the dev server stops mid-run**, exiting
+      non-zero with a stack rather than a summary. Reading its log before it finishes shows a
+      clean prefix - which is exactly how it was briefly misreported as green here. Wait for the
+      final "N of 48" line.
+  - Gate: `pnpm check:my-work` (20, real browser). ⚠️ Its context is pinned to
+      `timezoneId: 'America/Chicago'` deliberately - **the bug is invisible in UTC and in any
+      positive offset**, so a harness running in the machine's own zone (this Mac is
+      `Asia/Calcutta`) passes against broken code. It is also what found the column's real type,
+      by asserting the stored value and failing.
+  - ⚠️ **A displayed reason must be computed from the same value as the score it explains**
+    (same pass, `lib/work-next.ts`). The urgency/priority scorer normalised priority to the
+    middle of the 1..5 scale, but the *reason* line tested the raw `Number(task.priority)` -
+    and `Number(null)` is `0`, which is `<= 2`. So **every task with no priority set** (a
+    nullable column, so most of them) scored as medium and was simultaneously labelled
+    "High priority". Measured: `priority: null` → score 91, reasons `["Due in 3 days",
+    "High priority"]`; a real priority-2 task scores 103. One `normalizePriority()` feeds both
+    now, so they cannot disagree. Prompt F's requirement that ranking stays explainable is
+    broken just as badly by a reason the score does not support as by showing no reason at all.
+    `lib/work-next.ts` previously had **no test file**; it has 18.
 - ⚠️ **The nav is `components/shell/workspace-nav.ts` and nothing else. `/admin` used to keep
   a hand-written copy** (2026-08-15). It was written before `appointments` (080) and `crm`
   (103) existed and was never updated, so switching either on in Super Admin → Modules
@@ -1071,13 +1200,25 @@ SECOND state; `board-view.tsx` had an inline `filterTasks()` over four controls;
 board offered "overdue" and reports did not; reports could filter by tag and status and the
 board could not. All three now route through `lib/view-config.ts`.
 
-⚠️ **Collapsing them FIXED A LIVE TIMEZONE BUG in both screens.** The old code compared
-`new Date(task.due_date)` - a `YYYY-MM-DD` DATE column parsed as UTC MIDNIGHT - against a local
-midnight. West of Greenwich those are different days, so **a task due today counted as overdue
-for a five-hour window every evening**, and Reports' From/To boundaries included or excluded a
-task depending on the reader's timezone. Same defect already recorded for the CRM. Everything
-now compares calendar dates in `BUSINESS_TIME_ZONE`. Pinned by `lib/board-filters.test.ts`'s
-"the timezone bug this replaced" block, which asserts both instants agree.
+⚠️ **Collapsing them fixed a live timezone bug in both screens, AND SHIPPED A NEW ONE. Read the
+correction before trusting this paragraph.** The old code compared `new Date(task.due_date)`
+against a local midnight, so a task due today counted as overdue for a five-hour window every
+evening and Reports' From/To boundaries moved with the reader's timezone. That much was real and
+is fixed.
+
+⚠️ **But the replacement was also wrong, for a worse reason: this paragraph used to call
+`due_date` "a `YYYY-MM-DD` DATE column", and it is `TIMESTAMPTZ`.** Every real row is an instant
+at midnight, overwhelmingly `T00:00:00+00:00` - and the fix resolved that through
+`BUSINESS_TIME_ZONE`, which lands on the day BEFORE. So from the Prompt E deploy until
+2026-08-27, **`/views`, the board and Reports returned a task due TODAY from the `overdue`
+filter**, all day rather than for five hours. Measured against the shipped code with a real row
+shape, then fixed by splitting `dueCalendarDate` (a stored day) from `calendarDateOf` (a true
+instant). Full detail in the Conventions section above.
+
+The reason it got through: `lib/board-filters.test.ts`'s "the timezone bug this replaced" block
+used bare `'2026-08-25'` fixtures, which is the one shape that survives the new bug untouched.
+There is now a "the SHAPE the due_date column really has" block alongside it using the two forms
+the app actually writes.
 
 - **`118` - `boards.parent_board_id`.** `boards` had NO parent column at all - verified against
   dev and prod, not assumed - so Prompt E's loudest requirement had nothing to stand on.
@@ -1117,9 +1258,14 @@ now compares calendar dates in `BUSINESS_TIME_ZONE`. Pinned by `lib/board-filter
     without this policy knowing anything about board privacy. ⚠️ Residual, stated in the header
     rather than hidden: a GLOBAL shared view is visible to every signed-in user and its config
     may name private board uuids. That leaks ids, never content.
-  - ⚠️ Deleting a person CASCADEs their views. That is right for personal ones and wrong for
-    shared ones; `100`'s reasoning about reassigning boards applies, and the delete-user route
-    has NOT been updated for this yet.
+  - ✅ **Deleting a person CASCADEs their views - right for personal ones, wrong for shared
+    ones. CLOSED 2026-08-27**, before Prompt F. `app/api/admin/delete-user/route.ts` now
+    transfers `scope = 'shared'` to the deleting super admin before the delete, exactly as it
+    does boards, and leaves personal views to cascade. See the `100` section above for the
+    reasoning and the four new harness checks. ⚠️ Note `119`'s own file header claimed the
+    route already did this on the day it was written; it did not, and nothing caught the gap
+    for two days. **A header that describes intended behaviour elsewhere in the codebase is a
+    TODO, not a fact** - it needs a check that fails until it is true.
 
 **`lib/view-config.ts` is the single answer, and four decisions in it are worth arguing with:**
   1. **"current user" is a VALUE (`@me`), not an operator**, though Prompt E lists it beside

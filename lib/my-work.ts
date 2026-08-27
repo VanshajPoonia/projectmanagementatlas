@@ -19,6 +19,8 @@
 
 import { getNormalizedTaskStatus } from './task-status'
 import { getWorkNext, type WorkNextItem } from './work-next'
+import { daysBetween, taskDueDate } from './calendar-grid'
+import { businessDate } from './crm'
 
 export interface MyWorkSection {
   id: string
@@ -34,21 +36,20 @@ export const UNANSWERED_QUESTIONS: ReadonlyArray<{ question: string; blockedBy: 
   { question: 'What is waiting on my approval?', blockedBy: 'an approvals module' },
 ]
 
-const DAY_MS = 1000 * 60 * 60 * 24
-
-function startOfToday(now: Date): number {
-  const d = new Date(now)
-  d.setHours(0, 0, 0, 0)
-  return d.getTime()
-}
-
-/** Whole days from today until `due`. Negative = overdue. Null when there's no date. */
+/**
+ * Whole days from today until `due`. Negative = overdue. Null when there's no date.
+ *
+ * ⚠️ Both ends are CALENDAR DATES in the business zone, never instants. `due_date` is a
+ * Postgres DATE and arrives as a bare `YYYY-MM-DD`; the previous version parsed that with
+ * `new Date()` (UTC midnight) and then zeroed it with local `setHours`, which in any negative
+ * UTC offset lands on the day before. Measured in America/Chicago: a task due today reported
+ * -1, so the Overdue count included today's work and "Due today" showed tomorrow's, all day,
+ * every day. Same defect class as the CRM's target-close date and the board's overdue filter.
+ */
 export function daysUntil(due: unknown, now: Date = new Date()): number | null {
-  if (!due) return null
-  const date = new Date(due as string)
-  if (Number.isNaN(date.getTime())) return null
-  date.setHours(0, 0, 0, 0)
-  return Math.round((date.getTime() - startOfToday(now)) / DAY_MS)
+  const date = taskDueDate({ due_date: due })
+  if (!date) return null
+  return daysBetween(businessDate(now), date)
 }
 
 export function isOpen(task: any): boolean {
@@ -126,15 +127,21 @@ export function buildMyWork(
     },
   ]
 
-  return { sections: sections.filter((s) => s.tasks.length > 0), next: getWorkNext(open, 5) }
+  return { sections: sections.filter((s) => s.tasks.length > 0), next: getWorkNext(open, 5, now) }
 }
 
-/** Earliest due date first; undated work sorts to the end rather than the front. */
+/**
+ * Earliest due date first; undated work sorts to the end rather than the front.
+ *
+ * Compared as `YYYY-MM-DD` strings, which sort lexicographically, so this never parses a date
+ * column into an instant either. Undated work gets a sentinel that sorts after every real date.
+ */
 export function byDueDate(tasks: any[]): any[] {
+  const key = (t: any) => taskDueDate(t ?? {}) ?? '9999-12-31'
   return [...tasks].sort((a, b) => {
-    const aDue = a?.due_date ? new Date(a.due_date).getTime() : Infinity
-    const bDue = b?.due_date ? new Date(b.due_date).getTime() : Infinity
-    if (aDue !== bDue) return aDue - bDue
+    const aDue = key(a)
+    const bDue = key(b)
+    if (aDue !== bDue) return aDue < bDue ? -1 : 1
     return String(a?.title ?? '').localeCompare(String(b?.title ?? ''))
   })
 }

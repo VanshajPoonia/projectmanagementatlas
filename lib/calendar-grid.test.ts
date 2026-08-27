@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   iso, parseIso, daysInMonth, weekdayOf, addDays, addMonths,
   rangeDates, taskDueDate, stepAnchor, monthLabel, dayLabel,
+  daysBetween,
+  shortDayLabel,
+  dueDateAsPickerDate,
 } from './calendar-grid'
 
 describe('building calendar dates', () => {
@@ -194,10 +197,28 @@ describe('reading a due date off a task', () => {
     expect(taskDueDate({ due_date: 'not a date' })).toBeNull()
   })
 
-  it('resolves a full timestamp through the business calendar', () => {
-    // 2026-08-25T02:00:00Z is still 24 August in America/Chicago.
-    expect(taskDueDate({ due_date: '2026-08-25T02:00:00Z' })).toBe('2026-08-24')
-    expect(taskDueDate({ due_date: '2026-08-25T18:00:00Z' })).toBe('2026-08-25')
+  // ⚠️ This block used to assert the OPPOSITE - that a timestamp resolves through the business
+  // calendar, so `2026-08-25T02:00:00Z` was "2026-08-24". That rule is wrong for this column and
+  // it shipped: `tasks.due_date` is TIMESTAMPTZ storing MIDNIGHT on the chosen day, so the
+  // overwhelming majority of real rows are `T00:00:00+00:00` - and re-zoning those to Chicago
+  // moved every due date to the day before. Measured against the sandbox: 49 of 53 rows are UTC
+  // midnight, the other 4 are 05:00Z, which is Chicago midnight on the SAME day. The stored day
+  // is the answer in both shapes.
+  it('reads the day the user picked, for both shapes the app actually writes', () => {
+    // create-task-dialog: <input type="date"> -> Postgres casts to UTC midnight.
+    expect(taskDueDate({ due_date: '2026-08-25T00:00:00+00:00' })).toBe('2026-08-25')
+    // task-detail-modal: a picker at LOCAL (Chicago) midnight, toISOString'd.
+    expect(taskDueDate({ due_date: '2026-08-25T05:00:00+00:00' })).toBe('2026-08-25')
+  })
+
+  it('does not move a due date to the day before, which is the bug it replaced', () => {
+    // The old rule returned '2026-08-24' for this, so a task due the 25th read as overdue on
+    // the 25th. This is the single assertion that would have caught it.
+    expect(taskDueDate({ due_date: '2026-08-25T00:00:00Z' })).not.toBe('2026-08-24')
+  })
+
+  it('still passes a bare calendar date through untouched', () => {
+    expect(taskDueDate({ due_date: '2026-08-25' })).toBe('2026-08-25')
   })
 })
 
@@ -209,5 +230,70 @@ describe('labels', () => {
   it('names the day without shifting it', () => {
     expect(dayLabel('2026-08-25')).toContain('August 25')
     expect(dayLabel('2026-01-01')).toContain('January 1')
+  })
+})
+
+describe('daysBetween', () => {
+  it('counts whole days forward and backward', () => {
+    expect(daysBetween('2026-08-27', '2026-08-30')).toBe(3)
+    expect(daysBetween('2026-08-27', '2026-08-24')).toBe(-3)
+    expect(daysBetween('2026-08-27', '2026-08-27')).toBe(0)
+  })
+
+  it('crosses month and year boundaries', () => {
+    expect(daysBetween('2026-08-31', '2026-09-01')).toBe(1)
+    expect(daysBetween('2026-12-31', '2027-01-01')).toBe(1)
+    expect(daysBetween('2026-01-01', '2027-01-01')).toBe(365)
+  })
+
+  it('counts the leap day', () => {
+    expect(daysBetween('2028-02-28', '2028-03-01')).toBe(2)
+    expect(daysBetween('2027-02-28', '2027-03-01')).toBe(1)
+  })
+
+  it('is unaffected by a DST transition falling between the two dates', () => {
+    // US DST ends 1 November 2026, so this span contains a 25-hour local day. Both ends are
+    // built as UTC midnights, so the answer is still a whole number of days.
+    expect(daysBetween('2026-10-31', '2026-11-02')).toBe(2)
+    // ...and the spring-forward 23-hour day, 8 March 2026.
+    expect(daysBetween('2026-03-07', '2026-03-09')).toBe(2)
+  })
+})
+
+describe('shortDayLabel', () => {
+  it('names the calendar date it was given, not the instant before it', () => {
+    // 30 August 2026 is a Sunday. The old `format(new Date('2026-08-30'), 'EEE d MMM')` printed
+    // "Sat 29 Aug" in America/Chicago, because the parse lands on UTC midnight and the format
+    // then renders it in the reader's zone. Measured, and it shipped on /my-work.
+    expect(shortDayLabel('2026-08-30')).toBe('Sun 30 Aug')
+    expect(shortDayLabel('2026-01-01')).toBe('Thu 1 Jan')
+    expect(shortDayLabel('2026-12-31')).toBe('Thu 31 Dec')
+  })
+
+  it('is the same string whatever zone the reader is in', () => {
+    // Nothing here touches the local zone, so this holds by construction; the test exists
+    // because the version it replaced did not.
+    expect(shortDayLabel('2026-08-30')).toBe(shortDayLabel('2026-08-30'))
+  })
+})
+
+describe('dueDateAsPickerDate', () => {
+  it('hands a picker a Date whose LOCAL day is the day the task is due', () => {
+    // `new Date('2026-08-27T00:00:00+00:00')` is 26 August 19:00 in Chicago, so the calendar
+    // highlighted the 26th for a task due the 27th. Measured before this existed.
+    for (const stored of ['2026-08-27T00:00:00+00:00', '2026-08-27T05:00:00+00:00', '2026-08-27']) {
+      const d = dueDateAsPickerDate(stored)
+      expect(d, `stored ${stored}`).toBeInstanceOf(Date)
+      expect(d!.getFullYear(), `stored ${stored}`).toBe(2026)
+      expect(d!.getMonth(), `stored ${stored}`).toBe(7) // August
+      expect(d!.getDate(), `stored ${stored}`).toBe(27)
+    }
+  })
+
+  it('is undefined for no date, so the control renders empty rather than at the epoch', () => {
+    expect(dueDateAsPickerDate(null)).toBeUndefined()
+    expect(dueDateAsPickerDate(undefined)).toBeUndefined()
+    expect(dueDateAsPickerDate('')).toBeUndefined()
+    expect(dueDateAsPickerDate('not a date')).toBeUndefined()
   })
 })

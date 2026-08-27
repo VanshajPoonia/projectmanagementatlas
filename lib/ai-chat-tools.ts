@@ -16,6 +16,8 @@
 
 import { getAssigneeNames, isTaskOwnedBy } from './assignees'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from './task-status'
+import { dueCalendarDate, taskDueDate } from './calendar-grid'
+import { businessDate } from './crm'
 
 export interface ToolContext {
   supabase: any
@@ -230,9 +232,13 @@ async function getTasks(ctx: ToolContext, args: any) {
   const { data: profiles } = await supabase.from('profiles').select('id, full_name, email')
   const profileList = profiles ?? []
 
-  const now = new Date()
-  const dueAfter = args?.due_after ? new Date(args.due_after) : null
-  const dueBefore = args?.due_before ? new Date(args.due_before) : null
+  // ⚠️ Calendar days, not instants. `tasks.due_date` is TIMESTAMPTZ storing MIDNIGHT on the
+  // chosen day, so `new Date(due) < new Date()` reported work due TODAY as overdue from one
+  // minute past that midnight - the assistant would then tell someone they were late when they
+  // were not. Same defect as /my-work and the view engine; see lib/calendar-grid.ts.
+  const today = businessDate(new Date())
+  const dueAfter = args?.due_after ? dueCalendarDate(args.due_after) : null
+  const dueBefore = args?.due_before ? dueCalendarDate(args.due_before) : null
   const boardTitleFilter = typeof args?.board_title === 'string' ? args.board_title.toLowerCase() : null
 
   const tasks = (rows ?? [])
@@ -242,13 +248,17 @@ async function getTasks(ctx: ToolContext, args: any) {
       // user's own screen never disagree.
       if (args?.scope !== 'all' && !isTaskOwnedBy(t, userId)) return false
       if (args?.status === 'overdue') {
-        const overdue = t.due_date && new Date(t.due_date) < now && getNormalizedTaskStatus(t) !== 'done'
+        const due = taskDueDate(t)
+        const overdue = due !== null && due < today && getNormalizedTaskStatus(t) !== 'done'
         if (!overdue) return false
       } else if (args?.status && getNormalizedTaskStatus(t) !== args.status) {
         return false
       }
-      if (dueAfter && (!t.due_date || new Date(t.due_date) < dueAfter)) return false
-      if (dueBefore && (!t.due_date || new Date(t.due_date) > dueBefore)) return false
+      if (dueAfter || dueBefore) {
+        const due = taskDueDate(t)
+        if (dueAfter && (due === null || due < dueAfter)) return false
+        if (dueBefore && (due === null || due > dueBefore)) return false
+      }
       if (boardTitleFilter && !boardTitleById.get(t.column.board_id)?.toLowerCase().includes(boardTitleFilter)) return false
       return true
     })

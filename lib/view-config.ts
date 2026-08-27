@@ -45,6 +45,7 @@
 //    already bit the CRM (recorded in CLAUDE.md) and it is the same trap here.
 
 import { businessDate } from './crm'
+import { dueCalendarDate } from './calendar-grid'
 import { getAssigneeIds } from './assignees'
 import {
   getNormalizedTaskStatus,
@@ -386,7 +387,18 @@ function asText(value: unknown): string {
   return String(value)
 }
 
-/** Calendar date of a task field in the business zone, or null. Never an instant. */
+/**
+ * Calendar date of a genuine INSTANT - `created_at`, `updated_at` - in the business zone.
+ *
+ * ⚠️ Do NOT use this for `due_date`. That column is a TIMESTAMPTZ storing MIDNIGHT on the day
+ * the user picked, so resolving it through a timezone west of UTC moves it to the day before:
+ * `2026-08-27T00:00:00Z` is 26 August in Chicago. Measured, and it shipped - a task due today
+ * was returned by the `overdue` filter on /views, the board and Reports. Use `dueCalendarDate`,
+ * which reads the stored day instead of re-zoning the instant.
+ *
+ * The distinction is real, not pedantic: "created today" genuinely depends on where you are
+ * standing, and "due on the 27th" genuinely does not.
+ */
 function calendarDateOf(value: unknown, ctx: EvalContext): string | null {
   if (value == null || value === '') return null
   const raw = String(value)
@@ -440,7 +452,7 @@ export function fieldValues(task: any, field: string, ctx: EvalContext): string[
     case 'tag':         return taskTagIds(task)
     case 'type':        return task?.type_key ? [String(task.type_key)] : []
     case 'due_date': {
-      const d = calendarDateOf(task?.due_date, ctx)
+      const d = dueCalendarDate(task?.due_date)
       return d ? [d] : []
     }
     case 'created_at': {
@@ -550,7 +562,7 @@ function sortKey(task: any, field: SortRule['field'], ctx: EvalContext): string 
     // reader expects from "sort by priority". Missing priority sorts last, not first.
     case 'priority': return task?.priority == null ? Number.MAX_SAFE_INTEGER : Number(task.priority)
     case 'due_date': {
-      const d = calendarDateOf(task?.due_date, ctx)
+      const d = dueCalendarDate(task?.due_date)
       // No due date sorts LAST in both directions would need a stable partition; instead it
       // sorts after every real date ascending, which is the useful default: undated work is
       // not the most urgent thing you own.
@@ -607,7 +619,7 @@ const DUE_BUCKET_LABELS: Record<string, string> = {
 }
 
 function dueBucket(task: any, ctx: EvalContext): string {
-  const due = calendarDateOf(task?.due_date, ctx)
+  const due = dueCalendarDate(task?.due_date)
   if (!due) return 'none'
   const today = businessDate(ctx.now)
   if (due < today) return 'overdue'

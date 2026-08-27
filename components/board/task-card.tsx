@@ -24,6 +24,8 @@ import {
 } from '@/components/shell/density'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, findExactColumnForStatus, getEffectiveStatusKey, statusesForPicker } from '@/lib/task-status'
+import { daysBetween, dueDateAsPickerDate, shortDayLabel, taskDueDate } from '@/lib/calendar-grid'
+import { businessDate } from '@/lib/crm'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { sendTaskAssignmentEmail } from '@/lib/email'
 import { logTaskActivity } from '@/lib/task-activity'
@@ -261,22 +263,22 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
     return 'border-blue-500 text-blue-500 bg-blue-50 dark:bg-blue-950/40'
   }
 
-  // Check if task is overdue
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && getNormalizedTaskStatus(task) !== 'done'
-  
-  // Calculate days remaining
-  const getDaysRemaining = () => {
-    if (!task.due_date) return null
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const dueDate = new Date(task.due_date)
-    dueDate.setHours(0, 0, 0, 0)
-    const diffTime = dueDate.getTime() - today.getTime()
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    return diffDays
-  }
-  
-  const daysRemaining = getDaysRemaining()
+  /**
+   * Days until this card is due, as CALENDAR days in the business zone.
+   *
+   * ⚠️ Both of these used to compare instants. `isOverdue` was
+   * `new Date(task.due_date) < new Date()`, and `due_date` is a TIMESTAMPTZ storing MIDNIGHT on
+   * the chosen day - so from one minute past that midnight onward, a task due TODAY compared as
+   * already past and every such card was painted red. Measured in America/Chicago at 10:00 on
+   * the due date: `true`, for both shapes the app writes. `getDaysRemaining` had the same defect
+   * one layer down, mixing a UTC-parsed date with a LOCAL `setHours`.
+   *
+   * This is the same bug that was in /my-work and in the Prompt E view engine. `taskDueDate` +
+   * `daysBetween` in lib/calendar-grid.ts are the one correct way to ask this question.
+   */
+  const dueOn = taskDueDate(task)
+  const daysRemaining = dueOn === null ? null : daysBetween(businessDate(new Date()), dueOn)
+  const isOverdue = daysRemaining !== null && daysRemaining < 0 && getNormalizedTaskStatus(task) !== 'done'
 
   const subtaskCount = subtasks?.length ?? 0
   const subtasksDone = (subtasks ?? []).filter((s: any) => getNormalizedTaskStatus(s) === 'done').length
@@ -598,13 +600,13 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
                     className="flex w-full items-center gap-2 rounded text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                   >
                     <Calendar className="w-3 h-3 shrink-0" />
-                    <span>{task.due_date ? format(new Date(task.due_date), 'PP') : 'Set due date'}</span>
+                    <span>{dueOn ? shortDayLabel(dueOn) : 'Set due date'}</span>
                   </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start" onClick={(e) => e.stopPropagation()}>
                   <CalendarPicker
                     mode="single"
-                    selected={task.due_date ? new Date(task.due_date) : undefined}
+                    selected={dueDateAsPickerDate(task.due_date)}
                     onSelect={handleDueDateChange}
                     initialFocus
                   />
@@ -614,7 +616,7 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
               task.due_date && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Calendar className="w-3 h-3" />
-                  <span>{new Date(task.due_date).toLocaleDateString('en-US')}</span>
+                  <span>{dueOn ? shortDayLabel(dueOn) : ''}</span>
                 </div>
               )
             )}

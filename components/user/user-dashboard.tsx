@@ -40,6 +40,7 @@ import type { ShellData } from '@/lib/shell-data'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
 import { useFavorites } from '@/lib/use-favorites'
 import { withFavoritesFirst } from '@/lib/favorites'
+import { shortDayLabel, taskDueDate } from '@/lib/calendar-grid'
 import { FavoriteStar } from '../shell/favorite-star'
 import { EmptyState } from '../shell/states'
 
@@ -367,7 +368,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
                               {task.due_date && (
                                 <span className="flex items-center gap-1">
                                   <Calendar className="w-3 h-3" />
-                                  {new Date(task.due_date).toLocaleDateString('en-US')}
+                                  {shortDayLabel(taskDueDate(task)!)}
                                 </span>
                               )}
                             </div>
@@ -436,7 +437,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
                             {task.due_date && (
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
-                                {new Date(task.due_date).toLocaleDateString('en-US')}
+                                {shortDayLabel(taskDueDate(task)!)}
                               </span>
                             )}
                           </div>

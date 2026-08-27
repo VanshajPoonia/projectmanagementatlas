@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import { format } from 'date-fns'
 import { AlertTriangle, CalendarDays, CircleDot, Info, Sparkles } from 'lucide-react'
 
 import { AppShell } from '@/components/shell/app-shell'
@@ -21,6 +20,8 @@ import { useFavorites } from '@/lib/use-favorites'
 import { isTaskOwnedBy } from '@/lib/assignees'
 import { getTaskStatusLabel } from '@/lib/task-status'
 import { UNANSWERED_QUESTIONS, buildMyWork, daysUntil, myWorkSummary } from '@/lib/my-work'
+import { shortDayLabel, taskDueDate } from '@/lib/calendar-grid'
+import { useNow } from '@/lib/use-now'
 import { cn } from '@/lib/utils'
 
 interface MyWorkViewProps {
@@ -37,15 +38,33 @@ interface MyWorkViewProps {
    * indistinguishable from a genuinely clear plate, and the screen cheerfully says so.
    */
   loadFailed?: boolean
+  /**
+   * The instant the SERVER rendered at, ISO. Required, not optional: every date on this page
+   * is relative to "now", so reading the wall clock during render makes the server and the
+   * client disagree about what "today" is for anyone loading the page near midnight, and React
+   * throws away the subtree. See lib/use-now.ts.
+   */
+  now: string
 }
 
-function dueLabel(due: unknown): { text: string; overdue: boolean } | null {
-  const days = daysUntil(due)
+/**
+ * The date chip on a task row.
+ *
+ * ⚠️ `now` is a parameter and the far date is formatted with `shortDayLabel`, both deliberately.
+ * This used to call `daysUntil(due)` with no clock and `format(new Date(due), 'EEE d MMM')` -
+ * and `due_date` is a Postgres DATE arriving as a bare `YYYY-MM-DD`, so `new Date()` read it as
+ * UTC midnight and date-fns then rendered that instant in the READER's zone. Measured in
+ * America/Chicago: a task due `2026-08-30` (a Sunday) rendered as "Due Sat 29 Aug" - wrong day,
+ * wrong weekday - while the overdue/today branches above it were a day out for the same reason.
+ */
+function dueLabel(due: unknown, now: Date): { text: string; overdue: boolean } | null {
+  const days = daysUntil(due, now)
   if (days === null) return null
   if (days < 0) return { text: `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} overdue`, overdue: true }
   if (days === 0) return { text: 'Due today', overdue: false }
   if (days === 1) return { text: 'Due tomorrow', overdue: false }
-  return { text: `Due ${format(new Date(due as string), 'EEE d MMM')}`, overdue: false }
+  const date = taskDueDate({ due_date: due })
+  return date ? { text: `Due ${shortDayLabel(date)}`, overdue: false } : null
 }
 
 /**
@@ -57,7 +76,10 @@ function dueLabel(due: unknown): { text: string; overdue: boolean } | null {
  * an unexplained ordering is a black box, and people stop trusting it the first time it
  * disagrees with them.
  */
-export default function MyWorkView({ user, tasks, shell, loadFailed = false }: MyWorkViewProps) {
+export default function MyWorkView({ user, tasks, shell, loadFailed = false, now: serverNow }: MyWorkViewProps) {
+  // One clock for the whole page, seeded from the server so hydration matches, then the
+  // browser's own after mount. Every section, count, reason and date chip below reads it.
+  const now = useNow(serverNow)
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
   const basePath = isAdmin ? '/admin' : '/dashboard'
 
@@ -74,10 +96,10 @@ export default function MyWorkView({ user, tasks, shell, loadFailed = false }: M
 
   const mine = useMemo(() => tasks.filter((task) => isTaskOwnedBy(task, user?.id)), [tasks, user?.id])
   const { sections, next } = useMemo(
-    () => buildMyWork(mine, tasks, user?.id),
-    [mine, tasks, user?.id],
+    () => buildMyWork(mine, tasks, user?.id, now),
+    [mine, tasks, user?.id, now],
   )
-  const summary = useMemo(() => myWorkSummary(mine), [mine])
+  const summary = useMemo(() => myWorkSummary(mine, now), [mine, now])
 
   const groups: SidebarNavGroup[] = useMemo(
     () =>
@@ -130,12 +152,12 @@ export default function MyWorkView({ user, tasks, shell, loadFailed = false }: M
         ) : (
         <>
         <dl className="grid grid-cols-3 gap-3">
-          <Stat label="Open" value={summary.open} />
-          <Stat label="Overdue" value={summary.overdue} tone={summary.overdue > 0 ? 'danger' : 'plain'} />
-          <Stat label="Due today" value={summary.dueToday} />
+          <Stat label="Open" value={summary.open} statId="stat-open" />
+          <Stat label="Overdue" value={summary.overdue} statId="stat-overdue" tone={summary.overdue > 0 ? 'danger' : 'plain'} />
+          <Stat label="Due today" value={summary.dueToday} statId="stat-due-today" />
         </dl>
 
-        <Card>
+        <Card data-section="work-next">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Sparkles className="size-4" aria-hidden="true" />
@@ -206,7 +228,7 @@ export default function MyWorkView({ user, tasks, shell, loadFailed = false }: M
           />
         ) : (
           sections.map((section) => (
-            <Card key={section.id}>
+            <Card key={section.id} data-section={section.id}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   {section.id === 'overdue' ? (
@@ -226,7 +248,7 @@ export default function MyWorkView({ user, tasks, shell, loadFailed = false }: M
               <CardContent>
                 <ul className="space-y-2">
                   {section.tasks.map((task: any) => {
-                    const due = dueLabel(task.due_date)
+                    const due = dueLabel(task.due_date, now)
                     return (
                       <li key={task.id}>
                         <Link
@@ -278,11 +300,19 @@ export default function MyWorkView({ user, tasks, shell, loadFailed = false }: M
   )
 }
 
-function Stat({ label, value, tone = 'plain' }: { label: string; value: number; tone?: 'plain' | 'danger' }) {
+/**
+ * `statId` exists so a browser harness can read one number without guessing at DOM structure.
+ * Locating by surrounding text finds nested cards and passes for the wrong reason - the same
+ * trap already recorded for `button[role="combobox"]` and the table's select-all checkbox.
+ */
+function Stat({ label, value, statId, tone = 'plain' }: { label: string; value: number; statId: string; tone?: 'plain' | 'danger' }) {
   return (
     <div className="rounded-lg border p-3">
       <dt className="text-muted-foreground text-xs font-medium">{label}</dt>
-      <dd className={cn('mt-1 text-2xl font-semibold tabular-nums', tone === 'danger' && 'text-red-600 dark:text-red-400')}>
+      <dd
+        id={statId}
+        className={cn('mt-1 text-2xl font-semibold tabular-nums', tone === 'danger' && 'text-red-600 dark:text-red-400')}
+      >
         {value}
       </dd>
     </div>

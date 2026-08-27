@@ -14,6 +14,8 @@
 //              out instead of accumulating
 
 import { getNormalizedTaskStatus } from './task-status'
+import { daysBetween, taskDueDate } from './calendar-grid'
+import { businessDate } from './crm'
 
 export interface WorkNextItem {
   task: any
@@ -24,19 +26,25 @@ export interface WorkNextItem {
   isOverdue: boolean
 }
 
-const DAY_MS = 1000 * 60 * 60 * 24
 const DEFAULT_PRIORITY = 3
 
-/** Whole days from today until `due`. Negative = overdue. Null when there's no date. */
-function daysUntilDue(due: unknown): number | null {
-  if (!due) return null
-  const date = new Date(due as string)
-  if (Number.isNaN(date.getTime())) return null
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  date.setHours(0, 0, 0, 0)
-  return Math.round((date.getTime() - today.getTime()) / DAY_MS)
+/**
+ * Whole days from today until `due`. Negative = overdue. Null when there's no date.
+ *
+ * ⚠️ Calendar dates in the business zone, never instants - see the same note on
+ * `daysUntil` in my-work.ts. `due_date` is a Postgres DATE and arrives as `YYYY-MM-DD`;
+ * parsing that with `new Date()` and zeroing it with local `setHours` shifted every date a
+ * day earlier west of Greenwich, so work due today was scored and labelled as a day overdue.
+ *
+ * `now` is a parameter rather than a `new Date()` inside the function for two reasons: the
+ * scoring is only testable at a fixed instant if the caller owns the clock, and a component
+ * that reads the wall clock during render makes the server and client disagree across a day
+ * boundary (the hydration trap `lib/use-now.ts` exists for).
+ */
+function daysUntilDue(due: unknown, now: Date): number | null {
+  const date = taskDueDate({ due_date: due })
+  if (!date) return null
+  return daysBetween(businessDate(now), date)
 }
 
 /**
@@ -55,11 +63,23 @@ function urgencyScore(days: number | null): number {
   return 5
 }
 
-function priorityScore(priority: unknown): number {
+/**
+ * The 1..5 priority a task actually carries, falling back to the middle of the scale.
+ *
+ * ⚠️ Extracted so the SCORE and the REASON cannot disagree. They did: the reason line tested
+ * the raw `Number(task.priority)`, and `Number(null)` is 0, so every task with no priority set
+ * (a nullable column, so most of them) was scored as medium and simultaneously labelled
+ * "High priority". A displayed reason that the score does not support is worse than no reason -
+ * it is the unexplained-ranking failure this module was written to avoid.
+ */
+function normalizePriority(priority: unknown): number {
   const value = Number(priority)
-  const normalized = Number.isFinite(value) && value >= 1 && value <= 5 ? value : DEFAULT_PRIORITY
+  return Number.isFinite(value) && value >= 1 && value <= 5 ? value : DEFAULT_PRIORITY
+}
+
+function priorityScore(priority: number): number {
   // 1 (highest) -> 60 ... 5 (lowest) -> 12
-  return (6 - normalized) * 12
+  return (6 - priority) * 12
 }
 
 function dueReason(days: number | null): string | null {
@@ -71,9 +91,9 @@ function dueReason(days: number | null): string | null {
   return null
 }
 
-export function scoreTask(task: any): WorkNextItem {
-  const days = daysUntilDue(task?.due_date)
-  const priority = Number(task?.priority)
+export function scoreTask(task: any, now: Date = new Date()): WorkNextItem {
+  const days = daysUntilDue(task?.due_date, now)
+  const priority = normalizePriority(task?.priority)
   const inProgress = getNormalizedTaskStatus(task) === 'in_progress'
 
   const score = urgencyScore(days) + priorityScore(priority) + (inProgress ? 25 : 0)
@@ -96,18 +116,20 @@ export function scoreTask(task: any): WorkNextItem {
  * Ties break toward the earlier due date, then the higher priority, so the order is
  * stable across renders rather than depending on the input array's order.
  */
-export function getWorkNext(tasks: any[], limit = 5): WorkNextItem[] {
+export function getWorkNext(tasks: any[], limit = 5, now: Date = new Date()): WorkNextItem[] {
   return (tasks ?? [])
     .filter((task) => !task?.deleted_at && getNormalizedTaskStatus(task) !== 'done')
-    .map(scoreTask)
+    .map((task) => scoreTask(task, now))
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score
 
-      const aDue = a.task?.due_date ? new Date(a.task.due_date).getTime() : Infinity
-      const bDue = b.task?.due_date ? new Date(b.task.due_date).getTime() : Infinity
-      if (aDue !== bDue) return aDue - bDue
+      // Calendar dates compared as strings, so this never parses a DATE column into an
+      // instant. Undated work gets a sentinel that sorts after every real date.
+      const aDue = taskDueDate(a.task ?? {}) ?? '9999-12-31'
+      const bDue = taskDueDate(b.task ?? {}) ?? '9999-12-31'
+      if (aDue !== bDue) return aDue < bDue ? -1 : 1
 
-      return (Number(a.task?.priority) || DEFAULT_PRIORITY) - (Number(b.task?.priority) || DEFAULT_PRIORITY)
+      return normalizePriority(a.task?.priority) - normalizePriority(b.task?.priority)
     })
     .slice(0, limit)
 }

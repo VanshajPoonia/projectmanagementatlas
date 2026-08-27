@@ -83,6 +83,22 @@ try {
 
   await admin.from('board_members').insert({ board_id: board.id, user_id: leaver, role: 'member' })
 
+  // Two saved views (migration 119), because they must be treated differently: `owner_id` is
+  // ON DELETE CASCADE, which is correct for the personal one and destroys other people's work
+  // for the shared one.
+  const view = (scope) => ({
+    owner_id: leaver,
+    name: `deprov-${scope}-view-${stamp}`,
+    scope,
+    config: { layout: 'table', filters: [], sort: [], fields: ['title'] },
+  })
+  const { data: sharedView, error: svErr } = await admin.from('saved_views')
+    .insert(view('shared')).select('id').single()
+  if (svErr) throw new Error(`shared view: ${svErr.message}`)
+  const { data: personalView, error: pvErr } = await admin.from('saved_views')
+    .insert(view('personal')).select('id').single()
+  if (pvErr) throw new Error(`personal view: ${pvErr.message}`)
+
   // ── The delete itself ───────────────────────────────────────────────────────────────
   section('the delete can even happen')
   // Board transfer first, exactly as app/api/admin/delete-user/route.ts does it. Without
@@ -92,6 +108,19 @@ try {
     .update({ created_by: keeper }).eq('created_by', leaver).select('id')
   check('their boards can be transferred to the deleting super admin', !tErr && transferred?.length === 1,
     tErr?.message ?? `transferred ${transferred?.length ?? 0}`)
+
+  // Shared views transfer too, and PERSONAL ones deliberately do not - moving a personal view
+  // would hand the deleting admin a view built to be unreadable by admins.
+  const { data: viewsMoved, error: vErr } = await admin.from('saved_views')
+    .update({ owner_id: keeper }).eq('owner_id', leaver).eq('scope', 'shared').select('id')
+  check('their SHARED saved views can be transferred', !vErr && viewsMoved?.length === 1,
+    vErr?.message ?? `transferred ${viewsMoved?.length ?? 0}`)
+
+  const { data: stillTheirs } = await admin.from('saved_views')
+    .select('id').eq('owner_id', leaver).eq('scope', 'personal')
+  check('their PERSONAL saved views are left alone by that transfer',
+    (stillTheirs ?? []).length === 1,
+    `the shared-only filter moved ${1 - (stillTheirs ?? []).length} personal view(s) too`)
 
   const { error: delErr } = await admin.auth.admin.deleteUser(leaver)
   // The whole point: this used to fail with "Database error deleting user" for anyone who
@@ -139,6 +168,21 @@ try {
   const { data: membership } = await admin.from('board_members')
     .select('user_id').eq('board_id', board.id).eq('user_id', leaver).maybeSingle()
   check('their board memberships are deleted', membership === null)
+
+  // The point of the whole change: a shared view outlives its author, a personal one does not.
+  const { data: keptView } = await admin.from('saved_views')
+    .select('id, owner_id, name, scope').eq('id', sharedView.id).maybeSingle()
+  check('the SHARED saved view survives the person who made it', keptView != null,
+    'it was CASCADE-deleted with the account, taking a view other people were using')
+  check('the shared view is now owned by the super admin, not orphaned',
+    keptView?.owner_id === keeper, `owner_id is ${keptView?.owner_id}`)
+  check('the shared view keeps its name and scope',
+    keptView?.name === `deprov-shared-view-${stamp}` && keptView?.scope === 'shared')
+
+  const { data: goneView } = await admin.from('saved_views')
+    .select('id').eq('id', personalView.id).maybeSingle()
+  check('their PERSONAL saved view is deleted with the account', goneView === null,
+    'a private view was transferred to an admin who was never meant to read it')
 
   // ── The audit trail ─────────────────────────────────────────────────────────────────
   section('the deletion is recorded')

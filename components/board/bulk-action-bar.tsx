@@ -268,6 +268,10 @@ export default function BulkActionBar({
         }
         case 'shift_dates': {
           if (!task?.due_date) return { kind: 'ok' }
+          // ⚠️ `setUTCDate`/`getUTCDate` are load-bearing, not incidental. `due_date` is a
+          // TIMESTAMPTZ storing MIDNIGHT on the chosen day, so shifting in UTC moves the stored
+          // day by exactly N and preserves that midnight. The LOCAL equivalents would drift the
+          // time of day across a DST boundary and, west of Greenwich, shift the wrong day.
           const dt = new Date(task.due_date)
           dt.setUTCDate(dt.getUTCDate() + (input.shiftDays ?? 0))
           const res = await supabase.from('tasks').update({ due_date: dt.toISOString() }).eq('id', taskId).select()

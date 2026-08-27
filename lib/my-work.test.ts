@@ -7,18 +7,24 @@ import {
   isOpen,
   myWorkSummary,
 } from './my-work'
+import { addDays } from './calendar-grid'
 
-// Local time on purpose: a due date is a calendar day to the person reading it, so the
-// whole module compares against local midnight (same as work-next.ts). Fixtures built
-// from `Z` instants would straddle the local day boundary and make these assertions
-// depend on the machine's timezone.
-const NOW = new Date(2026, 7, 13, 12, 0)
+// One company, one clock. Every date on this page is a CALENDAR DATE in BUSINESS_TIME_ZONE
+// (America/Chicago), never an instant in whatever zone the reader happens to sit in.
+//
+// ⚠️ This block used to say the opposite - "local time on purpose ... fixtures built from `Z`
+// instants would make these assertions depend on the machine's timezone" - and building the
+// fixtures from `toISOString()` is precisely what hid a live bug. `due_date` is a Postgres DATE
+// and arrives as a bare `YYYY-MM-DD`; a full timestamp round-trips through the old local-midnight
+// maths unharmed, so every test passed while production was a day out. Fixtures are date-only
+// now, matching what the column actually returns, and every assertion here has to hold under any
+// machine timezone rather than only the one that wrote it.
+const NOW = new Date('2026-08-13T17:00:00Z') // 12:00 America/Chicago, 13 August 2026
 const ME = 'me'
 
+/** A bare `YYYY-MM-DD` `days` from NOW's business date - exactly the shape PostgREST returns. */
 function at(days: number): string {
-  const d = new Date(NOW)
-  d.setDate(d.getDate() + days)
-  return d.toISOString()
+  return addDays('2026-08-13', days)
 }
 
 function task(over: Record<string, unknown> = {}) {
@@ -30,11 +36,20 @@ function section(result: ReturnType<typeof buildMyWork>, id: string) {
 }
 
 describe('daysUntil', () => {
-  // Compared at day granularity, not by timestamp: a task due at 09:00 today is "due
-  // today" at 17:00, not overdue.
-  it('measures whole days from midnight, so same-day is 0 regardless of clock time', () => {
-    expect(daysUntil(new Date(2026, 7, 13, 0, 1).toISOString(), NOW)).toBe(0)
-    expect(daysUntil(new Date(2026, 7, 13, 23, 59).toISOString(), NOW)).toBe(0)
+  // Compared at day granularity, not by timestamp: a task due today is still "due today"
+  // at one minute past midnight and at one minute to it, business-zone time.
+  it('measures whole calendar days, so any clock time within the day is 0', () => {
+    expect(daysUntil('2026-08-13', new Date('2026-08-13T05:01:00Z'))).toBe(0) // 00:01 Chicago
+    expect(daysUntil('2026-08-13', new Date('2026-08-14T04:59:00Z'))).toBe(0) // 23:59 Chicago
+  })
+
+  // ⚠️ `tasks.due_date` is TIMESTAMPTZ, not DATE, and it stores MIDNIGHT on the chosen day.
+  // Both shapes the app writes must resolve to that day - re-zoning the instant into Chicago
+  // moves the common one (UTC midnight) to the day before, which is the bug this replaced.
+  it('reads the stored day for both shapes the app actually writes', () => {
+    expect(daysUntil('2026-08-13T00:00:00+00:00', NOW)).toBe(0) // <input type="date">
+    expect(daysUntil('2026-08-13T05:00:00+00:00', NOW)).toBe(0) // picker at Chicago midnight
+    expect(daysUntil('2026-08-14T00:00:00+00:00', NOW)).toBe(1)
   })
 
   it('is negative for past dates and positive for future ones', () => {
@@ -199,5 +214,48 @@ describe('unanswered questions', () => {
       expect(entry.question).toBeTruthy()
       expect(entry.blockedBy).toBeTruthy()
     }
+  })
+})
+
+describe('the timezone bug this replaced', () => {
+  // The old code parsed `due_date` with `new Date()` - which reads a bare YYYY-MM-DD as UTC
+  // midnight - and then zeroed it with LOCAL `setHours(0,0,0,0)`. In any negative UTC offset
+  // that lands on the previous day, so every date was a day early: measured in America/Chicago,
+  // a task due today returned -1. The Overdue stat counted today's work as late and "Due today"
+  // showed tomorrow's, all day, every day, for every user in the US.
+  //
+  // These assertions are the reason the module now goes through calendar dates. They must hold
+  // whatever timezone the test machine is in, which is what the old fixtures could not express.
+  const TEN_AM = new Date('2026-08-27T15:00:00Z') // 10:00 America/Chicago, 27 August
+  const NINE_PM = new Date('2026-08-28T02:00:00Z') // 21:00 America/Chicago, SAME business day
+
+  it('does not report a task due today as a day overdue', () => {
+    expect(daysUntil('2026-08-27', TEN_AM)).toBe(0)
+  })
+
+  it('does not report tomorrow as due today', () => {
+    expect(daysUntil('2026-08-28', TEN_AM)).toBe(1)
+  })
+
+  it('gives the same answer at either instant on the same business day', () => {
+    for (const instant of [TEN_AM, NINE_PM]) {
+      expect(daysUntil('2026-08-27', instant)).toBe(0)
+      expect(daysUntil('2026-08-26', instant)).toBe(-1)
+    }
+  })
+
+  it('keeps the headline counts honest: today is due-today, not overdue', () => {
+    const mine = [
+      { id: 'a', title: 'A', status: 'todo', due_date: '2026-08-27' },
+      { id: 'b', title: 'B', status: 'todo', due_date: '2026-08-26' },
+    ]
+    expect(myWorkSummary(mine, TEN_AM)).toEqual({ open: 2, overdue: 1, dueToday: 1 })
+  })
+
+  it('files today\'s work under "Due today" rather than "Overdue"', () => {
+    const mine = [{ id: 'a', title: 'A', created_by: ME, status: 'todo', due_date: '2026-08-27' }]
+    const result = buildMyWork(mine, mine, ME, TEN_AM)
+    expect(section(result, 'overdue')).toBeUndefined()
+    expect(section(result, 'today')?.tasks.map((t) => t.id)).toEqual(['a'])
   })
 })

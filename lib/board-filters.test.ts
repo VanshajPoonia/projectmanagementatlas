@@ -197,3 +197,47 @@ describe('what the board still owns', () => {
     expect(applyFilters([task({ column: { status_key: 'done' } })], config, ctx)).toHaveLength(1)
   })
 })
+
+describe('the SHAPE the due_date column really has', () => {
+  // ⚠️ The block above ("the timezone bug this replaced") uses `due_date: '2026-08-25'`, a bare
+  // calendar date. **This column never sends that.** `tasks.due_date` is TIMESTAMPTZ
+  // (001_initial_schema.sql), and PostgREST returns an instant: measured against the sandbox,
+  // 49 of 53 rows are `T00:00:00+00:00` and the other 4 are `T05:00:00+00:00`.
+  //
+  // So those tests passed while the engine was wrong for every real row: resolving a UTC-midnight
+  // instant through America/Chicago yields the day BEFORE, and a task due today came back from
+  // the `overdue` filter. That reached production in Prompt E. A fixture shape production never
+  // produces is not coverage, it is a second bug hiding the first.
+  const UTC_MIDNIGHT = '2026-08-25T00:00:00+00:00'   // <input type="date"> -> Postgres
+  const CHICAGO_MIDNIGHT = '2026-08-25T05:00:00+00:00' // the modal's picker, toISOString'd
+
+  for (const [label, due] of [['UTC midnight', UTC_MIDNIGHT], ['Chicago midnight', CHICAGO_MIDNIGHT]]) {
+    it(`does not call work due today overdue - ${label}`, () => {
+      const config = buildBoardConfig(state({ range: 'overdue' }), NOW)
+      expect(applyFilters([task({ due_date: due })], config, ctx)).toHaveLength(0)
+    })
+
+    it(`finds it under "today" instead - ${label}`, () => {
+      const config = buildBoardConfig(state({ range: 'today' }), NOW)
+      expect(applyFilters([task({ due_date: due })], config, ctx)).toHaveLength(1)
+    })
+
+    it(`gives the same answer late in the evening - ${label}`, () => {
+      const config = buildBoardConfig(state({ range: 'today' }), LATE)
+      expect(applyFilters([task({ due_date: due })], config, { ...ctx, now: LATE })).toHaveLength(1)
+    })
+  }
+
+  it('still reports genuinely late work as overdue', () => {
+    const config = buildBoardConfig(state({ range: 'overdue' }), NOW)
+    const late = task({ due_date: '2026-08-24T00:00:00+00:00' })
+    expect(applyFilters([late], config, ctx)).toHaveLength(1)
+  })
+
+  it('agrees with the bare-date form, so both shapes mean the same day', () => {
+    const config = buildBoardConfig(state({ range: 'today' }), NOW)
+    const asDate = applyFilters([task({ due_date: '2026-08-25' })], config, ctx)
+    const asStamp = applyFilters([task({ due_date: UTC_MIDNIGHT })], config, ctx)
+    expect(asStamp.length).toBe(asDate.length)
+  })
+})

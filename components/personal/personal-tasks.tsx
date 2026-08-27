@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Lock, Plus, X, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
+import { shortDayLabel, taskDueDate } from '@/lib/calendar-grid'
+import { businessDate } from '@/lib/crm'
 import { showUndoableToast } from '@/components/shell/undo-toast'
 
 interface PersonalTasksProps {
@@ -101,7 +103,10 @@ export default function PersonalTasks({ userId }: PersonalTasksProps) {
   }
 
   const isOverdue = (task: any) =>
-    task.due_date && !task.is_done && new Date(task.due_date) < new Date(new Date().toDateString())
+    task.due_date && !task.is_done &&
+    // Calendar days in the business zone. personal_tasks.due_date is TIMESTAMPTZ storing
+    // midnight, so comparing instants marked today's work overdue - see lib/calendar-grid.ts.
+    (taskDueDate(task) ?? '9999-12-31') < businessDate(new Date())
 
   return (
     <Card>
@@ -158,7 +163,7 @@ export default function PersonalTasks({ userId }: PersonalTasksProps) {
                   isOverdue(task) ? 'text-red-600 font-medium dark:text-red-400' : 'text-muted-foreground'
                 }`}>
                   <Calendar className="w-3 h-3" />
-                  {new Date(task.due_date).toLocaleDateString('en-US')}
+                  {shortDayLabel(taskDueDate(task)!)}
                 </span>
               )}
 
