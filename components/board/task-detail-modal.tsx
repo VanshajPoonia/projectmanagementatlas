@@ -29,6 +29,7 @@ import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { findExactColumnForStatus, statusesForPicker } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
+import { dueDateAsPickerDate } from '@/lib/calendar-grid'
 import {
   buildTaskAssetPath,
   formatAttachmentSize,
@@ -306,7 +307,9 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       setPriority(taskData.priority)
       setStatus(taskData.status)
       setVisibility(taskData.visibility || 'assigned')
-      setDueDate(taskData.due_date ? new Date(taskData.due_date) : undefined)
+      // The picker is a calendar-day control - seeding it with the raw instant highlighted the
+      // day before in any negative UTC offset. See lib/calendar-grid.ts.
+      setDueDate(dueDateAsPickerDate(taskData.due_date))
       setIsRecurring(Boolean(taskData.is_recurring))
       setRecurrencePattern(taskData.recurrence_pattern || 'daily')
       setRecurrenceInterval(taskData.recurrence_interval || 1)

@@ -44,19 +44,27 @@ export function checkDeletion(
 }
 
 /**
- * Boards owned by the departing account, reassigned to whoever is performing the deletion.
+ * What the departing account hands over to whoever is performing the deletion, rather than
+ * leaving to the foreign keys.
  *
- * This is the single case where NULL is not good enough. `boards.created_by` is not
- * attribution - migration 061 makes it the sole authority over a private board's membership
- * list, with no admin bypass, deliberately. A board left with a NULL creator could never
- * have its members changed again by anybody, which turns "remove a departing employee" into
- * "permanently freeze the access list of every board they made".
+ * **boards** - the case where NULL is not good enough. `boards.created_by` is not attribution:
+ * migration 061 makes it the sole authority over a private board's membership list, with no
+ * admin bypass, deliberately. A board left with a NULL creator could never have its members
+ * changed again by anybody, which turns "remove a departing employee" into "permanently freeze
+ * the access list of every board they made".
+ *
+ * **shared saved views** - the case where CASCADE is not good enough. Migration 119 gives
+ * `saved_views.owner_id` an ON DELETE CASCADE, which is correct for a PERSONAL view (private to
+ * them, including from admins, so nothing is lost that anyone else could see) and destructive
+ * for a SHARED one, which is on everyone's picker and which other people are using today.
+ * Only `scope = 'shared'` moves; transferring their personal views would hand the deleting
+ * admin something they were never meant to read.
  *
  * Nothing else is reassigned. Rewriting the author of a task or a comment would make it
  * claim to have been written by whoever ran the deletion, and a false record is worse than
  * an incomplete one.
  */
-export const REASSIGNED_ON_DELETE = ['boards'] as const
+export const REASSIGNED_ON_DELETE = ['boards', 'saved_views (shared only)'] as const
 
 /**
  * Deactivation is refused for the same two cases as deletion, and for a sharper reason.
@@ -90,12 +98,23 @@ export function describeDeactivation(name: string): string {
   )
 }
 
-/** Human-readable summary of what a deletion will do, shown before it is confirmed. */
-export function describeDeletion(name: string, boardCount: number): string {
+/**
+ * Human-readable summary of what a deletion will do, shown before it is confirmed.
+ *
+ * `sharedViewCount` is separate from `boardCount` because they answer different questions and
+ * an operator deciding whether to press Delete needs both: boards transfer so their membership
+ * lists stay editable, shared views transfer so the rest of the company keeps them.
+ */
+export function describeDeletion(name: string, boardCount: number, sharedViewCount = 0): string {
   const boards =
     boardCount === 0
       ? ''
       : ` ${boardCount} board${boardCount === 1 ? '' : 's'} they created will transfer to you.`
+
+  const views =
+    sharedViewCount === 0
+      ? ''
+      : ` ${sharedViewCount} shared view${sharedViewCount === 1 ? '' : 's'} they created will transfer to you.`
 
   return (
     `Delete ${name}'s account permanently?\n\n` +
@@ -103,6 +122,7 @@ export function describeDeletion(name: string, boardCount: number): string {
     `"Switch off access" instead - that is reversible and keeps their name on their work.\n\n` +
     `Kept: their tasks, comments and shared bookmarks, but no longer under their name.` +
     boards +
-    `\nDestroyed: their personal tasks, private messages and personal bookmarks.`
+    views +
+    `\nDestroyed: their personal tasks, private messages, personal bookmarks and personal views.`
   )
 }

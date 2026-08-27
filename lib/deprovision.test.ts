@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  REASSIGNED_ON_DELETE,
   REFUSAL_MESSAGES,
   checkDeactivation,
   checkDeletion,
@@ -56,7 +57,9 @@ describe('describeDeletion', () => {
   it('says plainly what is kept and what goes', () => {
     const text = describeDeletion('Alice', 0)
     expect(text).toMatch(/Kept:.*tasks, comments and shared bookmarks/i)
-    expect(text).toMatch(/Destroyed:.*personal tasks, private messages and personal bookmarks/i)
+    expect(text).toMatch(
+      /Destroyed:.*personal tasks, private messages, personal bookmarks and personal views/i,
+    )
     expect(text).toMatch(/cannot be undone/i)
   })
 
@@ -113,5 +116,39 @@ describe('checkDeactivation', () => {
   // switched off is not a way back in, so counting them would allow locking everyone out.
   it('treats an already-inactive second super admin as no safety net', () => {
     expect(checkDeactivation({ id: 'them', role: 'super_admin' }, 'me', 1)).toBe('last-super-admin')
+  })
+})
+
+describe('shared saved views', () => {
+  // Migration 119 CASCADEs saved_views on the owner, which is right for a personal view and
+  // destructive for a shared one: it is on everyone's picker and other people are using it.
+  // The route reassigns the shared ones, so the dialog has to say so before the button is
+  // pressed - an operator cannot weigh a transfer they were never told about.
+  it('mentions shared-view transfer only when there are shared views', () => {
+    expect(describeDeletion('Alice', 0, 0)).not.toMatch(/shared view/i)
+    expect(describeDeletion('Alice', 0, 1)).toMatch(/1 shared view they created will transfer/i)
+    expect(describeDeletion('Alice', 0, 3)).toMatch(/3 shared views they created will transfer/i)
+  })
+
+  it('reports boards and shared views independently', () => {
+    const text = describeDeletion('Alice', 2, 4)
+    expect(text).toMatch(/2 boards they created will transfer/i)
+    expect(text).toMatch(/4 shared views they created will transfer/i)
+  })
+
+  it('defaults to zero so an un-updated caller cannot claim a transfer that did not happen', () => {
+    expect(describeDeletion('Alice', 0)).not.toMatch(/shared view/i)
+  })
+
+  it('names shared views as reassigned, and does not claim personal ones are', () => {
+    expect(REASSIGNED_ON_DELETE).toContain('boards')
+    expect(REASSIGNED_ON_DELETE.some((t) => t.startsWith('saved_views'))).toBe(true)
+    // The distinction is load-bearing: moving a personal view would hand the deleting admin a
+    // view built to be private from admins.
+    expect(REASSIGNED_ON_DELETE.join(' ')).toMatch(/shared only/i)
+  })
+
+  it('still says personal views are destroyed, because they are', () => {
+    expect(describeDeletion('Alice', 0, 2)).toMatch(/Destroyed:.*personal views/i)
   })
 })

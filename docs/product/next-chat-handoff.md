@@ -270,12 +270,29 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   the table's inline-rename control was permanently invisible to a mouse (`group-hover` with no
   `group` ancestor); a React key warning from `TableLayout`; and `enforce_task_lifecycle` quietly
   moving a seeded task out of its intended column, which had been testing the wrong fixture.
-- NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **applying `118`/`119` to
-  prod** (see the Prompt E entry above - `118` needs a deliberate decision), **Prompt F** (My
-  Work sections, WorkNext reasons, and the Inbox), **Prompt B**'s one honest gap (membership
-  **audit events**). Also open: the
+- ✅ **`118`/`119` are on prod** (2026-08-25) and **the pre-Prompt-F cleanup is done**
+  (2026-08-27, commit on `main`). That cleanup was meant to be three small items and turned up
+  **two live production bugs** instead - read the Prompt-F entry below before starting F.
+- ⚠️⚠️ **`tasks.due_date` is `TIMESTAMPTZ`, NOT a `DATE` column.** It stores MIDNIGHT on the
+  chosen day, and there are two writers producing two shapes (`T00:00:00+00:00` from
+  `create-task-dialog`'s `<input type="date">`, `T05:00:00+00:00` from `task-detail-modal`'s
+  picker at Chicago midnight). **The intended day is the UTC date part**; resolving the instant
+  through `businessDate()` lands on the day BEFORE. Use `dueCalendarDate` / `taskDueDate` from
+  `lib/calendar-grid.ts`. `businessDate` stays correct for genuine instants like `created_at`.
+  - This was wrong on production from the Prompt E deploy until 2026-08-27: **`/views`, the
+    board and Reports returned a task due TODAY from the `overdue` filter.** `/my-work` had an
+    older variant of the same shift. Both fixed.
+  - It survived ~1420 passing tests because **every fixture used a shape the column never
+    sends** - My Work's were `toISOString()` timestamps, Prompt E's were bare `'2026-08-25'`
+    strings, and each suite tested the one shape its own bug could not reach. When writing a
+    fixture for a column, **query the column first and paste what it really returns.**
+- NEXT actual work is NOT decided - ASK THE OWNER. The owner has said they intend **Prompt F**
+  (My Work sections, WorkNext reasons, and the Inbox) next, but has not started it. Other open
+  candidates: **Prompt B**'s one honest gap (membership **audit events**). Also open: the
   **Inbox** (Prompt F) - needs **no new table**, `task_notifications` (migration `035`) already
-  exists with 169 prod rows and inbox-shaped RLS, and now that the toast no longer eats them
+  exists with inbox-shaped RLS (84 rows on the dev clone, split `assignment` 58 / `update` 26 -
+  which is already Prompt F's two-bucket shape; the prod count has not been re-read this session),
+  and now that the toast no longer eats them
   unread state finally accumulates (open question: what to do with the ~121 already-unread
   rows, some from June) - and work-item **context actions in ⌘K** (blocked: `board-view.tsx`
   renders outside `AppShell`, so the shell has no selected-item context).

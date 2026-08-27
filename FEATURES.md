@@ -297,6 +297,55 @@ Detailed investigation prompts will be added by the owner. When investigating, e
 ---
 
 ## Changelog
+
+### 2026-08-27 - pre-Prompt-F cleanup, and the two live bugs it turned up
+
+Three small items were planned. Two production bugs came out instead.
+
+- ⚠️⚠️ **`tasks.due_date` is `TIMESTAMPTZ`, not a `DATE` column** - and the Prompt E "timezone
+  fix" was built on believing otherwise, so **from that deploy until today `/views`, the board
+  and Reports returned a task due TODAY from the `overdue` filter.** Every real row is an instant
+  at midnight (49 of 53 dev rows `T00:00:00+00:00`, 4 `T05:00:00+00:00` - two dialogs write it
+  two ways), and resolving that through `businessDate()` lands on the day BEFORE. Split
+  `dueCalendarDate` (a stored day) from `calendarDateOf` (a true instant); `businessDate` is
+  still correct for `created_at`.
+- ⚠️ **`/my-work` had an older variant of the same shift**, via `new Date()` + local
+  `setHours(0,0,0,0)`. The Overdue stat counted today's work as late, "Due today" showed
+  tomorrow's, WorkNext labelled today "1 day overdue" and ranked it above genuinely late work,
+  and the date chip printed a Sunday as "Sat 29 Aug".
+- ⚠️ **It was in seven more places**, found by sweeping for `new Date(*.due_date)` rather than
+  reasoning about it: the board card painted **every task due today red** and showed the wrong
+  day; five more screens plus the public share page displayed the day before; the AI assistant
+  told people today's work was overdue; and **both date pickers highlighted the previous day**,
+  so opening a task showed a date it did not have. `personal_tasks` has the same column and the
+  same bug. All fixed. Two sites that were already right are now commented as such so a later
+  "fix" cannot break them.
+- ⚠️ **Why ~1420 tests missed it twice: every fixture was a shape the column never sends.** My
+  Work's were `toISOString()` timestamps; Prompt E's were bare `'2026-08-25'` strings. Each suite
+  tested the one shape its own bug could not reach. Both now use the real forms and run under
+  three timezones.
+- **WorkNext claimed a priority its own score had not used.** `Number(null)` is `0`, which is
+  `<= 2`, so every task with **no priority set** scored as medium and was simultaneously labelled
+  "High priority" (measured: score 91, identical to priority 3; a real priority-2 task scores
+  103). One `normalizePriority()` feeds both now. `lib/work-next.ts` had no test file at all and
+  now has 18.
+- **`/my-work` read the wall clock during render**, against this repo's own `use-now.ts`
+  convention. It takes the server's instant as a prop now, so the server and client cannot
+  disagree about what "today" is.
+- **Deprovisioning silently destroyed other people's saved views.** `119` gave
+  `saved_views.owner_id` an `ON DELETE CASCADE` - right for a personal view, destructive for a
+  SHARED one that is on everyone's picker. `delete-user` now transfers `scope = 'shared'` before
+  the delete, exactly as it does boards, and the confirmation dialog counts them.
+- **Super Admin → Modules badged two working toggles as broken.** `ai_assistant` and `bookmarks`
+  were gated at their render sites weeks ago; the "toggle not consumed yet" badge outlived the
+  fix. Removed, and browser-verified that switching bookmarks off really removes the rail.
+- **The `--allow-prod` rule has been overridden twice** (`113`, `118`), so CLAUDE.md now
+  documents the owner-override path rather than claiming a rule the ledger contradicts.
+
+New gate: `pnpm check:my-work` (20, real browser, pinned to `America/Chicago` **deliberately** -
+the bug is invisible in UTC and in any positive offset). Confirmed to drop to 13/20 with the
+shipped rule restored, rather than trusted to be meaningful. Suite: 1420 → 1476.
+
 - **2026-08-19 (b)** - **A status you can pick is a status the board can take.** Reported from the field: choosing a status, filling in the whole create-task form, and only then being told *"No column on this board is linked to 'To Do'. Ask an admin to link one"* - shown to whoever hit it, which was usually the admin reading it. The pickers listed every status the org had defined regardless of the board in front of you, and the check that refuses an impossible one ran on **submit**. Now `statusesAvailableOnBoard` / `statusesForPicker` (`lib/task-status.ts`, 13 tests) scope all three pickers - create-task, the card's inline dropdown, and the detail modal - to statuses that actually resolve to a column, so a dead option is never offered. Two deliberate asymmetries: the picker helper **fails open** when columns aren't loaded (an empty dropdown reads as a broken control, and the submit guard is still there), while the missing-status helper **fails closed** (don't prompt someone to fix a board you haven't finished reading); and a record always keeps its own status listed even when no column represents it any more, or a task whose column was deleted would render a blank select. The other half is admin-side: a board missing a column for an active status now says so in a banner with a one-click **Add {status}** that creates the column named after the status - the gap is shown to the person who can close it instead of surfacing as a refusal to whoever trips over it. Guarded the one new dead end this created: a board whose only column is Cancelled has nothing a new task can start in, and now explains itself rather than showing an empty dropdown. Browser-verified end to end on a board shaped like production's EmpowerMe - Cancelled absent from the picker, banner shown, one click, column created, status then set successfully - 12/12, zero console errors.
 - **2026-08-19** - **Marketing channels are editable; board columns rearrange and are named by their status.** Three asks, three findings.
   **(1) Marketing channel rename + on/off (migration `105`).** `marketing_channels.label` and `is_archived` had existed since `054` and **no screen could write either** - a channel typed wrong was permanent and a dead channel kept its column forever. `055` had narrowed those writes to `profiles.role = 'admin'` **literally**, which excludes `super_admin`, i.e. Bobby and Kayla, the only two people who run this calendar; the "admin-only" path it preserved had never been reachable by either of them (the `088` trap, again). Two RPCs fix it. Renaming is one transaction because `marketing_calendar_items.channel` is TEXT with no FK - renaming the channel alone orphans every event pointing at the old string, silently - so the RPC re-points them and reports how many moved. Off/on is `is_archived`, never `DELETE`, for the same reason; switching a channel off reports the posts it *kept*. Reachable from a new **Edit channels** dialog on the marketing board (rename, reorder, off/on, add) - not admin-gated, because `private.can_manage_marketing_channels()` is deliberately the same set as `canUseMarketingCalendar`: whoever can see the tab can maintain its columns.

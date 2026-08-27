@@ -82,14 +82,25 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
   }
 
   const handleDeleteUser = async (userId: string, userName: string) => {
-    // Count their boards first, so the confirmation can say what will change hands rather
-    // than leaving the operator to discover it afterwards.
-    const { count: boardCount } = await supabase
-      .from('boards')
-      .select('id', { count: 'exact', head: true })
-      .eq('created_by', userId)
+    // Count what will change hands first, so the confirmation can say so rather than leaving
+    // the operator to discover it afterwards. Shared views are counted separately from boards
+    // because they transfer for a different reason: a board's creator owns its membership list,
+    // while a shared view is simply something other people are still using.
+    //
+    // Only `scope = 'shared'` is counted. Their personal views are destroyed with the account
+    // and are deliberately not itemised here - they were private to them, including from the
+    // admin reading this dialog, so naming a count would disclose something about a table built
+    // with no admin bypass on any policy.
+    const [{ count: boardCount }, { count: sharedViewCount }] = await Promise.all([
+      supabase.from('boards').select('id', { count: 'exact', head: true }).eq('created_by', userId),
+      supabase
+        .from('saved_views')
+        .select('id', { count: 'exact', head: true })
+        .eq('owner_id', userId)
+        .eq('scope', 'shared'),
+    ])
 
-    if (!confirm(describeDeletion(userName, boardCount ?? 0))) {
+    if (!confirm(describeDeletion(userName, boardCount ?? 0, sharedViewCount ?? 0))) {
       return
     }
 
@@ -108,9 +119,22 @@ export default function EnhancedUserManagement({ users: initialUsers, currentUse
         throw new Error(body?.error || 'Failed to delete user')
       }
 
+      // Report what actually moved, from the server's own counts rather than the pre-flight
+      // ones - the two can differ if anything changed in between, and the server's is the
+      // number that really happened.
+      const moved: string[] = []
+      if (body?.boardsTransferred) {
+        moved.push(`${body.boardsTransferred} board${body.boardsTransferred === 1 ? '' : 's'}`)
+      }
+      if (body?.sharedViewsTransferred) {
+        moved.push(
+          `${body.sharedViewsTransferred} shared view${body.sharedViewsTransferred === 1 ? '' : 's'}`,
+        )
+      }
+
       setSuccess(
-        body?.boardsTransferred
-          ? `${userName} was deleted. Their work was kept, and ${body.boardsTransferred} board${body.boardsTransferred === 1 ? '' : 's'} transferred to you.`
+        moved.length > 0
+          ? `${userName} was deleted. Their work was kept, and ${moved.join(' and ')} transferred to you.`
           : `${userName} was deleted. Their work was kept.`
       )
       await refreshUsers()

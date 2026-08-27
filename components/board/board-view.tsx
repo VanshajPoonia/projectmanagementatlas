@@ -63,6 +63,8 @@ import {
 // One filter/sort implementation, shared with Reports and the Views workspace. See
 // lib/board-filters.ts for what this replaced and why the date ranges are a behaviour fix.
 import { applyFilters as applyViewFilters, applySort as applyViewSort } from '@/lib/view-config'
+// A due date is a stored calendar DAY, never an instant - re-zoning it shows the wrong day.
+import { shortDayLabel, taskDueDate } from '@/lib/calendar-grid'
 import { buildBoardConfig, boardActiveFilterCount, type BoardSort } from '@/lib/board-filters'
 import { moveListItem } from '@/lib/reorder'
 import { useTaskStatusList } from '@/lib/use-task-statuses'
@@ -1227,7 +1229,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           assigneeNames.length ? assigneeNames.join('; ') : 'Unassigned',
           task.priority || '',
           getTaskStatusLabel(task),
-          task.due_date ? new Date(task.due_date).toLocaleDateString('en-US') : '',
+          taskDueDate(task) ?? '',
           tags,
         ]
       })
@@ -1918,7 +1920,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                               {task.due_date && (
                                 <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                                   <Calendar className="w-3 h-3" />
-                                  {new Date(task.due_date).toLocaleDateString('en-US')}
+                                  {shortDayLabel(taskDueDate(task)!)}
                                 </div>
                               )}
                             </div>
@@ -2119,7 +2121,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                   {task.due_date ? (
                                     <div className="flex items-center gap-2 text-sm">
                                       <Calendar className="w-4 h-4" />
-                                      {new Date(task.due_date).toLocaleDateString('en-US')}
+                                      {shortDayLabel(taskDueDate(task)!)}
                                     </div>
                                   ) : (
                                     <span className="text-sm text-muted-foreground">No date</span>

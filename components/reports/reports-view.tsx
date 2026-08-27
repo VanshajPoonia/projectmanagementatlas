@@ -18,6 +18,7 @@ import { getTaskStatusLabel } from '@/lib/task-status'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { applyFilters } from '@/lib/view-config'
 import { UNASSIGNED_FILTER_VALUE, buildReportConfig, pickerDate } from '@/lib/report-filters'
+import { shortDayLabel, taskDueDate } from '@/lib/calendar-grid'
 
 interface ReportsViewProps {
   tasks: any[]
@@ -114,7 +115,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
         assigneeNames.length ? assigneeNames.join('; ') : 'Unassigned',
         board?.title || 'Unknown',
         new Date(task.created_at).toLocaleDateString('en-US'),
-        task.due_date ? new Date(task.due_date).toLocaleDateString('en-US') : 'No due date',
+        taskDueDate(task) ? shortDayLabel(taskDueDate(task)!) : 'No due date',
         tags
       ].map(cell => `"${cell}"`)
     })
@@ -144,7 +145,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
           String(task.priority ?? ''),
           getTaskStatusLabel(task),
           board?.title || 'Unknown',
-          task.due_date ? new Date(task.due_date).toLocaleDateString('en-US') : 'No date',
+          taskDueDate(task) ? shortDayLabel(taskDueDate(task)!) : 'No date',
           tags,
         ]
         return `<tr>${cells.map(c => `<td>${escapeHtml(String(c))}</td>`).join('')}</tr>`
@@ -414,7 +415,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
                     <span>{assigneeNames.length ? assigneeNames.join(', ') : 'Unassigned'}</span>
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    {task.due_date ? new Date(task.due_date).toLocaleDateString('en-US') : 'No date'}
+                    {taskDueDate(task) ? shortDayLabel(taskDueDate(task)!) : 'No date'}
                   </div>
                   {task.task_tags?.length > 0 && (
                     <div className="flex gap-1 flex-wrap">
@@ -472,7 +473,7 @@ export default function ReportsView({ tasks, users, boards }: ReportsViewProps) 
                         <Badge>{getTaskStatusLabel(task)}</Badge>
                       </td>
                       <td className="py-3 px-4 text-sm">
-                        {task.due_date ? new Date(task.due_date).toLocaleDateString('en-US') : 'No date'}
+                        {taskDueDate(task) ? shortDayLabel(taskDueDate(task)!) : 'No date'}
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex gap-1 flex-wrap">

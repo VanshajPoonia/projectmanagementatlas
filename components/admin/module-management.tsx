@@ -46,10 +46,12 @@ const MODULE_COPY: Record<string, { label: string; description: string }> = {
   crm: { label: 'CRM', description: 'Clients, contacts, orders, and the order status history the cycle-time reports are built on.' },
 }
 
-// Two modules render outside the tab lists (the floating AI widget and the bookmarks rail), so
-// their rows exist but are not yet consumed at those render sites. Saying so is better than a
-// toggle that silently does nothing.
-const NOT_YET_WIRED: ReadonlySet<string> = new Set(['ai_assistant', 'bookmarks'])
+// `ai_assistant` and `bookmarks` render OUTSIDE the tab lists - the floating chat widget and the
+// bookmarks rail - so they used to carry a badge here saying the toggle was not consumed yet.
+// Both are gated at their render sites in user-dashboard.tsx and admin-dashboard.tsx now, so
+// that badge was telling a super admin a working control did nothing. Removed rather than
+// reworded: a switch labelled broken is a switch nobody touches, which is the same defect as a
+// switch that really is broken, just harder to spot.
 
 export default function ModuleManagement() {
   const supabase = useMemo(() => createClient(), [])
@@ -152,11 +154,6 @@ export default function ModuleManagement() {
                         <Badge variant="secondary">On</Badge>
                       ) : (
                         <Badge variant="outline" className="text-muted-foreground">Off</Badge>
-                      )}
-                      {NOT_YET_WIRED.has(row.module_key) && (
-                        <Badge variant="outline" className="text-muted-foreground text-[10px]">
-                          renders outside the nav - toggle not consumed yet
-                        </Badge>
                       )}
                     </div>
                     {copy && (

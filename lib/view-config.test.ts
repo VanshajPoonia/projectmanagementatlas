@@ -331,10 +331,20 @@ describe('the timezone trap', () => {
     expect(evaluateCondition(t, where('due_date', 'between', ['2026-08-25', '2026-08-25']), ctx())).toBe(true)
   })
 
-  it('groups a timestamp into a due bucket by the business calendar, not UTC', () => {
-    const todayTask = task({ id: 'today', due_date: '2026-08-25' })
-    const groups = applyGrouping([todayTask], 'due_bucket', ctx())
-    expect(groups[0].key).toBe('today')
+  // ⚠️ The name of this test used to say "by the business calendar, not UTC", and its fixture
+  // was a bare '2026-08-25' - a shape this TIMESTAMPTZ column never sends, so it proved neither
+  // half. The real rule is the opposite of what the title claimed: a stored midnight means the
+  // day it was stored ON, and re-zoning it into Chicago is what moved every due date a day early.
+  it('groups the real stored shapes into the right due bucket', () => {
+    for (const due of ['2026-08-25', '2026-08-25T00:00:00+00:00', '2026-08-25T05:00:00+00:00']) {
+      const groups = applyGrouping([task({ id: 'today', due_date: due })], 'due_bucket', ctx())
+      expect(groups[0].key, `due_date ${due}`).toBe('today')
+    }
+  })
+
+  it('still buckets genuinely late work as overdue', () => {
+    const groups = applyGrouping([task({ due_date: '2026-08-24T00:00:00+00:00' })], 'due_bucket', ctx())
+    expect(groups[0].key).toBe('overdue')
   })
 })
 
@@ -663,5 +673,53 @@ describe('saying what a view does', () => {
 
   it('describes the plainest possible view without inventing clauses', () => {
     expect(describeView(cfg())).toBe('Board')
+  })
+})
+
+describe('due dates use the SHAPE the column really has', () => {
+  // ⚠️ `tasks.due_date` is TIMESTAMPTZ, not DATE (001_initial_schema.sql), and it stores MIDNIGHT
+  // on the day the person picked. Measured against the sandbox: 49 of 53 rows are
+  // `T00:00:00+00:00` (Postgres casting an <input type="date">) and 4 are `T05:00:00+00:00`
+  // (the modal's picker at Chicago midnight). Every fixture in this file above uses a bare
+  // '2026-08-27' instead, which the column never sends - so the engine could resolve a
+  // UTC-midnight instant through America/Chicago, land on the day BEFORE, and pass every test
+  // here while returning today's work from an `overdue` filter on production.
+  //
+  // `created_at` is deliberately NOT covered by this rule: it is a genuine instant, and which
+  // day it belongs to really does depend on where you are standing.
+  const shapes: Array<[string, string]> = [
+    ['UTC midnight (the common one)', '2026-08-27T00:00:00+00:00'],
+    ['Chicago midnight', '2026-08-27T05:00:00+00:00'],
+    ['a bare calendar date', '2026-08-27'],
+  ]
+
+  for (const [label, due] of shapes) {
+    it(`means 27 August - ${label}`, () => {
+      const t = task({ due_date: due })
+      // `is` on a date field compares calendar days.
+      expect(evaluateCondition(t, where('due_date', 'is', ['2026-08-27']), ctx())).toBe(true)
+      expect(evaluateCondition(t, where('due_date', 'is', ['2026-08-26']), ctx())).toBe(false)
+    })
+
+    it(`is not before itself - ${label}`, () => {
+      const t = task({ due_date: due })
+      expect(evaluateCondition(t, where('due_date', 'before', ['2026-08-27']), ctx())).toBe(false)
+      expect(evaluateCondition(t, where('due_date', 'after', ['2026-08-26']), ctx())).toBe(true)
+    })
+
+    it(`falls inside a single-day range covering it - ${label}`, () => {
+      const t = task({ due_date: due })
+      // `between` is inclusive at both ends, so a one-day window must contain the task.
+      expect(evaluateCondition(t, where('due_date', 'between', ['2026-08-27', '2026-08-27']), ctx())).toBe(true)
+      expect(evaluateCondition(t, where('due_date', 'between', ['2026-08-25', '2026-08-26']), ctx())).toBe(false)
+    })
+  }
+
+  it('sorts the two stored shapes as the same day rather than a day apart', () => {
+    const a = task({ id: 'a', due_date: '2026-08-27T00:00:00+00:00' })
+    const b = task({ id: 'b', due_date: '2026-08-27T05:00:00+00:00' })
+    const c = task({ id: 'c', due_date: '2026-08-26T00:00:00+00:00' })
+    const sorted = applySort([a, b, c], cfg({ sort: [{ field: 'due_date', direction: 'asc' }] }), ctx())
+    expect(sorted[0].id).toBe('c')
   })
 })

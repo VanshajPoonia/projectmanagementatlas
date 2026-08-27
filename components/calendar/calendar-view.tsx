@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { getAssigneeIds, getAssignees } from '@/lib/assignees'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, getTaskStatusLabel } from '@/lib/task-status'
+import { iso, taskDueDate } from '@/lib/calendar-grid'
 
 interface CalendarViewProps {
   tasks: any[]
@@ -61,13 +62,18 @@ export default function CalendarView({ tasks, users, isAdmin = false }: Calendar
   }
 
   const getTasksForDate = (day: number) => {
-    const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
-    const dateString = date.toISOString().split('T')[0]
-    
+    // ⚠️ Built with `iso(...)`, not `new Date(y, m, day).toISOString().split('T')[0]`. That form
+    // takes a LOCAL midnight and converts it to UTC, so anywhere EAST of Greenwich it names the
+    // previous day and every cell on the grid is off by one. It happened to be right here only
+    // because this company sits in America/Chicago.
+    const dateString = iso(currentDate.getFullYear(), currentDate.getMonth() + 1, day)
+
     return tasks.filter(task => {
-      if (!task.due_date) return false
-      const taskDate = new Date(task.due_date).toISOString().split('T')[0]
-      return taskDate === dateString
+      // Named helper rather than parsing the instant. `due_date` is a TIMESTAMPTZ storing
+      // MIDNIGHT on the chosen day, so the day it means is the UTC date part - which is what
+      // taskDueDate returns, and what re-zoning it through a local timezone gets wrong.
+      const taskDate = taskDueDate(task)
+      return taskDate !== null && taskDate === dateString
     })
   }
 
