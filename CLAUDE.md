@@ -903,7 +903,19 @@ deliberately left out.
       ⚠️ That same function built its grid key as `new Date(y, m, d).toISOString().slice(0,10)`,
       which is a LOCAL midnight converted to UTC - right in Chicago, **off by one everywhere east
       of Greenwich**. It uses `iso(y, m, d)` now.
-    - Gate: `pnpm check:my-work` (20, real browser). ⚠️ Its context is pinned to
+    - ⚠️ **`scripts/audit-mobile.mjs` REPORTS, it does not gate** - it exits 0 and prints
+    "N of 48 routes flagged", so "it passed" says nothing. On 2026-08-27 both `main` and this
+    branch flagged **32 of 48**, every flag a touch-target size on pre-existing shell chrome
+    (Skip to content, command palette, Appearance, Account, Sign Out), and **zero horizontal
+    overflow anywhere**. The only way to read it is to diff its FLAG lines against the same run
+    on `main`; 31 of 32 were identical. ⚠️ It is also flaky per-route: `admin-marketing`
+    measured **256** small targets at 390px and **6** at 320px in the SAME run, so a single
+    route's count moving is not evidence of anything.
+    - ⚠️ **And it dies with `ERR_CONNECTION_REFUSED` if the dev server stops mid-run**, exiting
+      non-zero with a stack rather than a summary. Reading its log before it finishes shows a
+      clean prefix - which is exactly how it was briefly misreported as green here. Wait for the
+      final "N of 48" line.
+  - Gate: `pnpm check:my-work` (20, real browser). ⚠️ Its context is pinned to
       `timezoneId: 'America/Chicago'` deliberately - **the bug is invisible in UTC and in any
       positive offset**, so a harness running in the machine's own zone (this Mac is
       `Asia/Calcutta`) passes against broken code. It is also what found the column's real type,
