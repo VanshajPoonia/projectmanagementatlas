@@ -329,9 +329,22 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   - **Deliberately not built:** digest preferences (the prompt says "later"), and following a
     whole BOARD - that needs notification generation nothing currently does, and a control wired
     to nothing is this repo's most-repeated defect.
-- ⚠️ **Prompt G is SHIPPED TO DEV ONLY (`123`-`126`, 2026-08-29). NOTHING IS ON PRODUCTION,
-  and one of the four is not eligible to be.** Dev is at `126`, prod is still at `122`. Run
-  `pnpm migrate:status` against both rather than trusting this line - it has gone stale before.
+- ✅ **Prompt G is SHIPPED to dev AND prod (`123`, `124`, `126`), 2026-08-29. `125` is on DEV
+  ONLY and was deliberately held back.** ⚠️ **Prod therefore reports `1 pending` forever** -
+  that gap is a decision, not drift. Run `pnpm migrate:status` against both rather than
+  trusting this line; it has gone stale before.
+  - Prod went `122` -> `126` one file at a time via `--only=NNN --allow-prod`, verified between
+    each, after a `pg_restore --list`-verified backup
+    (`~/Code/prod-backup-pre-123to126-20260829-021936.dump`, 7.3 MB, 57 tables, chmod 444).
+    **Every row count identical before and after** - 173 tasks, 11 boards, 46 columns, 5
+    statuses, 11 types, 10 profiles, 8 board_members - and the only row that moved anywhere was
+    the one `app_modules` seed (11 -> 12), which seeds DISABLED. `tasks` still carries exactly
+    its previous 8 triggers.
+  - `public.wip_enforcement_installed()` returns **false** on prod, so every WIP badge and the
+    settings dialog there say "warning only - nothing is refused", which is true.
+  - Code is live as **`64c7e22`** (deployment confirmed via the GitHub deployments API, not by
+    matching timestamps). `/agile` 307s to `/login` unauthenticated, and redirects a signed-in
+    user to their dashboard while the module is off.
   - `123` agile core (3 tables + `tasks.estimate_value` + `columns.wip_limit` + the module row),
     `124` the metrics ledger, `126` a one-function probe: **all three purely additive and
     `--allow-prod` eligible.** `125` is the WIP **enforcement** trigger on `tasks` and is
@@ -362,9 +375,10 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
     tests under all four timezones; `next build` clean with the dev ref confirmed baked.
   - **Deliberately not built:** time tracking. Prompt G calls it a separate optional module and
     notes Taiga has none natively.
-- NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **applying `123`/`124`/`126`
-  to prod** (all eligible, all invisible until someone opts a board in) and the separate question
-  of whether `125` gets an owner override; **Prompt H** (goals, ideas, strategy, retrospectives -
+- NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **switching the `agile`
+  module on for the org and opting one board in** (nothing is visible until somebody does);
+  **whether `125` gets an owner override** so a WIP limit is actually enforced rather than
+  merely warned about; **Prompt H** (goals, ideas, strategy, retrospectives -
   the pack's next prompt);
   **Prompt B**'s one honest gap (membership **audit events**); and work-item **context actions in
   ⌘K** (blocked: `board-view.tsx` renders outside `AppShell`, so the shell has no selected-item

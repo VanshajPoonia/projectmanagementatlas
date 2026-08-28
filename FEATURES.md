@@ -243,7 +243,7 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       `WorkNext` was **extended, not replaced** - blocked, blocking and approval signals, each
       with a visible reason. Gates: `pnpm check:inbox` (49), `pnpm check:inbox-ui` (32),
       `pnpm check:my-work` (33).
-- [x] **9. Optional agile mode** (Prompt G, `123`-`126`, **DEV ONLY**, 2026-08-29) - `/agile`,
+- [x] **9. Optional agile mode** (Prompt G, `123`/`124`/`126` on dev AND prod, `125` dev only, 2026-08-29) - `/agile`,
       off by default at three levels: the `agile` module seeds disabled, every board's
       `is_enabled` seeds off, and the noun itself (**sprint | cycle | iteration**) is a board
       setting - so a marketing, contracting, real-estate, finance or operations board never sees
@@ -260,7 +260,9 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       closed window with no snapshot says "no record" rather than recomputing. Every number
       carries its own definition/formula/unit/included/excluded/last-updated, rendered *from the
       value*, not from a caption beside it. ⚠️ **`125` (the WIP enforcement trigger on `tasks`) is
-      NOT `--allow-prod` eligible**; the other three are. Nothing is on production. Deliberately
+      NOT `--allow-prod` eligible and was deliberately held back**; the other three went to prod
+      on 2026-08-29 with every row count identical before and after, and the module seeded off,
+      so the deploy changed nothing anyone can see. Prod reports 1 pending forever by design. Deliberately
       not built: time tracking (Prompt G says it is a separate optional module, and Taiga has
       none either). Gates: `pnpm check:agile` (66, real RLS - confirmed to lose 8 checks when the
       triggers are removed), `pnpm check:agile-ui` (51, real browser, stable across three runs).

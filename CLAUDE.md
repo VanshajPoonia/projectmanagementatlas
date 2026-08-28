@@ -342,9 +342,9 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `127`. **Dev is at `126` and prod is at
-  `122` as of 2026-08-29** - `123`-`126` (Prompt G) are dev-only and none has been applied to
-  production; see the Prompt G section for which of them are even eligible. As always, run
+- Migrations: numbered SQL in `scripts/`, continuing from `127`. **Dev is at `126`; prod has 1-124 and 126,
+  with `125` deliberately never applied, as of 2026-08-29** - so prod reports 1 pending
+  forever. See the Prompt G section for why. As always, run
   `pnpm migrate:status` rather than trusting this sentence - it has gone stale three times. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
@@ -1210,11 +1210,21 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
     happen to sort. Query either end, or use a directional relation type in the fixture.
 
 
-### Prompt G - optional Agile mode (`123`-`126`, **DEV ONLY**, 2026-08-29)
+### Prompt G - optional Agile mode (`123`-`126`, 2026-08-29)
 
-Four migrations. **All four are applied to the dev sandbox and NONE of them is on production.**
-Three are `--allow-prod` eligible on this repo's own rule and one deliberately is not - read the
-per-file notes below before applying anything.
+Four migrations. **`123`, `124` and `126` are on dev AND prod. `125` is on DEV ONLY and is the
+one file that is not eligible** - read the per-file notes below before applying it.
+
+Prod went `122` -> `126` on 2026-08-29, one file at a time via `--only=NNN --allow-prod`,
+verified between each, after a `pg_restore --list`-verified backup
+(`~/prod-backup-pre-123to126-20260829-021936.dump`, 7.3 MB, 57 tables, chmod 444). **Every row count was
+identical before and after**: 173 tasks, 11 boards, 46 columns, 5 statuses, 11 work item types,
+10 profiles, 8 board_members. The only row that moved anywhere was the single `app_modules`
+seed (11 -> 12), and it seeds **disabled**. `enforce_wip_limit` is absent from prod's `tasks`,
+which still carries exactly the 8 triggers it had before; `public.wip_enforcement_installed()`
+therefore returns **false** there, and every WIP badge on production says "warning only".
+⚠️ `pnpm migrate:status` against prod will report **1 pending forever** until somebody decides
+about `125`. That gap is deliberate, not drift.
 
 | file | what | prod eligible? |
 |---|---|---|
@@ -1223,7 +1233,8 @@ per-file notes below before applying anything.
 | `125_wip_enforcement.sql` | the trigger that actually refuses a move into a full column | ⛔ **trigger on `tasks`** |
 | `126_wip_enforcement_probe.sql` | `wip_enforcement_installed()`, so the UI can tell which of the two worlds it is in | ✅ purely additive |
 
-⚠️ **`125` is not eligible and must not get `--allow-prod` on an agent's judgement.** It is the
+⚠️ **`125` is not eligible and must not get `--allow-prod` on an agent's judgement. It was
+deliberately held back when the other three went to prod on 2026-08-29.** It is the
 same class of change as `113` and `118`, both of which reached prod only as an explicit owner
 decision after the risk was written down. The risk here, stated so it can be decided rather than
 assumed: every task move on every board goes through the `tasks` UPDATE path and this trigger
