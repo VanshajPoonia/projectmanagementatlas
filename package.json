@@ -8,6 +8,7 @@
     "lint": "eslint .",
     "start": "next start",
     "test": "vitest run",
+    "test:timezones": "for tz in UTC America/Chicago Pacific/Auckland Asia/Calcutta; do echo \"--- $tz ---\"; TZ=$tz vitest run || exit 1; done",
     "test:watch": "vitest",
     "guard": "node --env-file=.env.local scripts/guard-db.mjs",
     "migrate": "node --env-file=.env.local scripts/migrate.mjs",

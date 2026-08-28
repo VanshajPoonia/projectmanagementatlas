@@ -915,6 +915,23 @@ deliberately left out.
       chip, where near-term context makes the missing year fine. Pinned by three cases in
       `lib/calendar-grid.test.ts` including a year-boundary pair, and verified in a real browser
       against a task due in 2027.
+    - ⚠️ **The WRITE half was wrong for every positive UTC offset, and UTC cannot see it.**
+      `task-card` and `task-detail-modal` both wrote `pickerDate.toISOString()`, and a picker
+      hands back LOCAL midnight - so a user picking 27 August stored
+      `2026-08-26T18:30:00.000Z` in `Asia/Calcutta` and `2026-08-26T12:00:00.000Z` in
+      `Pacific/Auckland`. Every reader takes the UTC date part, so the app stored, displayed and
+      reported **the day before the one that was clicked**, silently, since nothing about the
+      value looks wrong on its own. Measured across four zones before the fix and again after.
+      All five writers now go through **`dueDateForStorage`**, which always yields
+      `YYYY-MM-DDT00:00:00.000Z`, so this column holds ONE shape instead of the two it used to.
+      No backfill was needed: the existing `T05:00:00+00:00` rows were written by Chicago users
+      and their UTC date part is already the right day.
+    - ⚠️ **`pnpm test:timezones` exists because the whole suite passes in UTC against the broken
+      code.** Proved, not assumed: restoring the old `.toISOString()` write and re-running gave
+      **UTC 52/52 green**, Chicago 1 failure, Calcutta and Auckland 3 each. A CI box on UTC would
+      have certified this bug indefinitely. The script runs the full 1486 tests under UTC,
+      `America/Chicago`, `Pacific/Auckland` and `Asia/Calcutta`; all four pass. **Any date work
+      in this repo should be run through it, not through `pnpm test` alone.**
     - **Two sites were already correct and are now commented as such**, because both looked
       like the bug and a later "fix" would have broken them: `bulk-action-bar`'s date shift uses
       `setUTCDate`/`getUTCDate` deliberately, and `calendar-view` read the UTC date part.

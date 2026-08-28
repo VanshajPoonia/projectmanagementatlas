@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Lock, Plus, X, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
-import { calendarDateLabel, taskDueDate } from '@/lib/calendar-grid'
+import { calendarDateLabel, dueDateForStorage, taskDueDate } from '@/lib/calendar-grid'
 import { businessDate } from '@/lib/crm'
 import { showUndoableToast } from '@/components/shell/undo-toast'
 
@@ -47,7 +47,7 @@ export default function PersonalTasks({ userId }: PersonalTasksProps) {
       .insert({
         user_id: userId,
         title: title.trim(),
-        due_date: dueDate || null,
+        due_date: dueDateForStorage(dueDate),
       })
       .select()
       .single()

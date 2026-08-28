@@ -198,6 +198,42 @@ export function dueDateAsPickerDate(value: unknown): Date | undefined {
   return new Date(y, m - 1, d)
 }
 
+/**
+ * The calendar day a date PICKER is showing, read from its LOCAL parts.
+ *
+ * A picker hands back a `Date` at LOCAL midnight, so its UTC parts are the wrong ones to read -
+ * that is the inverse of `dueDateAsPickerDate` and it has to stay the inverse.
+ */
+export function pickerDateToCalendarDate(date: Date): string {
+  return iso(date.getFullYear(), date.getMonth() + 1, date.getDate())
+}
+
+/**
+ * The value to STORE for a chosen due date: always UTC midnight on that calendar day.
+ *
+ * ⚠️ This is the WRITE half of the due-date rule, and it was wrong for anyone east of Greenwich.
+ * `task-card` and `task-detail-modal` both wrote `pickerDate.toISOString()`, which encodes LOCAL
+ * midnight. Measured, not reasoned - a user picking 27 August:
+ *
+ *   America/Chicago  -05:00  ->  2026-08-27T05:00:00.000Z  reads back as the 27th
+ *   Asia/Calcutta    +05:30  ->  2026-08-26T18:30:00.000Z  reads back as the 26th
+ *   Pacific/Auckland +12:00  ->  2026-08-26T12:00:00.000Z  reads back as the 26th
+ *
+ * Every reader takes the UTC date part (see `dueCalendarDate`), so in any POSITIVE offset the
+ * app stored, displayed and reported the day before the one the user clicked - and it would
+ * have done so silently, since nothing about the value looks wrong on its own.
+ *
+ * Normalising every writer through here also collapses the two shapes this column used to hold
+ * into one. `create-task-dialog`'s raw `<input type="date">` string already produced UTC
+ * midnight via Postgres's cast, so passing it through changes nothing; the picker paths are the
+ * ones that move.
+ */
+export function dueDateForStorage(value: Date | string | null | undefined): string | null {
+  if (value == null || value === '') return null
+  const day = value instanceof Date ? pickerDateToCalendarDate(value) : dueCalendarDate(value)
+  return day === null ? null : `${day}T00:00:00.000Z`
+}
+
 /** Step one range forward or back from an anchor. */
 export function stepAnchor(anchor: string, range: CalendarRange, delta: number): string {
   if (range === 'month') return addMonths(anchor, delta)

@@ -29,7 +29,7 @@ import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { findExactColumnForStatus, statusesForPicker } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
-import { dueDateAsPickerDate } from '@/lib/calendar-grid'
+import { dueDateAsPickerDate, dueDateForStorage } from '@/lib/calendar-grid'
 import {
   buildTaskAssetPath,
   formatAttachmentSize,
@@ -377,7 +377,8 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       description: description.trim() || null,
       priority,
       status: effectiveStatus,
-      due_date: dueDate?.toISOString() || null,
+      // ⚠️ NOT `.toISOString()` - a picker Date is LOCAL midnight. See lib/calendar-grid.ts.
+      due_date: dueDateForStorage(dueDate),
       visibility,
       is_recurring: isRecurring,
       recurrence_pattern: isRecurring ? recurrencePattern : null,

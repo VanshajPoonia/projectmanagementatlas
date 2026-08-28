@@ -19,6 +19,7 @@ import { topLevelTypes, TASK_TYPE_KEY } from '@/lib/work-item-type-registry'
 import { isDirty, useUnsavedChanges } from '@/components/shell/unsaved-changes'
 import { findExactColumnForStatus, statusesAvailableOnBoard, statusesForCreation } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
+import { dueDateForStorage } from '@/lib/calendar-grid'
 
 interface CreateTaskDialogProps {
   board?: any
@@ -167,7 +168,9 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
         created_by: user.id,
         type_key: typeKey,
         priority,
-        due_date: dueDate || null,
+        // Already UTC midnight via Postgres's cast; normalised here so every writer on this
+        // column produces one shape rather than two.
+        due_date: dueDateForStorage(dueDate),
         status,
         position: targetColumn.tasks?.filter((task: any) => !task.deleted_at && !task.archived_at).length || 0,
         visibility,

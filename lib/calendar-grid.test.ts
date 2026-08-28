@@ -5,6 +5,8 @@ import {
   daysBetween,
   shortDayLabel,
   calendarDateLabel,
+  dueDateForStorage,
+  pickerDateToCalendarDate,
   dueDateAsPickerDate,
 } from './calendar-grid'
 
@@ -303,6 +305,51 @@ describe('calendarDateLabel', () => {
     // The chip states no year at all, which is fine for "Due Sat 29 Aug" a few days out and is
     // why it stays on /my-work only. It is not a general-purpose date label.
     expect(shortDayLabel('2026-01-05')).not.toMatch(/\d{4}/)
+  })
+})
+
+describe('dueDateForStorage', () => {
+  it('stores UTC midnight on the day the picker was showing, in ANY timezone', () => {
+    // The bug this pins, measured before it was fixed. A picker hands back LOCAL midnight, so
+    // `.toISOString()` encodes the previous day for every positive UTC offset:
+    //   Chicago  -05:00 -> 2026-08-27T05:00:00.000Z  (27th, fine)
+    //   Calcutta +05:30 -> 2026-08-26T18:30:00.000Z  (26th, WRONG)
+    //   Auckland +12:00 -> 2026-08-26T12:00:00.000Z  (26th, WRONG)
+    // Reading the picker's LOCAL parts is what makes the answer zone-independent.
+    const picked = new Date(2026, 7, 27) // local midnight, 27 August, whatever zone we are in
+    expect(dueDateForStorage(picked)).toBe('2026-08-27T00:00:00.000Z')
+  })
+
+  it('round-trips: what it stores reads back as the day that was picked', () => {
+    for (const [y, m, d] of [[2026, 7, 27], [2027, 0, 5], [2025, 11, 31], [2026, 1, 28]] as const) {
+      const picked = new Date(y, m, d)
+      const stored = dueDateForStorage(picked)!
+      expect(taskDueDate({ due_date: stored })).toBe(pickerDateToCalendarDate(picked))
+    }
+  })
+
+  it('leaves a bare YYYY-MM-DD on the same day it names', () => {
+    // create-task-dialog's `<input type="date">` path. Postgres already cast this to UTC
+    // midnight, so normalising it must be a no-op on the DAY, not a shift.
+    expect(dueDateForStorage('2026-08-27')).toBe('2026-08-27T00:00:00.000Z')
+    expect(dueDateForStorage('2026-08-27T00:00:00+00:00')).toBe('2026-08-27T00:00:00.000Z')
+    // ...and the OTHER shape the column already holds, from the old picker path in Chicago.
+    expect(dueDateForStorage('2026-08-27T05:00:00+00:00')).toBe('2026-08-27T00:00:00.000Z')
+  })
+
+  it('has no opinion about an absent date', () => {
+    expect(dueDateForStorage(null)).toBeNull()
+    expect(dueDateForStorage(undefined)).toBeNull()
+    expect(dueDateForStorage('')).toBeNull()
+  })
+
+  it('is the exact inverse of dueDateAsPickerDate', () => {
+    // These two must stay inverses or the picker drifts a day every time a task is re-saved
+    // without touching its date - the silent kind of corruption.
+    for (const stored of ['2026-08-27T00:00:00+00:00', '2026-08-27T05:00:00+00:00', '2026-08-27']) {
+      const roundTripped = dueDateForStorage(dueDateAsPickerDate(stored)!)
+      expect(taskDueDate({ due_date: roundTripped })).toBe('2026-08-27')
+    }
   })
 })
 

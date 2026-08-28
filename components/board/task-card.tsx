@@ -24,7 +24,7 @@ import {
 } from '@/components/shell/density'
 import { cleanTaskDescription } from '@/lib/display-text'
 import { getNormalizedTaskStatus, findExactColumnForStatus, getEffectiveStatusKey, statusesForPicker } from '@/lib/task-status'
-import { daysBetween, dueDateAsPickerDate, calendarDateLabel, taskDueDate } from '@/lib/calendar-grid'
+import { calendarDateLabel, daysBetween, dueDateAsPickerDate, dueDateForStorage, taskDueDate } from '@/lib/calendar-grid'
 import { businessDate } from '@/lib/crm'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { sendTaskAssignmentEmail } from '@/lib/email'
@@ -176,7 +176,9 @@ export default function TaskCard({ task, isAdmin, currentUserId, boardRole = nul
   }
 
   const handleDueDateChange = async (date: Date | undefined) => {
-    if (!(await saveField({ due_date: date ? date.toISOString() : null }, 'due date'))) return
+    // ⚠️ NOT `date.toISOString()`. A picker Date is LOCAL midnight, so east of Greenwich that
+    // encodes the PREVIOUS day and every reader takes the UTC date part. See lib/calendar-grid.ts.
+    if (!(await saveField({ due_date: dueDateForStorage(date) }, 'due date'))) return
     logTaskActivity(
       supabase,
       task.id,

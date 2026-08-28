@@ -59,6 +59,7 @@ import { ListLayout } from './list-layout'
 import { TableLayout } from './table-layout'
 import { KanbanLayout } from './kanban-layout'
 import { CalendarLayout } from './calendar-layout'
+import { dueDateForStorage } from '@/lib/calendar-grid'
 
 /** Custom field types (114) mapped onto the filter vocabulary's four kinds. */
 function kindForFieldType(fieldType: string): FieldKind {
@@ -295,8 +296,11 @@ export default function ViewsWorkspace({
 
   const rescheduleTask = useCallback(async (taskId: string, dueDate: string | null): Promise<boolean> => {
     const before = rows.find((t: any) => t.id === taskId)
-    patchRow(taskId, { due_date: dueDate })
-    const write = await supabase.from('tasks').update({ due_date: dueDate }).eq('id', taskId).select('id, due_date')
+    // The calendar hands back the cell's `YYYY-MM-DD`. Store it the same way every other writer
+    // does, so this column holds one shape rather than two. See lib/calendar-grid.ts.
+    const stored = dueDateForStorage(dueDate)
+    patchRow(taskId, { due_date: stored })
+    const write = await supabase.from('tasks').update({ due_date: stored }).eq('id', taskId).select('id, due_date')
     const outcome = await classifyWrite(write)
     if (!didWrite(outcome)) {
       patchRow(taskId, { due_date: before?.due_date })
