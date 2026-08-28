@@ -23,7 +23,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Download, MessageSquare, Lock, Kanban, SlidersHorizontal, Archive, ArchiveRestore, GripVertical, Pencil, Check, Zap, CheckSquare } from 'lucide-react'
+import { ArrowLeft, Plus, MoreVertical, Edit, Trash, Palette, Filter, X, LayoutGrid, List, Calendar, ArrowUpDown, ArrowUp, ArrowDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Download, MessageSquare, Lock, Kanban, SlidersHorizontal, Archive, ArchiveRestore, GripVertical, Pencil, Check, Zap, CheckSquare, Gauge } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import TaskCard from './task-card'
@@ -154,6 +154,19 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [newColumnTitle, setNewColumnTitle] = useState('')
   const [newColumnStatusKey, setNewColumnStatusKey] = useState<string>('__none__')
   const [statusPickerColumn, setStatusPickerColumn] = useState<string | null>(null)
+  // Prompt G's WIP limit. Lives on the COLUMN (migration 123) because a limit is a property of
+  // the stack, not of a sprint - a board running no sprints at all can still cap its
+  // in-progress column. Whether exceeding it warns or is refused is the board's agile setting.
+  const [wipLimitColumn, setWipLimitColumn] = useState<string | null>(null)
+  const [wipLimitDraft, setWipLimitDraft] = useState('')
+  const [wipEnforced, setWipEnforced] = useState(false)
+  // ⚠️ Whether AGILE MODE is on for this board. The WIP control belongs to the agile module, and
+  // the module's whole promise is that a board with it switched off "is an ordinary board" - so
+  // an ungated menu item would put Scrum machinery in front of every marketing, contracting and
+  // finance board the moment this ships, which is exactly what Prompt G forbids. Defaults to
+  // false, so a failed or slow lookup hides the control rather than revealing it.
+  const [agileOn, setAgileOn] = useState(false)
+
   const [editingBoardTitle, setEditingBoardTitle] = useState(false)
   const [boardTitle, setBoardTitle] = useState(board.title)
   const [boardDescription, setBoardDescription] = useState(cleanBoardDescription(board.description))
@@ -188,6 +201,36 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [chatDialogOpen, setChatDialogOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
+  // ⚠️ Whether migration 125's trigger is installed. Asked rather than assumed, because the
+  // WIP badge must not promise a refusal the database will not make - a warning that turns out
+  // to be untrue is how people learn to ignore the next one. Defaults to false, which is the
+  // safe direction: it under-promises rather than over-promising.
+  //
+  // ⚠️ Both lookups tolerate a missing object. Migrations 123 and 126 are not applied
+  // everywhere at once, so on a database without them the RPC 404s and the table does not
+  // exist. Both errors resolve to `false`, which hides the control - the safe direction, and
+  // the reason this screen does not have to be sequenced behind those migrations.
+  useEffect(() => {
+    let live = true
+    void supabase.rpc('wip_enforcement_installed').then(({ data, error }: any) => {
+      if (live) setWipEnforced(!error && data === true)
+    })
+    return () => { live = false }
+  }, [supabase])
+
+  useEffect(() => {
+    if (!board?.id) return
+    let live = true
+    void supabase
+      .from('board_agile_settings')
+      .select('is_enabled')
+      .eq('board_id', board.id)
+      .maybeSingle()
+      .then(({ data, error }: any) => {
+        if (live) setAgileOn(!error && Boolean(data?.is_enabled))
+      })
+    return () => { live = false }
+  }, [board?.id, supabase])
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile')
   const { density, setDensity } = useDensity(currentUserId)
@@ -874,6 +917,53 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     } finally {
       setRenameColumnBusy(false)
     }
+  }
+
+  /**
+   * Set or clear a column's work-in-progress limit (Prompt G).
+   *
+   * ⚠️ The row count is the only thing separating "saved" from "silently refused": an RLS
+   * refusal on `columns` returns zero rows and no error. `wip_limit` is not an input to any
+   * visibility rule, so no probe is needed (lib/rls-write.ts).
+   */
+  const handleUpdateWipLimit = async (columnId: string, raw: string) => {
+    const trimmed = raw.trim()
+    // Blank clears the limit. Zero is deliberately refused rather than stored: a limit of zero
+    // means the column can never hold anything, which is a way of hiding a column, not of
+    // limiting it - and the CHECK in migration 123 would reject it anyway.
+    const limit = trimmed === '' ? null : Number(trimmed)
+    if (limit !== null && (!Number.isInteger(limit) || limit < 1)) {
+      toast.error('A work-in-progress limit has to be a whole number of 1 or more', {
+        description: 'Leave it blank to remove the limit entirely.',
+      })
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('columns')
+      .update({ wip_limit: limit })
+      .eq('id', columnId)
+      .select('id, wip_limit')
+
+    if (error || !data || data.length === 0) {
+      toast.error('Could not save that limit', {
+        description: error?.message ?? 'You no longer have permission to change this column. Reload to see the current state.',
+      })
+      return
+    }
+
+    setColumns(columns.map((col: any) => (col.id === columnId ? { ...col, wip_limit: limit } : col)))
+    setWipLimitColumn(null)
+    toast.success(
+      limit === null ? 'Limit removed.' : `Limit set to ${limit}.`,
+      {
+        description: limit === null
+          ? undefined
+          : wipEnforced
+            ? 'Moves into this column will be refused once it is full, if this board is set to enforce.'
+            : 'The board will warn when this column is full. Enforcement is not installed here, so nothing is refused.',
+      },
+    )
   }
 
   const handleUpdateColumnStatus = async (columnId: string, statusKey: string) => {
@@ -1743,6 +1833,29 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                 {visibleTasks.length}
                                 <span className="sr-only"> {visibleTasks.length === 1 ? 'task' : 'tasks'}</span>
                               </span>
+                              {/* ⚠️ The WIP badge counts the COLUMN's own tasks, and it counts
+                                  what this viewer can see. `column.tasks` is filtered by RLS -
+                                  can_view_task hides archived work from everyone but a super
+                                  admin - so this can legitimately read lower than the count the
+                                  database enforces against. It says "of N" rather than claiming
+                                  a state, and the enforcing trigger is the authority. Same
+                                  distinction migration 108 had to draw for column deletion. */}
+                              {agileOn && column.wip_limit ? (
+                                <span
+                                  className={`relative shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium leading-none tabular-nums ${
+                                    (column.tasks?.length ?? 0) >= column.wip_limit
+                                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                                      : 'bg-background text-muted-foreground'
+                                  }`}
+                                  title={
+                                    wipEnforced
+                                      ? `Work-in-progress limit ${column.wip_limit}. Where this board is set to enforce, a move in is refused once it is full.`
+                                      : `Work-in-progress limit ${column.wip_limit}. This board warns only - nothing is refused.`
+                                  }
+                                >
+                                  WIP {column.tasks?.length ?? 0}/{column.wip_limit}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
@@ -1763,7 +1876,12 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                             {isAdmin && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon-sm">
+                                  {/* An explicit id, because a harness locating this by shape
+                                      picks whichever icon button the DOM happens to put last -
+                                      the trap already recorded for bulk-action-bar, where
+                                      `button[role="combobox"]).first()` matched a control on
+                                      the page BEHIND the dialog. */}
+                                  <Button variant="ghost" size="icon-sm" id={`column-menu-${column.id}`} aria-label={`Column actions for ${column.title}`}>
                                     <MoreVertical className="w-4 h-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
@@ -1795,6 +1913,15 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                     <SlidersHorizontal className="w-4 h-4 mr-2" />
                                     Link Status
                                   </DropdownMenuItem>
+                                  {agileOn && (
+                                    <DropdownMenuItem onClick={() => {
+                                      setWipLimitDraft(column.wip_limit ? String(column.wip_limit) : '')
+                                      setWipLimitColumn(column.id)
+                                    }}>
+                                      <Gauge className="w-4 h-4 mr-2" />
+                                      {column.wip_limit ? `WIP limit (${column.wip_limit})` : 'Set WIP limit'}
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem onClick={() => handleDeleteColumn(column.id)} className="text-red-600 dark:text-red-400">
                                     <Trash className="w-4 h-4 mr-2" />
                                     Delete Column
@@ -2401,6 +2528,42 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   ))}
                 </SelectContent>
               </Select>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={wipLimitColumn !== null} onOpenChange={() => setWipLimitColumn(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Work-in-progress limit</DialogTitle>
+                <DialogDescription>
+                  The most work items this column should hold at once. Leave it blank for no limit.
+                  {wipEnforced
+                    ? ' On a board set to enforce, a move into a full column is refused by the database.'
+                    : ' The database rule that refuses a move is not installed here, so this is a warning only - the board will flag a full column but nothing is blocked.'}
+                </DialogDescription>
+              </DialogHeader>
+              <form
+                className="space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (wipLimitColumn) void handleUpdateWipLimit(wipLimitColumn, wipLimitDraft)
+                }}
+              >
+                <Input
+                  id="wip-limit-input"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={wipLimitDraft}
+                  onChange={(e) => setWipLimitDraft(e.target.value)}
+                  placeholder="No limit"
+                  autoFocus
+                />
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setWipLimitColumn(null)}>Cancel</Button>
+                  <Button type="submit">Save limit</Button>
+                </div>
+              </form>
             </DialogContent>
           </Dialog>
 

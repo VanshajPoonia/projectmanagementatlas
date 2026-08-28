@@ -42,6 +42,9 @@ const ROUTES = [
   ['my-work', '/my-work'],
   ['inbox', '/inbox'],
   ['views', '/views'],
+  // Gated on the `agile` module: when it is off this redirects to the dashboard, which is
+  // itself worth sweeping - a redirect that scrolls sideways is still a broken page.
+  ['agile', '/agile'],
   ['crm-dashboard', '/crm'],
   ['crm-orders', '/crm/orders'],
   ['crm-clients', '/crm/clients'],

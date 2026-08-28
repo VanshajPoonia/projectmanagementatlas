@@ -243,6 +243,27 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       `WorkNext` was **extended, not replaced** - blocked, blocking and approval signals, each
       with a visible reason. Gates: `pnpm check:inbox` (49), `pnpm check:inbox-ui` (32),
       `pnpm check:my-work` (33).
+- [x] **9. Optional agile mode** (Prompt G, `123`-`126`, **DEV ONLY**, 2026-08-29) - `/agile`,
+      off by default at three levels: the `agile` module seeds disabled, every board's
+      `is_enabled` seeds off, and the noun itself (**sprint | cycle | iteration**) is a board
+      setting - so a marketing, contracting, real-estate, finance or operations board never sees
+      Scrum vocabulary, which is Prompt G's first requirement. Backlog with search/filters/bulk
+      selection/quick create, planning with a capacity signal that **warns and does not block by
+      default**, a taskboard with story swimlanes, WIP limits per column with warning/enforcement
+      modes, and the seven metrics. **Nothing is copied**: `sprint_items` is a pointer at the
+      canonical `tasks` row, swimlanes reuse `parent_task_id`, and backlog order is the board's
+      own `position` - `is_agile_eligible` (seeded by `113` and never read until now) is what
+      keeps a subtask from being planned in separately and double-counted. **The metrics ledger
+      is the design argument**: a running window computes live and is labelled live; a closed one
+      is frozen by a trigger and read from the snapshot forever, so re-estimating a task or
+      re-categorising a status cannot silently change what June claims to have delivered - and a
+      closed window with no snapshot says "no record" rather than recomputing. Every number
+      carries its own definition/formula/unit/included/excluded/last-updated, rendered *from the
+      value*, not from a caption beside it. ⚠️ **`125` (the WIP enforcement trigger on `tasks`) is
+      NOT `--allow-prod` eligible**; the other three are. Nothing is on production. Deliberately
+      not built: time tracking (Prompt G says it is a separate optional module, and Taiga has
+      none either). Gates: `pnpm check:agile` (66, real RLS - confirmed to lose 8 checks when the
+      triggers are removed), `pnpm check:agile-ui` (51, real browser, stable across three runs).
 - [ ] **7. Saved views** · **8. Hierarchy/subtask context**
 
 **Blocked on schema, deliberately not faked:** the remaining two are milestone pressure and

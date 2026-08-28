@@ -21,6 +21,7 @@ export type ModuleKey =
   | 'appointments'
   | 'project_ids'
   | 'crm'
+  | 'agile'
 
 export interface AppModule {
   module_key: ModuleKey
@@ -47,6 +48,11 @@ export const DEFAULT_MODULES: AppModule[] = [
   // Same reasoning as appointments: 103 seeds it disabled, and the fallback must not reveal
   // a module a super admin has never switched on.
   { module_key: 'crm', enabled: false },
+  // Prompt G's optional agile mode (migration 123 seeds it disabled). Same rule again, and
+  // here it matters twice over: the whole point of the module is that a marketing,
+  // contracting, real-estate, finance or operations board never has Scrum vocabulary put in
+  // front of it, so a fallback that revealed it would defeat the feature's first requirement.
+  { module_key: 'agile', enabled: false },
 ]
 
 export function isModuleEnabled(modules: AppModule[], key: ModuleKey): boolean {

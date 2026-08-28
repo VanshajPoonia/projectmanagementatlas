@@ -3,7 +3,8 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { sendTaskDueSoonEmail } from '@/lib/email'
 
 /**
- * The scheduled sweep: generate due recurrence occurrences, then deliver due reminders.
+ * The scheduled sweep: generate due recurrence occurrences, deliver due reminders, then take
+ * the day's burndown point for every running sprint.
  *
  * WHY THIS ROUTE EXISTS AT ALL
  * Before it, `lib/reminder-service.ts` was a `'use server'` function whose own comment said it
@@ -70,6 +71,7 @@ export async function GET(request: Request) {
   const result = {
     recurrence: { rulesConsidered: 0, tasksCreated: 0, error: null as string | null },
     reminders: { delivered: 0, emailsSent: 0, emailsFailed: 0, error: null as string | null },
+    burndown: { sprintsSampled: 0, error: null as string | null },
   }
 
   // --- recurrence -------------------------------------------------------------------------
@@ -125,7 +127,24 @@ export async function GET(request: Request) {
     result.reminders.error = err?.message ?? 'Reminder delivery failed'
   }
 
-  const failed = Boolean(result.recurrence.error || result.reminders.error)
+  // --- sprint burndown (migration 124) --------------------------------------------------
+  // The overnight point for every running sprint, on every board - which is why
+  // sample_all_active_sprints is revoked from anon and authenticated and reachable only from
+  // here, with the service role. The agile page samples TODAY on open for the same sprints, and
+  // both paths are idempotent through UNIQUE (sprint_id, on_date), so they cannot disagree or
+  // double-count. Without this, a sprint nobody opened on a given day simply has no point, and
+  // a gap in a burndown is not the same picture as a flat line.
+  try {
+    const { data, error } = await supabase.rpc('sample_all_active_sprints')
+    if (error) throw error
+    result.burndown.sprintsSampled = ((data as any[]) ?? []).length
+  } catch (err: any) {
+    // Recorded, not thrown - the same rule as the two sweeps above. A missing burndown point
+    // must never be the reason a reminder or a recurring task did not happen.
+    result.burndown.error = err?.message ?? 'Burndown sampling failed'
+  }
+
+  const failed = Boolean(result.recurrence.error || result.reminders.error || result.burndown.error)
   return NextResponse.json(
     { ok: !failed, ranAt: new Date().toISOString(), ...result },
     // 500 on a partial failure so the platform's own cron log shows it, rather than a

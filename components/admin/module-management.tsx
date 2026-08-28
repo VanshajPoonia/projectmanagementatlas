@@ -43,6 +43,7 @@ const MODULE_COPY: Record<string, { label: string; description: string }> = {
   ai_assistant: { label: 'AI assistant', description: 'The chat widget with function-calling over live data.' },
   appointments: { label: 'Appointments', description: 'Public booking pages and the appointment schedule.' },
   project_ids: { label: 'Project IDs', description: 'The claim-a-number ledger for project references.' },
+  agile: { label: 'Agile mode', description: 'Sprints/cycles, a backlog, WIP limits and sprint metrics - and only on the boards that opt in.' },
   crm: { label: 'CRM', description: 'Clients, contacts, orders, and the order status history the cycle-time reports are built on.' },
 }
 

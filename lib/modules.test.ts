@@ -15,9 +15,9 @@ describe('isModuleEnabled', () => {
   // reveal a module nobody has switched on. Pinning the exact set means adding a third
   // off-by-default module, or flipping an existing one, fails here and has to be a conscious
   // decision rather than a silent regression.
-  it('defaults exactly appointments and crm to off', () => {
+  it('defaults exactly appointments, crm and agile to off', () => {
     const disabled = DEFAULT_MODULES.filter(m => !m.enabled).map(m => m.module_key)
-    expect(disabled.sort()).toEqual(['appointments', 'crm'])
+    expect(disabled.sort()).toEqual(['agile', 'appointments', 'crm'])
   })
 
   // The other half of the same guarantee: every remaining module stays available, so a

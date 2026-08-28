@@ -266,7 +266,9 @@ Two more defects fell out of building that harness:
   *action required* / *FYI* from day one. Email prefs already exist; a durable inbox does not.
 - "What should I work on next" - **zero schema**, all inputs are already in `myTasks`.
 - Milestones - `milestones(board_id, title, due_date, status)`.
-- `tasks.estimate_hours` - ship the column early so data accumulates before workload is built.
+- ~~`tasks.estimate_hours`~~ - **shipped as `tasks.estimate_value` (migration `123`, dev only)**,
+  deliberately renamed: the unit lives on `board_agile_settings.estimate_unit`, so a board
+  counting story points is not held in a column whose name says hours. See the Prompt G section.
 - Project health - `boards.health` + `health_note`, **manual first**. An auto-status that is wrong
   destroys trust in every other number shown.
 
@@ -340,8 +342,9 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `123`. **Dev and prod were both
-  verified fully applied at `122` on 2026-08-28**, 0 pending on each. As always, run
+- Migrations: numbered SQL in `scripts/`, continuing from `127`. **Dev is at `126` and prod is at
+  `122` as of 2026-08-29** - `123`-`126` (Prompt G) are dev-only and none has been applied to
+  production; see the Prompt G section for which of them are even eligible. As always, run
   `pnpm migrate:status` rather than trusting this sentence - it has gone stale three times. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
@@ -1206,6 +1209,161 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
     normalises the pair by uuid order, so the check passes or fails by how two random uuids
     happen to sort. Query either end, or use a directional relation type in the fixture.
 
+
+### Prompt G - optional Agile mode (`123`-`126`, **DEV ONLY**, 2026-08-29)
+
+Four migrations. **All four are applied to the dev sandbox and NONE of them is on production.**
+Three are `--allow-prod` eligible on this repo's own rule and one deliberately is not - read the
+per-file notes below before applying anything.
+
+| file | what | prod eligible? |
+|---|---|---|
+| `123_agile_core.sql` | `board_agile_settings`, `sprints`, `sprint_items`, `tasks.estimate_value`, `columns.wip_limit`, the `agile` module row | ✅ purely additive |
+| `124_sprint_metrics.sql` | `sprint_metrics` (frozen), `sprint_burndown_samples`, the two sampling functions | ✅ purely additive |
+| `125_wip_enforcement.sql` | the trigger that actually refuses a move into a full column | ⛔ **trigger on `tasks`** |
+| `126_wip_enforcement_probe.sql` | `wip_enforcement_installed()`, so the UI can tell which of the two worlds it is in | ✅ purely additive |
+
+⚠️ **`125` is not eligible and must not get `--allow-prod` on an agent's judgement.** It is the
+same class of change as `113` and `118`, both of which reached prod only as an explicit owner
+decision after the risk was written down. The risk here, stated so it can be decided rather than
+assumed: every task move on every board goes through the `tasks` UPDATE path and this trigger
+runs on all of them. Three things bound it - it returns immediately unless the destination column
+has a `wip_limit` (every column is NULL there), unless that column's board has
+`wip_mode = 'enforcement'` (there are no settings rows at all until somebody opts in, and the
+default is `warning`), and it never blocks a task already IN the column. So on the day it is
+applied it is a no-op on 100% of writes, and reaching the `RAISE` needs three deliberate acts by
+an admin on one board. `125`'s own post-conditions **abort** if any column already carries a
+limit, so it cannot silently change live behaviour.
+
+**Everything ships OFF, at three levels, and that is the feature.** Prompt G's first line is
+"this module must be optional" and its second is "do not force Scrum language on marketing,
+contracting, real estate, finance, operations":
+1. `app_modules.agile` seeds **disabled**, like `appointments` (080) and `crm` (103). No nav
+   item, and `/agile` itself redirects - the module is checked on the server, not only in the
+   nav, because a toggle that hides a link is not a toggle (the `ai_assistant` lesson).
+2. `board_agile_settings.is_enabled`, per board, and **`123` seeds zero rows**. A board with no
+   settings row is a board with agile off, so nothing changed for any existing board.
+3. `terminology` picks the noun - **sprint | cycle | iteration** - so one underlying model can be
+   called whatever the board calls it. Every string on the screen comes from that setting.
+
+Gates: `pnpm check:agile` (66, real RLS) and `pnpm check:agile-ui` (51, real browser, needs
+`pnpm dev` on :3000 - confirmed stable across three consecutive runs). Counts were read off a
+run. ⚠️ The RLS harness was **confirmed to fail** - 8 checks drop out when the two triggers are
+removed - rather than trusted to be meaningful.
+
+**The one architectural rule everything else follows.** Taiga's, and Prompt G quotes it: *the
+same underlying item is represented in Scrum and Kanban; never copy the task to make it appear in
+a second methodology.* So there is no story table, no sprint-task copy and no second work-item
+engine. `sprint_items` is a pointer. The backlog, planning pane, taskboard and metrics all render
+`tasks` rows, and opening one deep-links into the board's own modal rather than a second editor
+that could drift from it. **Epic/feature grouping is `parent_task_id` (113), not an `epic_id`**,
+and **backlog order is `tasks.position`, not a second rank column** - two orders that must agree
+forever is exactly what `115` refused for relations.
+
+- **`is_agile_eligible` finally has a consumer.** `113` seeded it and nothing had ever read it -
+  this repo's most-repeated defect in miniature. `123`'s membership trigger is the first reader:
+  a `subtask` cannot be planned into a sprint on its own, because its parent already carries it
+  and counting both double-counts every estimate in the burndown.
+
+- **`tasks.estimate_value` is deliberately unit-free.** The unit is
+  `board_agile_settings.estimate_unit` (`points|hours|days`), so a board can change vocabulary
+  with no data migration and no column name can contradict the configuration. CLAUDE.md's Phase 3
+  sketch called this `estimate_hours`; that name would have lied on any board counting points.
+  **NULL means unestimated, and that is reported everywhere as its own number** - never folded in
+  as zero. A plan that reads "12 of 20 points" while carrying six unsized items is the most
+  common way a burndown flatters.
+
+- ⚠️ **`sprints.start_date` / `end_date` are `DATE`, and nothing parses them into an instant.**
+  `lib/agile.ts` compares them as `YYYY-MM-DD` strings through `lib/calendar-grid.ts`, and the
+  server resolves "today" once with `businessDate()` and passes it down. This is the fifth-plus
+  recorded instance of the family; see the `tasks.due_date` section above for what the opposite
+  choice cost.
+
+**The metrics half is where the design argument is.** Prompt G attaches a condition to all seven
+numbers - *"Historical sprint data must not silently change when current project structure
+changes"* - and every input keeps moving after a window ends. A task is re-estimated. A status is
+re-categorised (`112` did exactly that to production's `pending_approval`). A board is
+reorganised. Recomputing "what did we deliver in June" from today's rows therefore returns a
+different answer every month with nothing on screen admitting it, and a velocity built on that is
+worse than no velocity, because people plan against it.
+
+- **While a window runs its numbers are computed live and labelled live. The moment it closes,
+  `124`'s trigger writes a snapshot and every consumer reads that.** `sprintMetrics()` picks, so
+  no screen has to remember. Proved by the harness: change every estimate to 999 and re-open the
+  work, and the closed window's numbers do not move.
+- ⚠️ **A closed window with no snapshot returns `null`, never a live recomputation.** "We have no
+  record of this window" is the honest answer and the screen says it. Falling back would produce
+  precisely the drifting number the ledger exists to prevent.
+- **`authenticated` holds SELECT and nothing else** on both `sprint_metrics` and
+  `sprint_burndown_samples` - the `crm_order_status_history` (103) / `recurrence_occurrences`
+  (116) pattern. A ledger the application can write is one that can be made to disagree with what
+  happened.
+- **`included_task_ids` and `unestimated_count` are STORED**, because Prompt G requires every
+  chart to expose included and excluded records and a footnote written beside a number drifts
+  from it. `lib/sprint-metrics.ts` renders the whole panel - definition, formula, unit, included,
+  excluded, last updated, live-or-frozen - **from the value object**, never from adjacent copy.
+  `lib/work-next.ts` already shipped a reason line computed from a different expression than its
+  score; once is enough.
+- **A day with no burndown sample is a GAP, not a zero.** One cron job a day (Hobby plan) plus
+  sampling on page open means gaps are expected, and a gap drawn as zero is a cliff that says the
+  team finished everything overnight. The series reports `missingDays` and the caption says so.
+  `UNIQUE (sprint_id, on_date)` makes both writers idempotent; **today's point refreshes and a
+  past day never does**, which is the whole rule expressed at row level.
+- **Velocity excludes rather than converts.** A window counted in hours is never averaged into a
+  points velocity, and each exclusion is listed with its reason on screen.
+
+⚠️ **Four defects the harnesses found that review did not, all fixed:**
+  - **`committed` was stamped at INSERT for a planned sprint, and that was wrong.** Work added to
+    a planned window and then removed again *before it started* kept the flag, and would have
+    been counted forever as part of a commitment it was never in. `committed` is now written in
+    exactly one place: the activation branch of `enforce_sprint_state`.
+  - **And that fix collided with the ledger's own immutability rule**, which refuses *any* change
+    to `committed` - a trigger cannot tell one UPDATE from another. The permit is a
+    transaction-local GUC (`set_config('agile.commitment_stamp', <sprint id>, true)`) that names
+    the sprint being activated and is cleared immediately. Nothing may ride along with the flag
+    in the same statement. **PostgREST executes no arbitrary SQL, so a client cannot set it - if
+    an RPC is ever added that could, this is the thing it must not touch.**
+  - **The estimate field rendered before its own value had loaded, and a fast edit was silently
+    reverted.** The board's agile settings resolve from a single-row lookup; the work item needs
+    four joins. So the settings won the race, the field appeared EMPTY with a real estimate still
+    in flight, and the task load landing a moment later overwrote whatever had been typed -
+    measured in a real browser as "typed 13, stored 3, no error". Gated on the task being loaded.
+    ⚠️ **The rest of that modal has the same pre-existing race** (title, description and priority
+    all render before their values arrive), and it is deliberately NOT changed here: it is older
+    than this feature and worth fixing on its own terms rather than as a silent rider on an
+    unrelated one.
+  - **The WIP control was not gated on agile mode**, so shipping it would have put "Set WIP
+    limit" into every admin's column menu on every board - including the marketing, contracting
+    and finance boards the module exists to leave alone. It is the one piece of this feature that
+    lives on an EXISTING screen, which is exactly why it was the piece that escaped the gate.
+    Both the menu item and the header badge now read the board's own `is_enabled`, and both
+    lookups resolve a missing table to `false` so the screen never has to be sequenced behind
+    migration 123. Pinned by a control pair: offered with agile on, absent with it off, and the
+    rest of the column menu untouched in both.
+
+⚠️ **The tab strip pushed the whole page sideways at 320px**, and only `scripts/audit-mobile.mjs`
+saw it. Radix's `TabsList` is `w-fit` and does not wrap, so four tabs measured 343px against a
+320px viewport. It scrolls inside its own container now. **A horizontal strip whose length is a
+function of how many things exist is the same shape as the board header nav that blew up twice in
+2026-08.** After the fix: `/agile` flags 6 small touch targets, identical to `super-admin`'s
+pre-existing shell chrome, and **zero** sideways scroll anywhere across 54 routes.
+
+**Where things are:** `/agile` is a real route (not a `?tab=`), in the nav for every role when
+the module is on. `lib/agile.ts` (vocabulary, window, capacity, WIP, backlog, swimlanes - 54
+tests), `lib/sprint-metrics.ts` (the seven metrics and their explanations - 30 tests),
+`lib/agile-data.ts` (every write classified through `lib/rls-write.ts`),
+`components/agile/*`. The WIP limit is set from the **board's own column menu**, next to Link
+Status, and the column header carries a `WIP n/limit` badge.
+
+⚠️ **The WIP badge and the settings dialog never promise a refusal the database will not make.**
+Both ask `wip_enforcement_installed()` and, where `125` is absent, say "warning only - nothing is
+refused". A warning that turns out to be untrue is how people learn to ignore the next one, and
+the alternative - offering an enforcement mode enforced only by a dialog - is the
+`crm_statuses.requires_reason` defect (104) all over again.
+
+**Not built, deliberately:** time tracking. Prompt G says Atlas time tracking, "if later needed,
+is an independent optional module", and notes that Taiga does not provide it natively either.
+There is no `time_entries` table and nothing pretends there is.
 
 ### Prompt F - My Work, WorkNext, Inbox and notification control (`120`-`122`, dev AND prod, 2026-08-28)
 

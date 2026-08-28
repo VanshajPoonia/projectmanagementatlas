@@ -329,8 +329,43 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   - **Deliberately not built:** digest preferences (the prompt says "later"), and following a
     whole BOARD - that needs notification generation nothing currently does, and a control wired
     to nothing is this repo's most-repeated defect.
-- NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **Prompt G** (optional agile
-  mode - the pack's next prompt, and explicitly optional);
+- ⚠️ **Prompt G is SHIPPED TO DEV ONLY (`123`-`126`, 2026-08-29). NOTHING IS ON PRODUCTION,
+  and one of the four is not eligible to be.** Dev is at `126`, prod is still at `122`. Run
+  `pnpm migrate:status` against both rather than trusting this line - it has gone stale before.
+  - `123` agile core (3 tables + `tasks.estimate_value` + `columns.wip_limit` + the module row),
+    `124` the metrics ledger, `126` a one-function probe: **all three purely additive and
+    `--allow-prod` eligible.** `125` is the WIP **enforcement** trigger on `tasks` and is
+    **NOT eligible** - same class as `113`/`118`, which reached prod only as an explicit owner
+    decision after the risk was stated. Do not apply it without asking.
+  - **Everything seeds OFF.** `app_modules.agile` disabled, zero `board_agile_settings` rows,
+    so applying `123`-`124`-`126` to prod would change nothing anyone can see. `125` is a no-op
+    on every existing row too (no column carries a limit; its post-conditions ABORT if one does).
+  - **Optional at three levels, which is Prompt G's first requirement**: the module, the
+    per-board opt-in, and the noun itself (sprint | cycle | iteration). A marketing or
+    contracting board never sees Scrum vocabulary.
+  - **Nothing is copied.** `sprint_items` points at the canonical `tasks` row; swimlanes are
+    `parent_task_id`; backlog order is the board's own `position`. `is_agile_eligible` - seeded
+    by `113` and read by nothing until now - is what stops a subtask being planned in on its own
+    and double-counted.
+  - **The metrics ledger is the part worth understanding.** A running window computes live and
+    says so; a closed one is frozen by a trigger and read from the snapshot forever, so a later
+    re-estimate or status re-categorisation cannot change what a finished window claims. A closed
+    window with **no** snapshot returns "no record" rather than recomputing. `authenticated` holds
+    SELECT and nothing else on both ledger tables.
+  - **Two defects the harnesses caught:** `committed` was being stamped at INSERT, so work added
+    to a planned window and removed before it started kept the flag forever; and the fix collided
+    with the ledger's own immutability rule, resolved with a transaction-local GUC that names the
+    sprint being activated. Also: the tab strip pushed the page sideways at 320px - only
+    `scripts/audit-mobile.mjs` saw it.
+  - Gates: `pnpm check:agile` (66, real RLS, **confirmed to lose 8 checks when the triggers are
+    removed**) and `pnpm check:agile-ui` (51, real browser, stable across three runs). 1657 unit
+    tests under all four timezones; `next build` clean with the dev ref confirmed baked.
+  - **Deliberately not built:** time tracking. Prompt G calls it a separate optional module and
+    notes Taiga has none natively.
+- NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **applying `123`/`124`/`126`
+  to prod** (all eligible, all invisible until someone opts a board in) and the separate question
+  of whether `125` gets an owner override; **Prompt H** (goals, ideas, strategy, retrospectives -
+  the pack's next prompt);
   **Prompt B**'s one honest gap (membership **audit events**); and work-item **context actions in
   ⌘K** (blocked: `board-view.tsx` renders outside `AppShell`, so the shell has no selected-item
   context). Still open as a data question, unchanged by Prompt F: what to do with the ~121

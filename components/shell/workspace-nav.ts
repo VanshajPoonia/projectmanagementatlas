@@ -129,6 +129,15 @@ export function buildWorkspaceNav({
   if (on('crm')) {
     items.push({ id: 'crm', label: 'CRM', icon: 'crm', href: '/crm', status: 'live' })
   }
+  // Agile is a module AND a per-board opt-in (migration 123). The nav entry only says the
+  // module is on; whether any board actually runs sprints is answered on the page itself,
+  // which is the honest split - a nav item that appeared only once somebody had already
+  // configured a board would leave the feature unreachable, the defect this repo keeps
+  // re-learning. A real route, like /crm and /my-work, so `?tab=`'s admin redirect cannot
+  // strip it.
+  if (on('agile')) {
+    items.push({ id: 'agile', label: 'Agile', icon: 'agile', href: '/agile', status: 'live' })
+  }
   if (on('project_ids')) {
     items.push({ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: tab('project-ids'), status: 'live' })
   }

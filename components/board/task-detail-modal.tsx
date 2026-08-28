@@ -117,6 +117,34 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<number>(3)
+  // Prompt G's estimate. Held as a STRING so an empty box means "unestimated" and a typed "0"
+  // means zero - two genuinely different facts that a `number | null` state collapses the
+  // moment somebody clears the field.
+  const [estimate, setEstimate] = useState<string>('')
+  // The board's estimate unit, if agile is on for it. `points` is only a fallback label; the
+  // stored column carries no unit at all, deliberately, so no name can contradict the setting.
+  const [estimateUnit, setEstimateUnit] = useState<string>('points')
+  const [agileOn, setAgileOn] = useState(false)
+
+  // ⚠️ The estimate field only appears where agile mode is ON for this board. Prompt G's first
+  // requirement is that this vocabulary is not forced on marketing, contracting, real-estate,
+  // finance or operations work, and an "Estimate (points)" box on every task everywhere is
+  // exactly that. The column exists regardless; the control is what is optional.
+  useEffect(() => {
+    if (!open || !board?.id) return
+    let live = true
+    void supabase
+      .from('board_agile_settings')
+      .select('is_enabled, estimate_unit')
+      .eq('board_id', board.id)
+      .maybeSingle()
+      .then(({ data }: any) => {
+        if (!live) return
+        setAgileOn(Boolean(data?.is_enabled))
+        if (data?.estimate_unit) setEstimateUnit(data.estimate_unit)
+      })
+    return () => { live = false }
+  }, [open, board?.id, supabase])
   const [status, setStatus] = useState('to_do')
   const [visibility, setVisibility] = useState<'assigned' | 'board'>('assigned')
   const [dueDate, setDueDate] = useState<Date>()
@@ -403,6 +431,11 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       setTitle(taskData.title)
       setDescription(cleanTaskDescription(taskData.description))
       setPriority(taskData.priority)
+      setEstimate(
+        taskData.estimate_value === null || taskData.estimate_value === undefined
+          ? ''
+          : String(Number(taskData.estimate_value)),
+      )
       setStatus(taskData.status)
       setVisibility(taskData.visibility || 'assigned')
       // The picker is a calendar-day control - seeding it with the raw instant highlighted the
@@ -484,6 +517,20 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       recurrence_weekdays: isRecurring && recurrencePattern === 'custom' ? recurrenceWeekdays : null,
       // task_assignees is the source of truth; keep assigned_to as a mirror of the first assignee
       assigned_to: assignees[0] || null,
+    }
+
+    // ⚠️ Only sent when the estimate field was actually on screen - i.e. when agile mode is on
+    // for this board. Two reasons, and the second is the load-bearing one:
+    //   1. Send what the form has. A board with no estimate field has nothing to say about it.
+    //   2. `tasks.estimate_value` arrives with migration 123, which is deliberately not applied
+    //      everywhere at once. An unconditional key would make PostgREST reject EVERY task save
+    //      on a database that does not have the column yet - taking out task editing entirely
+    //      for a field nobody on that board can even see.
+    // Blank clears it: a cleared estimate is NULL, never 0, because every sprint metric reports
+    // "unestimated" separately and reading absence as zero is how a burndown looks complete
+    // while nobody has sized half the work.
+    if (agileOn) {
+      updateData.estimate_value = estimate.trim() === '' ? null : Number(estimate)
     }
 
     // If status changed to 'done', set entry_date to now
@@ -1145,6 +1192,38 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
               disabled={!canEdit}
             />
           </div>
+
+          {/* ⚠️ `task &&` is load-bearing, not defensive. The board's agile settings resolve from a
+              single-row lookup while the work item itself needs four joins, so the settings win
+              the race and the field would otherwise render EMPTY with a real estimate still in
+              flight - and the task load, landing a moment later, silently overwrites whatever
+              was typed into it. Measured in a real browser: typed 13, stored 3, no error. Same
+              stale-async-overwrite shape as the `loadFollowState` race documented above.
+              ⚠️ The rest of this form has the same pre-existing race (title, description and
+              priority all render before their values arrive). That is older than this field and
+              is deliberately not changed here - it is worth fixing on its own terms, not as a
+              silent rider on an unrelated feature. */}
+          {agileOn && task && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="task-estimate">
+                Estimate ({estimateUnit})
+              </label>
+              <Input
+                id="task-estimate"
+                type="number"
+                min="0"
+                step="0.5"
+                value={estimate}
+                onChange={(e) => setEstimate(e.target.value)}
+                placeholder="Leave blank if not estimated yet"
+                disabled={!canEdit}
+              />
+              <p className="text-xs text-muted-foreground">
+                Blank means not estimated. It is reported separately from zero, so a plan cannot
+                look complete because nobody has sized the work.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             {/* Priority */}
