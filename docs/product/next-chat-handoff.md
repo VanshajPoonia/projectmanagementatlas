@@ -334,9 +334,16 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   **Prompt B**'s one honest gap (membership **audit events**); and work-item **context actions in
   ⌘K** (blocked: `board-view.tsx` renders outside `AppShell`, so the shell has no selected-item
   context). Still open as a data question, unchanged by Prompt F: what to do with the ~121
-  already-unread notification rows on prod, some from June - measured 2026-08-28 it is **133**
-  unread of 193, not the ~121 this file used to claim. The Inbox now shows them as a backlog
-  rather than eating them, so "show it" is the current behaviour by default.
+  already-unread notification rows on prod. **Measured 2026-08-28 and RESOLVED: leave them.**
+  The numbers are what decided it, and they are not what the "wall of old mail" framing assumed:
+  133 unread of 193, **nothing older than about 60 days**, and the backlog belongs almost
+  entirely to the people who do NOT use the app - Vanshaj 56, Tim 47, Mendy 19, Kogan 7, while
+  **Bobby and Kayla have 0 each** (they use it daily, and the old toast consumed theirs). So the
+  first people to open the Inbox see an empty one, and the backlog is a real record of
+  assignments and updates that specific people genuinely never saw. Marking them read would
+  destroy the only signal that says so, and "Mark all read" is one click away for anyone who
+  disagrees. The split is `assignment` 82 / `update` 51 unread, so both buckets are populated on
+  real data.
 - **`095` closed the anon-grant gap (dev only).** `anon` now holds nothing on any table,
   sequence or function in `public`, and the *default privileges* are narrowed so new
   tables don't inherit it. `authenticated` keeps all its DML; only TRUNCATE/REFERENCES/
