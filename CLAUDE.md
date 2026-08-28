@@ -621,10 +621,19 @@ deliberately left out.
     for the same reason `lib/module-registry.ts` is: `shell-data.ts` runs in a Server Component.
   - Gate: `pnpm check:marketing-calendar-default` (7, real browser). It was confirmed to drop to
     4/7 with the old rule restored, rather than trusted to be meaningful.
-  - ⚠️ **Still data, not code: prod has two empty calendars.** "Kayla's Personal" (0 events, 0
-    members) and "TEST" (0 events, 3 members, created by Bobby). Kayla is the only member of the
-    real **Marketing Calendar** (1358 events), so Bobby and Vanshaj resolve to "TEST". Archiving
-    the two empties in Manage Calendars is the other half; that is an owner decision, not a fix.
+  - ⚠️ **Re-measured on prod 2026-08-28, and most of this paragraph had gone stale.**
+    "Kayla's Personal" is **already archived**. **Marketing Calendar now has 2 members**
+    (Bobby AND Kayla, 1355 events), not one, so **Bobby no longer resolves to "TEST"** - both
+    hold a membership row on the real calendar and first-by-name puts M before T. The original
+    complaint is fixed.
+    What is left is narrower and is **not safe to tidy unilaterally**: "TEST" is still active
+    with 0 events and 3 members (Bobby, Kayla, **and Vanshaj**), and **Vanshaj is a member of
+    NOTHING ELSE**. `canUseMarketingCalendar` is `isAdmin || member of >= 1 calendar`, so
+    archiving "TEST" would remove a plain user's Marketing nav item altogether. The fix is
+    either "archive TEST and add Vanshaj to Marketing Calendar" or "archive TEST and accept
+    they lose it", and choosing between those is granting or removing access to 1355 real
+    events. **Owner decision, and it stays one.** Re-query membership before acting; this note
+    has now been wrong once.
 - ⚠️ **There is no working `localStorage` under vitest, and the bare global is the trap.**
   Node 22 defines its own `localStorage` that is `undefined` without `--localstorage-file`, and
   vitest's jsdom environment points `window` at `globalThis` - so `window.localStorage` resolves

@@ -23,6 +23,22 @@ const service = process.env.SUPABASE_SERVICE_ROLE_KEY
 if (!/pxzpewaerhjwnwsbaklc/.test(url ?? '')) throw new Error(`refusing to run against ${url}`)
 
 const BASE = process.env.BASE_URL || 'http://localhost:3000'
+
+/**
+ * The same server, addressed by IPv4 literal, for requests made by NODE rather than by the
+ * browser.
+ *
+ * ⚠️ `page.request` runs in Node, and Node resolves `localhost` to `::1` BEFORE `127.0.0.1`
+ * (`dns.lookup('localhost', {all:true})` returns the IPv6 address first). `next dev` binds IPv4
+ * only, so every `page.request` call died with `connect ECONNREFUSED ::1:3000` while
+ * `page.goto` against the identical URL succeeded, because the browser does its own happy-eyeballs
+ * resolution. The run aborted after 74 passing checks and reported a harness error, which reads
+ * like a broken harness rather than an unroutable address family.
+ *
+ * Only the Node-side calls are rewritten. `BASE` stays as given so the browser keeps using
+ * whatever host the operator asked for, and an explicit BASE_URL is honoured untouched.
+ */
+const NODE_BASE = process.env.BASE_URL || 'http://127.0.0.1:3000'
 const admin = createClient(url, service, { auth: { persistSession: false } })
 const stamp = Date.now()
 
@@ -608,16 +624,16 @@ try {
   check('CRON_SECRET is configured', Boolean(secret),
     'without it the sweep 401s and never runs')
 
-  const unauth = await page.request.get(`${BASE}/api/cron/scheduled-work`)
+  const unauth = await page.request.get(`${NODE_BASE}/api/cron/scheduled-work`)
   check('the sweep refuses a request with no secret', unauth.status() === 401, String(unauth.status()))
 
-  const wrong = await page.request.get(`${BASE}/api/cron/scheduled-work`, {
+  const wrong = await page.request.get(`${NODE_BASE}/api/cron/scheduled-work`, {
     headers: { Authorization: 'Bearer definitely-not-the-secret' },
   })
   check('and refuses a wrong secret', wrong.status() === 401, String(wrong.status()))
 
   if (secret) {
-    const ok = await page.request.get(`${BASE}/api/cron/scheduled-work`, {
+    const ok = await page.request.get(`${NODE_BASE}/api/cron/scheduled-work`, {
       headers: { Authorization: `Bearer ${secret}` },
     })
     check('and runs with the right one', ok.status() === 200, String(ok.status()))
@@ -626,7 +642,7 @@ try {
       typeof body?.recurrence?.rulesConsidered === 'number'
       && typeof body?.reminders?.delivered === 'number', JSON.stringify(body))
     check('and it is idempotent - a second immediate run creates nothing new', await (async () => {
-      const again = await page.request.get(`${BASE}/api/cron/scheduled-work`, {
+      const again = await page.request.get(`${NODE_BASE}/api/cron/scheduled-work`, {
         headers: { Authorization: `Bearer ${secret}` },
       })
       const b = await again.json().catch(() => ({}))

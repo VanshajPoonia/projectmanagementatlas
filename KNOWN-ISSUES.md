@@ -25,26 +25,29 @@ not in the pipeline.
 findings on first run; land the config with rules calibrated to what the repo
 already does rather than to a default preset.
 
-### `pnpm check:recurrence-ui` cannot finish on this machine
+### ~~`pnpm check:recurrence-ui` cannot finish on this machine~~ FIXED 2026-08-28
 
-It passes 74 checks and then aborts in its last section with
+Kept because the diagnosis generalises to any Node-side request in any harness.
+
+It used to pass 74 checks and then abort with
 `apiRequestContext.get: connect ECONNREFUSED ::1:3000`.
 
-Node resolves `localhost` to `::1` before `127.0.0.1` (verified:
-`dns.lookup('localhost', {all:true})` returns the IPv6 address first) and
-`next dev` binds IPv4 only. Playwright's `page.request` runs in Node, so it
-fails where the browser's own `page.goto` succeeds - which is why every earlier
-check in the same run passes. Same family as the IPv6-only
-`db.<ref>.supabase.co` note in CLAUDE.md.
+**Cause:** `page.request` runs in Node, and Node resolves `localhost` to `::1`
+before `127.0.0.1` (`dns.lookup('localhost', {all:true})` returns the IPv6
+address first). `next dev` binds IPv4 only. The browser's own `page.goto`
+against the identical URL succeeded, because it does happy-eyeballs resolution
+and falls back; Node does not. So the failure looked like a broken harness
+rather than an unroutable address family, and every check before it passed.
 
-**Consequence:** the three assertions about `/api/cron/scheduled-work`'s auth
-are unverifiable here. The route itself was verified by curl when it shipped.
+**Fix:** the harness now has a separate `NODE_BASE` (`http://127.0.0.1:3000`)
+used only by `page.request`; `BASE` is unchanged for the browser, and an
+explicit `BASE_URL` still overrides both. Now 75/75.
 
-**Fix:** point that harness's `page.request` calls at `127.0.0.1` rather than
-`localhost`. Not done in Prompt F because a blind edit to an unrelated harness
-that could not be run end to end here is worse than a recorded limitation -
-`BASE_URL=http://127.0.0.1:3000` made sign-in itself time out, so the change
-needs its own session.
+⚠️ **Any future harness that calls an API route from Node rather than through
+the page needs the same treatment.** Same family as the IPv6-only
+`db.<ref>.supabase.co` note in CLAUDE.md: this Mac has no IPv6 route, so
+anything that resolves to `::1` fails in a way that reads like the server
+being down.
 
 ### `pnpm-workspace.yaml` placeholders keep coming back
 
