@@ -158,3 +158,74 @@ describe('the timezone bug this replaced', () => {
     expect(items[1].isOverdue).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------------------
+// Prompt F: the signals that come from outside the task row.
+// ---------------------------------------------------------------------------------------
+
+describe('blocked, blocking and approval signals', () => {
+  const dueToday = { id: 'x', title: 'X', status: 'todo', due_date: '2026-08-27' }
+
+  it('changes nothing at all when a caller supplies no signals', () => {
+    // Backwards compatibility is the point: every existing caller keeps its old ranking.
+    expect(scoreTask(dueToday, NOW).score).toBe(scoreTask(dueToday, NOW, {}).score)
+    expect(scoreTask(dueToday, NOW).isBlocked).toBe(false)
+  })
+
+  it('sinks blocked work, and says so', () => {
+    const blocked = scoreTask(dueToday, NOW, { blockedBy: 2 })
+    expect(blocked.score).toBeLessThan(scoreTask(dueToday, NOW).score)
+    expect(blocked.reasons[0]).toBe('Blocked by 2 items')
+    expect(blocked.isBlocked).toBe(true)
+  })
+
+  it('says "1 item" rather than "1 items"', () => {
+    expect(scoreTask(dueToday, NOW, { blockedBy: 1 }).reasons).toContain('Blocked by 1 item')
+    expect(scoreTask(dueToday, NOW, { blocking: 1 }).reasons).toContain('Blocks 1 other item')
+  })
+
+  it('lifts work other people are stuck behind, and says so', () => {
+    const blocking = scoreTask(dueToday, NOW, { blocking: 3 })
+    expect(blocking.score).toBeGreaterThan(scoreTask(dueToday, NOW).score)
+    expect(blocking.reasons).toContain('Blocks 3 other items')
+  })
+
+  it('sinks work parked on an approval, and says so', () => {
+    const waiting = scoreTask(dueToday, NOW, { awaitingApproval: true })
+    expect(waiting.score).toBeLessThan(scoreTask(dueToday, NOW).score)
+    expect(waiting.reasons).toContain('Waiting on approval')
+    expect(waiting.isBlocked).toBe(true)
+  })
+
+  it('never hides overdue blocked work entirely - the next action is to unblock it', () => {
+    // The penalty is deliberately not large enough to push badly-late blocked work off the
+    // list. Somebody still has to go and clear the blocker.
+    const overdue = { id: 'o', title: 'O', status: 'todo', due_date: '2026-08-01' }
+    const undated = { id: 'u', title: 'U', status: 'todo' }
+    const ranked = getWorkNext([overdue, undated], 5, NOW, (t) => (t.id === 'o' ? { blockedBy: 1 } : {}))
+    expect(ranked[0].task.id).toBe('o')
+  })
+
+  it('reads the reason from the same numbers as the score', () => {
+    // The one bug this module has already shipped was a reason computed from a different
+    // expression than the score. Garbage in a signal must not produce a reason.
+    const noisy = scoreTask(dueToday, NOW, { blockedBy: -3 as any, blocking: Number.NaN as any })
+    expect(noisy.score).toBe(scoreTask(dueToday, NOW).score)
+    expect(noisy.reasons.join(' ')).not.toContain('Blocked by')
+    expect(noisy.reasons.join(' ')).not.toContain('Blocks')
+  })
+
+  it('reports blocked before the due date, because a blocker decides whether and a date only when', () => {
+    const reasons = scoreTask(dueToday, NOW, { blockedBy: 1, awaitingApproval: true }).reasons
+    expect(reasons.slice(0, 2)).toEqual(['Blocked by 1 item', 'Waiting on approval'])
+    expect(reasons.indexOf('Due today')).toBeGreaterThan(1)
+  })
+
+  it('passes each task its own signals, never the first task’s', () => {
+    const a = { id: 'a', title: 'A', status: 'todo', due_date: '2026-08-27' }
+    const b = { id: 'b', title: 'B', status: 'todo', due_date: '2026-08-27' }
+    const ranked = getWorkNext([a, b], 5, NOW, (t) => (t.id === 'a' ? { blockedBy: 1 } : { blocking: 1 }))
+    expect(ranked[0].task.id).toBe('b')
+    expect(ranked[1].reasons).toContain('Blocked by 1 item')
+  })
+})

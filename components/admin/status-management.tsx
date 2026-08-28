@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Archive, ArchiveRestore, Plus, Pencil, Check, X } from 'lucide-react'
+import { Archive, ArchiveRestore, Plus, Pencil, Check, X, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { STATUS_CATEGORIES, STATUS_CATEGORY_LABELS, type StatusCategory } from '@/lib/task-status'
@@ -21,6 +21,12 @@ interface TaskStatusRow {
   is_archived: boolean
   category: StatusCategory
   is_closed: boolean
+  /**
+   * Work in this status is parked waiting on somebody to sign off (migration 121).
+   * Orthogonal to `category` - an item awaiting approval has usually started - which is why
+   * it is its own flag rather than a sixth category.
+   */
+  is_approval: boolean
 }
 
 /**
@@ -44,11 +50,13 @@ export default function StatusManagement() {
   const [newLabel, setNewLabel] = useState('')
   const [newColor, setNewColor] = useState('#6366f1')
   const [newCategory, setNewCategory] = useState<StatusCategory>('planned')
+  const [newIsApproval, setNewIsApproval] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editLabel, setEditLabel] = useState('')
   const [editColor, setEditColor] = useState('#6366f1')
   const [editCategory, setEditCategory] = useState<StatusCategory>('planned')
+  const [editIsApproval, setEditIsApproval] = useState(false)
   const supabase = createClient()
 
   const load = async () => {
@@ -78,7 +86,7 @@ export default function StatusManagement() {
     const nextPosition = statuses.length ? Math.max(...statuses.map((s) => s.position)) + 1 : 0
     const { error } = await supabase
       .from('task_statuses')
-      .insert({ key, label, color: newColor, position: nextPosition, category: newCategory })
+      .insert({ key, label, color: newColor, position: nextPosition, category: newCategory, is_approval: newIsApproval })
     setSaving(false)
 
     if (error) {
@@ -88,6 +96,7 @@ export default function StatusManagement() {
     setNewLabel('')
     setNewColor('#6366f1')
     setNewCategory('planned')
+    setNewIsApproval(false)
     toast.success('Status added')
     load()
   }
@@ -110,6 +119,7 @@ export default function StatusManagement() {
     setEditLabel(status.label)
     setEditColor(status.color)
     setEditCategory(status.category ?? 'planned')
+    setEditIsApproval(Boolean(status.is_approval))
   }
 
   const saveEdit = async (status: TaskStatusRow) => {
@@ -117,7 +127,7 @@ export default function StatusManagement() {
     if (!label) return
     const { error } = await supabase
       .from('task_statuses')
-      .update({ label, color: editColor, category: editCategory })
+      .update({ label, color: editColor, category: editCategory, is_approval: editIsApproval })
       .eq('id', status.id)
     if (error) {
       toast.error('Could not save status')
@@ -184,6 +194,19 @@ export default function StatusManagement() {
               ))}
             </SelectContent>
           </Select>
+          {/* Waiting-on-approval is a second, orthogonal fact about the status: My Work groups
+              this work separately and WorkNext stops recommending it, because its owner cannot
+              push it. Not folded into Means - an item awaiting sign-off has usually started. */}
+          <label className="flex items-center gap-1.5 text-xs whitespace-nowrap">
+            <input
+              type="checkbox"
+              id={`status-approval-${status.id}`}
+              checked={editIsApproval}
+              onChange={(e) => setEditIsApproval(e.target.checked)}
+              className="size-4"
+            />
+            Waiting on approval
+          </label>
           <Button size="icon-sm" variant="ghost" onClick={() => saveEdit(status)} aria-label="Save">
             <Check className="h-4 w-4" />
           </Button>
@@ -200,6 +223,12 @@ export default function StatusManagement() {
             {status.category && (
               <Badge variant="secondary" className="flex-shrink-0 text-[11px] font-normal">
                 {CATEGORY_SHORT[status.category]}
+              </Badge>
+            )}
+            {status.is_approval && (
+              <Badge variant="outline" className="flex-shrink-0 gap-1 text-[11px] font-normal">
+                <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+                Waiting on approval
               </Badge>
             )}
             {status.is_archived && <Badge variant="outline" className="text-muted-foreground">Archived</Badge>}
@@ -226,6 +255,8 @@ export default function StatusManagement() {
           Create or archive the statuses used across tasks. Archived statuses stay on existing tasks and remain searchable in reports - they just can&apos;t be picked for new work.
           <br />
           <strong>Means</strong> is how the rest of Atlas reads the status: it decides what counts as overdue, what shows as in progress, and what a completed subtask looks like. Set it deliberately - a status called &ldquo;Escalate to Mgmt.&rdquo; is <em>Started</em>, not Planned, and nothing can work that out from the name.
+          <br />
+          <strong>Waiting on approval</strong> is a separate question from Means: it says the work is parked on somebody&rsquo;s sign-off. My Work groups it under &ldquo;Waiting on approval&rdquo; and stops recommending it as the next thing to do, because its owner cannot move it.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -264,6 +295,20 @@ export default function StatusManagement() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Approval</Label>
+            <label className="flex h-10 items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                id="new-status-approval"
+                checked={newIsApproval}
+                onChange={(e) => setNewIsApproval(e.target.checked)}
+                className="size-4"
+                disabled={saving}
+              />
+              Waiting on approval
+            </label>
           </div>
           <Button type="submit" className="gap-2" disabled={saving || !newLabel.trim()}>
             <Plus className="h-4 w-4" />

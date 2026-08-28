@@ -14,11 +14,16 @@ import { addDays } from './calendar-grid'
 //
 // ⚠️ This block used to say the opposite - "local time on purpose ... fixtures built from `Z`
 // instants would make these assertions depend on the machine's timezone" - and building the
-// fixtures from `toISOString()` is precisely what hid a live bug. `due_date` is a Postgres DATE
-// and arrives as a bare `YYYY-MM-DD`; a full timestamp round-trips through the old local-midnight
-// maths unharmed, so every test passed while production was a day out. Fixtures are date-only
-// now, matching what the column actually returns, and every assertion here has to hold under any
-// machine timezone rather than only the one that wrote it.
+// fixtures from `toISOString()` is precisely what hid a live bug. A full timestamp round-tripped
+// through the old local-midnight maths unharmed, so every test passed while production was a day
+// out.
+//
+// ⚠️⚠️ AND THIS BLOCK USED TO CALL due_date "a Postgres DATE ... a bare YYYY-MM-DD", WHICH IT IS
+// NOT. It is TIMESTAMPTZ holding midnight on the day somebody picked, and every real row is
+// `...T00:00:00+00:00` (or `T05:00:00+00:00` from the older writer). The date-only fixtures below
+// are kept because `taskDueDate` accepts both and they read clearly - but "the real shape the
+// column sends" at the bottom of this file is the block that actually proves anything, because a
+// fixture shape production never produces is not coverage, it is a second bug hiding the first.
 const NOW = new Date('2026-08-13T17:00:00Z') // 12:00 America/Chicago, 13 August 2026
 const ME = 'me'
 
@@ -105,8 +110,10 @@ describe('buildMyWork sections', () => {
   })
 
   it('hides sections that have nothing in them', () => {
+    // "Assigned to me" is the complete list, so it is present whenever anything is - that is
+    // what makes it the catch-all rather than a twelfth way of slicing the same work.
     const result = buildMyWork([task({ due_date: at(-1) })], [], ME, NOW)
-    expect(result.sections.map((s) => s.id)).toEqual(['overdue'])
+    expect(result.sections.map((s) => s.id)).toEqual(['overdue', 'assigned'])
   })
 
   it('drops done and deleted work from every section', () => {
@@ -196,24 +203,33 @@ describe('myWorkSummary', () => {
       ],
       NOW,
     )
-    expect(summary).toEqual({ open: 3, overdue: 1, dueToday: 1 })
+    expect(summary).toEqual({ open: 3, overdue: 1, dueToday: 1, blocked: 0 })
   })
 
   it('handles an empty or missing list', () => {
-    expect(myWorkSummary([], NOW)).toEqual({ open: 0, overdue: 0, dueToday: 0 })
+    expect(myWorkSummary([], NOW)).toEqual({ open: 0, overdue: 0, dueToday: 0, blocked: 0 })
   })
 })
 
 describe('unanswered questions', () => {
-  // These are declared rather than approximated on purpose. If a future slice adds
-  // dependencies or approvals, the corresponding entry should be removed here and a real
-  // section added - this test is the reminder that the list is load-bearing.
+  // Declared rather than approximated. When a slice closes one, the entry is removed and a
+  // real section takes its place - which is exactly what happened to "what am I blocking" and
+  // "what needs approval" once 115 and 121 landed. This test is the reminder that the list is
+  // load-bearing rather than decoration.
   it('names each gap and what would close it', () => {
     expect(UNANSWERED_QUESTIONS.length).toBeGreaterThan(0)
     for (const entry of UNANSWERED_QUESTIONS) {
       expect(entry.question).toBeTruthy()
       expect(entry.blockedBy).toBeTruthy()
     }
+  })
+
+  it('no longer claims blocking or approval are unanswerable, because they are not', () => {
+    // The note outlived the schema that closed it by two migrations. If either question comes
+    // back to this list, the section that answers it has been removed and this should fail.
+    const text = UNANSWERED_QUESTIONS.map((q) => `${q.question} ${q.blockedBy}`).join(' ').toLowerCase()
+    expect(text).not.toContain('task dependencies')
+    expect(text).not.toContain('approvals module')
   })
 })
 
@@ -249,7 +265,7 @@ describe('the timezone bug this replaced', () => {
       { id: 'a', title: 'A', status: 'todo', due_date: '2026-08-27' },
       { id: 'b', title: 'B', status: 'todo', due_date: '2026-08-26' },
     ]
-    expect(myWorkSummary(mine, TEN_AM)).toEqual({ open: 2, overdue: 1, dueToday: 1 })
+    expect(myWorkSummary(mine, TEN_AM)).toEqual({ open: 2, overdue: 1, dueToday: 1, blocked: 0 })
   })
 
   it('files today\'s work under "Due today" rather than "Overdue"', () => {
@@ -257,5 +273,172 @@ describe('the timezone bug this replaced', () => {
     const result = buildMyWork(mine, mine, ME, TEN_AM)
     expect(section(result, 'overdue')).toBeUndefined()
     expect(section(result, 'today')?.tasks.map((t) => t.id)).toEqual(['a'])
+  })
+})
+
+// ---------------------------------------------------------------------------------------
+// Prompt F: the questions that used to be listed as unanswerable.
+// ---------------------------------------------------------------------------------------
+
+/** A `task_relations_expanded` row as it comes back from PostgREST. */
+function relation(taskId: string, rel: string, relatedId: string) {
+  return { id: `${taskId}-${rel}-${relatedId}`, task_id: taskId, related_task_id: relatedId, relation: rel as any, is_inverse: false }
+}
+
+describe('blocked by others', () => {
+  it('collects work that something open is standing in the way of', () => {
+    const mine = { id: 'mine', title: 'Mine', created_by: ME, status: 'todo' }
+    const blocker = { id: 'blocker', title: 'Blocker', created_by: 'someone', status: 'todo' }
+    const result = buildMyWork([mine], [mine, blocker], ME, NOW, {
+      relations: [relation('mine', 'blocked_by', 'blocker')],
+    })
+    expect(section(result, 'blocked')?.tasks.map((t: any) => t.id)).toEqual(['mine'])
+  })
+
+  it('ignores a blocker that is already finished', () => {
+    // A completed blocker is not standing in the way of anything, and reporting it as one
+    // would send someone to chase work that is already done.
+    const mine = { id: 'mine', title: 'Mine', created_by: ME, status: 'todo' }
+    const blocker = { id: 'blocker', title: 'Blocker', created_by: 'someone', status: 'done' }
+    const result = buildMyWork([mine], [mine, blocker], ME, NOW, {
+      relations: [relation('mine', 'blocked_by', 'blocker')],
+    })
+    expect(section(result, 'blocked')).toBeUndefined()
+  })
+
+  it('ignores a blocker this page cannot resolve, rather than claiming an invisible one', () => {
+    // The other end is missing because the page filtered it (archived board). A count with
+    // nothing behind it sends the reader somewhere there is nothing to see.
+    const mine = { id: 'mine', title: 'Mine', created_by: ME, status: 'todo' }
+    const result = buildMyWork([mine], [mine], ME, NOW, {
+      relations: [relation('mine', 'blocked_by', 'not-loaded')],
+    })
+    expect(section(result, 'blocked')).toBeUndefined()
+  })
+})
+
+describe('blocking others', () => {
+  it('collects my work that somebody else is stuck behind', () => {
+    const mine = { id: 'mine', title: 'Mine', created_by: ME, status: 'todo' }
+    const theirs = { id: 'theirs', title: 'Theirs', created_by: 'someone', status: 'todo' }
+    const result = buildMyWork([mine], [mine, theirs], ME, NOW, {
+      relations: [relation('mine', 'blocks', 'theirs')],
+    })
+    expect(section(result, 'blocking')?.tasks.map((t: any) => t.id)).toEqual(['mine'])
+  })
+
+  it('does not count my own sequencing as blocking somebody', () => {
+    // Both ends are mine. Nobody is waiting on me, so reporting an obligation to a colleague
+    // would be a number that means nothing.
+    const a = { id: 'a', title: 'A', created_by: ME, status: 'todo' }
+    const b = { id: 'b', title: 'B', created_by: ME, status: 'todo' }
+    const result = buildMyWork([a, b], [a, b], ME, NOW, { relations: [relation('a', 'blocks', 'b')] })
+    expect(section(result, 'blocking')).toBeUndefined()
+  })
+
+  it('ignores work that has already finished behind me', () => {
+    const mine = { id: 'mine', title: 'Mine', created_by: ME, status: 'todo' }
+    const theirs = { id: 'theirs', title: 'Theirs', created_by: 'someone', status: 'done' }
+    const result = buildMyWork([mine], [mine, theirs], ME, NOW, {
+      relations: [relation('mine', 'blocks', 'theirs')],
+    })
+    expect(section(result, 'blocking')).toBeUndefined()
+  })
+})
+
+describe('waiting on approval', () => {
+  it('reads the flag off the status catalog, never off the status name', () => {
+    // The name is the trap 112 was written to end: a substring match on "approval" is right
+    // by coincidence until somebody names a status "Sign-off" or "With the client".
+    const mine = { id: 'mine', title: 'Mine', created_by: ME, status: 'sign_off' }
+    const result = buildMyWork([mine], [mine], ME, NOW, { approvalStatusKeys: new Set(['sign_off']) })
+    expect(section(result, 'awaiting-approval')?.tasks.map((t: any) => t.id)).toEqual(['mine'])
+  })
+
+  it('prefers the board column’s status_key, which is the source of truth', () => {
+    // Migration 063: the column's FK decides which status a task holds. tasks.status is only
+    // the fallback, and here the two disagree on purpose.
+    const mine = { id: 'mine', title: 'Mine', created_by: ME, status: 'in_progress', column: { status_key: 'pending_approval' } }
+    const result = buildMyWork([mine], [mine], ME, NOW, { approvalStatusKeys: new Set(['pending_approval']) })
+    expect(section(result, 'awaiting-approval')?.tasks.map((t: any) => t.id)).toEqual(['mine'])
+  })
+
+  it('shows nothing when no status is flagged, which is the default everywhere', () => {
+    const mine = { id: 'mine', title: 'Mine', created_by: ME, status: 'pending_approval' }
+    expect(section(buildMyWork([mine], [mine], ME, NOW), 'awaiting-approval')).toBeUndefined()
+  })
+})
+
+describe('personal tasks', () => {
+  it('lists open personal tasks and drops completed ones', () => {
+    const result = buildMyWork([], [], ME, NOW, {
+      // `is_done` is the real column name (migration 030). `completed` would silently
+      // filter nothing and list every finished personal task forever.
+      personalTasks: [{ id: 'p1', title: 'Buy milk' }, { id: 'p2', title: 'Done', is_done: true }],
+    })
+    expect(section(result, 'personal')?.tasks.map((t: any) => t.id)).toEqual(['p1'])
+  })
+})
+
+describe('the ranked shortlist gets the same signals the sections do', () => {
+  const mine = { id: 'mine', title: 'Mine', created_by: ME, status: 'todo', due_date: at(0) }
+  const other = { id: 'other', title: 'Other', created_by: ME, status: 'todo', due_date: at(0) }
+
+  it('sinks blocked work below identical work that can actually be started', () => {
+    const blocker = { id: 'blocker', title: 'Blocker', created_by: 'x', status: 'todo' }
+    const result = buildMyWork([mine, other], [mine, other, blocker], ME, NOW, {
+      relations: [relation('mine', 'blocked_by', 'blocker')],
+    })
+    expect(result.next[0].task.id).toBe('other')
+    expect(result.next.find((i) => i.task.id === 'mine')?.reasons).toContain('Blocked by 1 item')
+  })
+
+  it('lifts work other people are stuck behind', () => {
+    const theirs = { id: 'theirs', title: 'Theirs', created_by: 'x', status: 'todo' }
+    const result = buildMyWork([mine, other], [mine, other, theirs], ME, NOW, {
+      relations: [relation('mine', 'blocks', 'theirs')],
+    })
+    expect(result.next[0].task.id).toBe('mine')
+    expect(result.next[0].reasons).toContain('Blocks 1 other item')
+  })
+
+  it('explains an approval hold rather than silently demoting it', () => {
+    const result = buildMyWork([mine], [mine], ME, NOW, { approvalStatusKeys: new Set(['todo']) })
+    expect(result.next[0].reasons).toContain('Waiting on approval')
+    expect(result.next[0].isBlocked).toBe(true)
+  })
+})
+
+describe('the summary counts what is blocked', () => {
+  it('reports blocked work alongside overdue and due-today', () => {
+    const mine = { id: 'mine', title: 'Mine', created_by: ME, status: 'todo', due_date: at(-1) }
+    const blocker = { id: 'blocker', title: 'B', created_by: 'x', status: 'todo' }
+    expect(
+      myWorkSummary([mine], NOW, { relations: [relation('mine', 'blocked_by', 'blocker')] }, [mine, blocker]),
+    ).toEqual({ open: 1, overdue: 1, dueToday: 0, blocked: 1 })
+  })
+})
+
+describe('the real shape the due_date column sends', () => {
+  // ⚠️ tasks.due_date is TIMESTAMPTZ, not DATE. Production holds two shapes, both meaning
+  // "midnight on the day somebody picked": T00:00:00+00:00 from the create dialog and
+  // T05:00:00+00:00 from the older Chicago-local writer. Every assertion here has to hold in
+  // any machine timezone, which is what `pnpm test:timezones` runs.
+  const NOON_CHICAGO = new Date('2026-08-27T17:00:00Z')
+
+  it.each([
+    ['2026-08-27T00:00:00+00:00', 0],
+    ['2026-08-27T05:00:00+00:00', 0],
+    ['2026-08-26T00:00:00+00:00', -1],
+    ['2026-08-28T00:00:00+00:00', 1],
+  ])('%s is %i days away', (due, expected) => {
+    expect(daysUntil(due, NOON_CHICAGO)).toBe(expected)
+  })
+
+  it('puts a task due today in Due today, not in Overdue', () => {
+    const mine = { id: 'mine', title: 'M', created_by: ME, status: 'todo', due_date: '2026-08-27T00:00:00+00:00' }
+    const result = buildMyWork([mine], [mine], ME, NOON_CHICAGO)
+    expect(section(result, 'today')?.tasks.map((t: any) => t.id)).toEqual(['mine'])
+    expect(section(result, 'overdue')).toBeUndefined()
   })
 })

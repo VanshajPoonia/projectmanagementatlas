@@ -9,16 +9,29 @@ function ids(groups: ReturnType<typeof buildWorkspaceNav>, groupId = 'sections')
 const base = { role: 'user' as const, modules: DEFAULT_MODULES, canUseMarketingCalendar: true }
 
 describe('buildWorkspaceNav', () => {
-  // Home, My Work and Views are core. Views is not a module deliberately: Prompt E's claim is
-  // that the view is not the data, so the filter/sort/group model is the foundation the other
-  // surfaces sit on and there is nothing coherent to switch off.
-  it('always offers Home, My Work and Views, whatever the module configuration', () => {
+  // Home, My Work, Inbox and Views are core. Views is not a module deliberately: Prompt E's
+  // claim is that the view is not the data, so the filter/sort/group model is the foundation
+  // the other surfaces sit on and there is nothing coherent to switch off. Inbox is core for
+  // the same reason My Work is - a workspace where the things addressed to you personally can
+  // be switched off is not a workspace.
+  it('always offers Home, My Work, Inbox and Views, whatever the module configuration', () => {
     const off: AppModule[] = DEFAULT_MODULES.map((m) => ({ ...m, enabled: false }))
     expect(ids(buildWorkspaceNav({ ...base, modules: off, canUseMarketingCalendar: false }))).toEqual([
       'tasks',
       'my-work',
+      'inbox',
       'views',
     ])
+  })
+
+  it('lists Inbox as a real route, so an admin redirect cannot strip it', () => {
+    // `/dashboard?tab=…` redirects an admin to /admin and DROPS the query string, which is why
+    // every core destination is a route rather than a tab.
+    for (const role of ['user', 'admin', 'super_admin'] as const) {
+      const item = buildWorkspaceNav({ ...base, role })[0].items.find((i) => i.id === 'inbox')
+      expect(item?.href).toBe('/inbox')
+      expect(item?.status).toBe('live')
+    }
   })
 
   it('lists Views as a real route so an admin redirect cannot strip it', () => {

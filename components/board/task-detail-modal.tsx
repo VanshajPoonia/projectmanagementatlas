@@ -1,7 +1,7 @@
 'use client'
 
 import type { ChangeEvent } from 'react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download, LinkIcon, ExternalLink, Plus, History, Repeat, FolderInput } from 'lucide-react'
+import { X, Calendar as CalendarIcon, Tag, User, Trash2, Upload, ImageIcon, MessageSquare, Send, FileText, Video, FileIcon, Download, LinkIcon, ExternalLink, Plus, History, Repeat, FolderInput, Bell, BellOff, Eye, EyeOff } from 'lucide-react'
 import { format } from 'date-fns'
 import { sendTaskAssignmentEmail, sendCommentEmail, sendTaskUpdateEmail } from '@/lib/email'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -29,6 +29,8 @@ import { toast } from 'sonner'
 import { useTaskStatuses } from '@/lib/use-task-statuses'
 import { findExactColumnForStatus, statusesForPicker } from '@/lib/task-status'
 import { logTaskActivity } from '@/lib/task-activity'
+import { findMentions } from '@/lib/quick-capture'
+import { notifyTaskWatchers, setTaskFollowState } from '@/lib/notifications-data'
 import { dueDateAsPickerDate, dueDateForStorage } from '@/lib/calendar-grid'
 import {
   buildTaskAssetPath,
@@ -86,6 +88,15 @@ interface TaskDetailModalProps {
   columns?: Array<{ id: string; title: string; status_key?: string | null }> | null
   initialTab?: 'comments' | 'attachments' | 'links' | 'activity'
   /**
+   * A specific comment to land on, from a notification's deep link (`?comment=`).
+   *
+   * The plan asks a notification to open "the exact context when possible", and for a comment
+   * that means the comment - not the task with a comment somewhere in it. A comment id that no
+   * longer exists (deleted, or on a task this viewer cannot fully read) simply does not scroll
+   * anywhere; it never blocks the task from opening.
+   */
+  highlightCommentId?: string | null
+  /**
    * Fired when subtasks change. Separate from `onUpdate` because callers wire that to
    * close the modal - ticking a subtask should refresh the board underneath, not
    * dismiss the task you're working in.
@@ -93,7 +104,7 @@ interface TaskDetailModalProps {
   onSubtaskChange?: () => void
 }
 
-export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId, boardRole = null, columns = null, initialTab = 'comments', onSubtaskChange }: TaskDetailModalProps) {
+export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmin = false, currentUserId, boardRole = null, columns = null, initialTab = 'comments', highlightCommentId = null, onSubtaskChange }: TaskDetailModalProps) {
   const supabase = createClient()
   const taskStatuses = useTaskStatuses()
   const [task, setTask] = useState<any>(null)
@@ -126,6 +137,22 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
   const [largeUpload, setLargeUpload] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [moveOpen, setMoveOpen] = useState(false)
+  /**
+   * This viewer's own relationship to the item's notification traffic (migration 120).
+   * `null` means they have no row - the default, which is "I hear about it if it is mine".
+   */
+  const [followState, setFollowState] = useState<'following' | 'muted' | null>(null)
+  const [followPending, setFollowPending] = useState(false)
+  /**
+   * Bumped every time the viewer presses Follow.
+   *
+   * ⚠️ Without this, a slow initial read overwrites a fast click. `loadFollowState` fires when
+   * the modal opens; press Follow before it returns and its (stale, correct-at-the-time)
+   * answer lands afterwards and puts the button back to "Follow" while the row in the database
+   * says "following". Caught by a real-browser harness failing on one run in three, which is
+   * exactly the shape of bug that never shows up in review.
+   */
+  const followGeneration = useRef(0)
 
   useEffect(() => {
     if (open && taskId) {
@@ -139,8 +166,23 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       loadAssignees()
       loadUsers()
       loadActivity()
+      loadFollowState()
     }
   }, [open, taskId])
+
+  /**
+   * Scroll a deep-linked comment into view once the comments have actually rendered.
+   *
+   * Deliberately keyed on `comments`, not on `open`: the element does not exist until the
+   * query returns, and a scroll fired on open would silently do nothing. The highlight fades
+   * on its own rather than needing dismissal - it is a "here" marker, not a state.
+   */
+  useEffect(() => {
+    if (!open || !highlightCommentId || comments.length === 0) return
+    const node = document.getElementById(`comment-${highlightCommentId}`)
+    if (!node) return
+    node.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [open, highlightCommentId, comments])
 
   // All five gates below come from lib/capabilities.ts, which is where the guest/client
   // restriction (migrations 065/067) and the creator/assignee rules now live - one
@@ -291,6 +333,62 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       .eq('task_id', taskId)
       .order('created_at', { ascending: false })
     if (data) setLinks(data)
+  }
+
+  /**
+   * Read this viewer's follow/mute row.
+   *
+   * RLS on `task_follows` is `user_id = auth.uid()` with no admin bypass, so this query can
+   * only ever return the caller's own row - which is exactly what is wanted here, and exactly
+   * why the fan-out that needs everyone else's rows has to be a SECURITY DEFINER function
+   * (migration 122) rather than a second query from this component.
+   */
+  const loadFollowState = async () => {
+    const generation = followGeneration.current
+    const { data: auth } = await supabase.auth.getUser()
+    if (!auth?.user) return
+    const { data } = await supabase
+      .from('task_follows')
+      .select('state')
+      .eq('task_id', taskId)
+      .eq('user_id', auth.user.id)
+      .maybeSingle()
+    // The viewer pressed the button while this was in flight. Their intent is newer than this
+    // answer, so it is discarded rather than applied.
+    if (followGeneration.current !== generation) return
+    setFollowState((data?.state as 'following' | 'muted' | undefined) ?? null)
+  }
+
+  /**
+   * Follow -> not following -> follow. Muting is reached from the inbox, not from here: the
+   * button on a work item answers "do I want to hear about this", and folding a third state
+   * into one control makes it a control nobody can predict.
+   */
+  const handleToggleFollow = async () => {
+    const { data: auth } = await supabase.auth.getUser()
+    if (!auth?.user) return
+
+    const next = followState === 'following' ? null : 'following'
+    const previous = followState
+    followGeneration.current += 1
+    setFollowState(next)
+    setFollowPending(true)
+    try {
+      const outcome = await setTaskFollowState(supabase, taskId, auth.user.id, next, new Date())
+      if (!didWrite(outcome)) {
+        setFollowState(previous)
+        const message = writeFailureMessage(outcome, 'change')
+        if (message) toast.error(message.title, { description: message.description })
+        return
+      }
+      toast.success(next ? 'Following this item' : 'No longer following', {
+        description: next
+          ? 'Comments and changes on it will reach your inbox even when it is not assigned to you.'
+          : 'You will still hear about it if it is assigned to you.',
+      })
+    } finally {
+      setFollowPending(false)
+    }
   }
 
   const loadTaskDetails = async () => {
@@ -478,29 +576,26 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
         activityMessages.forEach((message) => logTaskActivity(supabase, taskId, actorId, message))
       }
 
-      // Send update notification to all assignees if task details changed
+      // Tell everyone watching this item that it changed.
+      //
+      // ⚠️ This used to insert one row per ASSIGNEE and nothing else, so following a work item
+      // you were not assigned to could never have worked. The RPC (migration 122) resolves the
+      // audience - assignees plus explicit followers, minus the actor, minus anyone
+      // deactivated - past RLS, because task_follows is private to each user and this client
+      // cannot see who follows the task. Note it now runs even when there are no assignees at
+      // all: a followed task with nobody on it still has an audience.
+      if (changes.length > 0 && actorId) {
+        await notifyTaskWatchers(supabase, {
+          taskId,
+          type: 'update',
+          message: `${currentUserProfile?.full_name || currentUserProfile?.email || 'Someone'} updated "${title}": ${changes.join(', ')}`,
+          entityType: 'task',
+          entityId: taskId,
+        })
+      }
+
       if (assignees.length > 0) {
         if (changes.length > 0) {
-          const notificationRows = assignees
-            .filter((userId) => userId !== actorId)
-            .map((userId) => ({
-              recipient_id: userId,
-              task_id: taskId,
-              actor_id: actorId,
-              type: 'update',
-              message: `${currentUserProfile?.full_name || currentUserProfile?.email || 'Someone'} updated "${title}": ${changes.join(', ')}`,
-            }))
-
-          if (actorId && notificationRows.length > 0) {
-            const { error: notificationError } = await supabase
-              .from('task_notifications')
-              .insert(notificationRows)
-
-            if (notificationError) {
-              console.error('Could not create task update notifications', notificationError)
-            }
-          }
-
           for (const userId of assignees) {
             const user = users.find(u => u.id === userId)
             if (user && user.id !== actorId) {
@@ -706,7 +801,9 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
     console.log('[v0] Adding comment:', commentText)
     
     try {
-      const { error } = await supabase
+      // The id is asked for because it becomes the notification's deep link: a comment
+      // notification should open the comment, not drop the reader on the task to hunt for it.
+      const { data: inserted, error } = await supabase
         .from('task_comments')
         .insert({
           task_id: taskId,
@@ -714,12 +811,51 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
           user_id: currentUser.id,
           author_id: currentUser.id
         })
+        .select('id')
+        .single()
 
       if (error) throw error
 
       console.log('[v0] Comment added successfully')
       logTaskActivity(supabase, taskId, currentUser.id, 'added a comment')
       await loadComments()
+
+      const author = currentUser.full_name || currentUser.email || 'Someone'
+      const excerpt = commentText.length > 140 ? `${commentText.slice(0, 137)}...` : commentText
+
+      // ⚠️ Commenting used to send EMAIL and nothing else - no in-app notification at all -
+      // so the one channel people actually watch never heard about a conversation. The RPC
+      // (migration 122) is what reaches followers as well as assignees: task_follows is
+      // private to each user, so this client cannot see who follows the task and would read
+      // an empty list as "nobody does".
+      await notifyTaskWatchers(supabase, {
+        taskId,
+        type: 'comment',
+        message: `${author} commented on "${title}": ${excerpt}`,
+        entityType: 'comment',
+        entityId: inserted?.id ?? null,
+      })
+
+      // A mention is addressed to one person, so it is notified separately and lands in
+      // Action required rather than in Updates. Ambiguous tokens are deliberately skipped:
+      // telling the wrong person they were addressed is a harm they cannot detect.
+      const mentioned = findMentions(commentText, users.map((u: any) => ({ id: u.id, name: u.full_name || u.email || '' })))
+        .filter((m) => !m.ambiguous && m.id !== currentUser.id)
+
+      if (mentioned.length > 0) {
+        const { error: mentionError } = await supabase.from('task_notifications').insert(
+          mentioned.map((m) => ({
+            recipient_id: m.id,
+            task_id: taskId,
+            actor_id: currentUser.id,
+            type: 'mention',
+            message: `${author} mentioned you on "${title}": ${excerpt}`,
+            entity_type: 'comment',
+            entity_id: inserted?.id ?? null,
+          })),
+        )
+        if (mentionError) console.error('Could not create mention notifications', mentionError)
+      }
 
       // Send email notifications to all assignees
       if (assignees.length > 0) {
@@ -919,6 +1055,31 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
           <div className="flex flex-wrap items-center justify-between gap-2 pr-8">
             <DialogTitle>Task Details</DialogTitle>
             <div className="flex items-center gap-2">
+              {/* Following is the only way to hear about a work item you are not assigned to,
+                  so it has to live ON the work item. Offering it only from a notification's
+                  menu would mean you could only start following something you were already
+                  being told about - which is the one case where you do not need it. */}
+              <Button
+                variant={followState === 'following' ? 'secondary' : 'outline'}
+                size="sm"
+                className="gap-2"
+                id="task-follow-toggle"
+                data-follow-state={followState ?? 'none'}
+                disabled={followPending}
+                onClick={handleToggleFollow}
+                title={
+                  followState === 'following'
+                    ? 'You get this item\u2019s updates even though it is not assigned to you.'
+                    : followState === 'muted'
+                      ? 'This item\u2019s notifications are hidden from your inbox.'
+                      : 'Get this item\u2019s updates in your inbox.'
+                }
+              >
+                {followState === 'muted' ? <BellOff className="h-4 w-4" /> : followState === 'following' ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                <span className="hidden sm:inline">
+                  {followState === 'following' ? 'Following' : followState === 'muted' ? 'Muted' : 'Follow'}
+                </span>
+              </Button>
               {/* Filing a card on the wrong board used to be unfixable: the only way out was
                   to retype it elsewhere and delete the original, losing its comments,
                   attachments, activity and subtasks. Hidden for subtasks, which have no board
@@ -1349,7 +1510,15 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
                     <p className="text-sm text-muted-foreground text-center py-8">No comments yet</p>
                   ) : (
                     comments.map((comment) => (
-                      <div key={comment.id} className="flex gap-3 p-3 bg-muted/50 rounded-lg">
+                      <div
+                        key={comment.id}
+                        id={`comment-${comment.id}`}
+                        className={`flex gap-3 p-3 rounded-lg transition-colors ${
+                          comment.id === highlightCommentId
+                            ? 'bg-primary/10 ring-2 ring-primary/40'
+                            : 'bg-muted/50'
+                        }`}
+                      >
                         <Avatar className="h-8 w-8">
                           <AvatarFallback>
                             {comment.author?.full_name?.[0] || comment.author?.email?.[0] || '?'}

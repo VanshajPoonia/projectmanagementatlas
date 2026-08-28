@@ -340,8 +340,9 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `120`. **Dev and prod were both
-  verified fully applied at `119` on 2026-08-25**, 0 pending on each. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `123`. **Dev and prod were both
+  verified fully applied at `122` on 2026-08-28**, 0 pending on each. As always, run
+  `pnpm migrate:status` rather than trusting this sentence - it has gone stale three times. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
@@ -1088,8 +1089,9 @@ prerequisite of it - keep that order for any future rebuild.
 substring heuristic already resolved it to (`to_do`), so nothing changed at migration time.
 **It was then corrected to `started` on 2026-08-23, after the deploy, on the owner's
 instruction** - work awaiting sign-off has begun, and `started` is the only one of the five
-categories that fits. One live task sits in that column, so the blast radius was one card
-moving from the "to do" bucket to "in progress" on dashboards and reports. It was done as a
+categories that fits. One live task sat in that column at the time, so the blast radius was one
+card moving from the "to do" bucket to "in progress" on dashboards and reports. ⚠️ **It is 3
+tasks as of 2026-08-28** - re-count before reasoning about that column again. It was done as a
 separate, visible step rather than folded into the migration, precisely so the migration
 itself changed no classification anywhere.
 Prod also had **one** pre-existing subtask, correctly re-typed to `subtask` by `113`'s
@@ -1195,6 +1197,179 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
     normalises the pair by uuid order, so the check passes or fails by how two random uuids
     happen to sort. Query either end, or use a directional relation type in the fixture.
 
+
+### Prompt F - My Work, WorkNext, Inbox and notification control (`120`-`122`, dev AND prod, 2026-08-28)
+
+Three migrations, all **purely additive and `--allow-prod` eligible on this repo's own rule** -
+new columns, new tables and one new function; no existing table, row, policy, grant or trigger is
+touched by any of them. **All three are applied to dev AND prod** (prod on 2026-08-28, one file
+at a time via `--only=NNN --allow-prod`, verified between each). Unlike `113` and `118`, none of
+these needed an owner override: each is eligible on the standing rule.
+
+**What the prod run found and produced.** Prod was at `119` with exactly these three pending, and
+reported `applied: 122   pending: 0` after. **Every row count was identical before and after**:
+173 tasks, 11 boards, 46 columns, 10 profiles, 5 statuses, and 193 notifications of which 133
+were unread (the handoff had said ~121 unread - re-read it rather than trusting the number).
+`120` and `122` seeded nothing. `121` seeded exactly **1** status.
+Pre-migration backup: `~/Code/prod-backup-pre-120to122-20260828-140156.dump` (custom format,
+`public` schema, `pg_restore --list`-verified at 55 tables, chmod 444).
+
+⚠️ **`121`'s live blast radius on prod is THREE tasks, not one.** They are all on **Marketing PM
+Sheet**, in the `pending_approval` column. CLAUDE.md's `112` note recorded "one live task sits in
+that column" and that was true in August; it is 3 now. They keep category `started`, so nothing
+about open-vs-closed, any dashboard count or any report changed - the only difference is that
+their assignees now see them grouped under "Waiting on approval" in My Work, and WorkNext stops
+recommending them as the next thing to do. Reversible with one UPDATE (see the migration header).
+
+⚠️ **The app code hard-depends on all three and `/inbox` is in the nav for every role.** That
+dependency is satisfied on prod now. Keep the order for any future rebuild: `122` needs
+`task_follows` from `120`.
+
+Gates: `pnpm check:inbox` (49, real RLS) and `pnpm check:inbox-ui` (32, real browser, needs
+`pnpm dev` on :3000 - confirmed stable across four consecutive runs), plus `pnpm check:my-work`
+(33, was 20). Counts were read off a run, not estimated.
+
+- **`120` - the inbox.** `snoozed_until`, `entity_type` and `entity_id` on `task_notifications`,
+  plus `task_follows` (state `following` | `muted`) and `board_mutes`.
+  - **There is no new notifications table, deliberately.** `task_notifications` (035) already had
+    inbox-shaped RLS (`recipient_id = auth.uid()` on SELECT *and* UPDATE), four writers and 84
+    rows on dev. A second inbox next to it would give every user two places to look and two
+    unread counts that disagree - the reasoning 117 already applied to reminders.
+  - ⚠️ **NO STORED LINK PATH.** A board lives at BOTH `/admin/board/<id>` and
+    `/dashboard/board/<id>`, and which one a person may open is a function of THEIR role, not of
+    the notification. A path baked in at write time pins every later reader into whichever
+    surface the writer happened to be on - the exact bug five call sites had in 2026-08-21. The
+    row carries `entity_type`/`entity_id`; `notificationHref` composes the URL from
+    `boardHref(role, id)` at read time.
+  - ⚠️ **MUTE IS ENFORCED AT READ, FOLLOW AT WRITE**, and the asymmetry is deliberate. Follow can
+    only work at write time (there is no row to reveal later if it was never created). Mute must
+    work at read time, because the writers are ordinary client components and a mute depending on
+    every writer remembering to check would leak the first time somebody added a fifth one -
+    and because unmuting then brings the history BACK rather than having destroyed it.
+  - **No `board_follows`.** Following a whole board would mean generating notifications nothing
+    currently generates. Muting is enforceable today; following a board is not, so it is not
+    offered - the `app_modules` / `profiles.is_active` / `board_members.role` lesson, applied
+    before shipping rather than after.
+  - **No admin bypass on any policy, asserted by a post-condition.** What a person has muted is a
+    statement about their own attention. Same rule as `117`'s reminders and `119`'s personal
+    views. ⚠️ This is also what forces `122` to exist - see below.
+  - **Deprovisioning was decided at creation** (the question `119` had to learn the hard way):
+    both tables CASCADE on `user_id`, which is right because a follow or a mute is private to one
+    person and destroying it destroys nothing anyone else can see. **Neither needs a line in
+    `app/api/admin/delete-user/route.ts`**, and `pnpm check:inbox` pins that deleting a person
+    takes their preferences and no work item.
+  - ⚠️ **`board_mutes` has no UPDATE grant, and supabase-js's default upsert therefore fails.**
+    PostgREST's default upsert is `ON CONFLICT DO UPDATE`, and Postgres requires the UPDATE
+    privilege for that *whether or not a conflict occurs* - so `.upsert({...})` was refused for
+    every user, including on a board they had just created. `setBoardMuted` sends
+    `{ ignoreDuplicates: true }` (`ON CONFLICT DO NOTHING`) and then probes, because DO NOTHING
+    and an RLS refusal both return zero rows. Found by the harness, not by reading.
+    **If you add a table whose rows are only ever created or deleted, expect this.**
+
+- **`121` - `task_statuses.is_approval`.** One boolean, plus one seed: `key = 'pending_approval'`
+  by EXACT key match, never a label heuristic (112's whole point). Dev has no such status so it
+  seeded 0 rows; **prod has one**, so applying `121` there will flag it, and the visible effect is
+  that its assignee sees that work grouped under "Waiting on approval" and WorkNext stops
+  recommending it. To undo just that without reverting:
+  `UPDATE public.task_statuses SET is_approval = false WHERE key = 'pending_approval';`
+  - **Not a sixth category, and not an approvals module.** The five categories answer "how far
+    along is this"; work awaiting sign-off has genuinely started, which is why prod's
+    `pending_approval` was corrected to `started` by hand in August. Whether something is parked
+    on a person is an ORTHOGONAL fact, so it gets its own flag. There is no approver, no request
+    and no decision record, and nothing claims otherwise.
+  - Reachable: **Super Admin → Statuses** has a "Waiting on approval" checkbox on both create and
+    edit, and a badge on every row. Without it the column would be hand-written-SQL-only.
+
+- **`122` - `notify_task_watchers(task, type, message, entity_type, entity_id)`.**
+  SECURITY DEFINER, `authenticated`-only, asserted with `has_function_privilege()`.
+  - ⚠️ **It exists because `120` made follows private, and that has a consequence people will
+    hit again: the person writing a comment cannot see who follows the task.** A client asking
+    gets back its own row and concludes nobody follows it - "hidden from you" and "does not
+    exist" arriving identical, through a policy this time rather than a filter. The documented
+    answer is a definer function that resolves past RLS and returns the narrowest possible
+    result; this one returns a count and the follower list never leaves the database.
+  - Audience: assignees (both `task_assignees` and the legacy `tasks.assigned_to`) + explicit
+    followers, minus the caller, minus anyone deactivated (`101`). Muted people are deliberately
+    still included - mute is applied when the inbox is read.
+  - Callable by anyone who can VIEW the task, which is wider than the table's own INSERT policy
+    (`can_manage_task`) and deliberate: a guest or client may comment on a board they can read,
+    and a comment nobody is told about is not a conversation. The caller cannot choose the
+    recipients, forge the actor, or reach a task they cannot see.
+
+**What was actually broken, and is now fixed:**
+  - **Commenting sent EMAIL and no in-app notification at all.** Four writers existed
+    (`assignment` ×3, `update` ×1) and none of them fired for a comment, so the one channel
+    people watch never heard about a conversation. Comments now write `comment` notifications
+    through the RPC, and `@name` mentions write a targeted `mention` notification that lands in
+    Action Required.
+  - **Mentions reuse quick capture's resolver** (`findMentions` in `lib/quick-capture.ts`, sharing
+    `matchPerson`), because a workspace where `@bobby` assigns work to one person and mentions
+    another would be worse than having no mentions. An AMBIGUOUS token is flagged and skipped
+    rather than resolved to whoever sorts first: telling the wrong person they were addressed is
+    a harm they cannot detect.
+  - **The update path notified assignees only**, so following a work item you were not assigned
+    to could never have worked. It goes through the RPC now and runs even when a task has no
+    assignees at all.
+  - **`UNANSWERED_QUESTIONS` in `lib/my-work.ts` claimed "what am I blocking" needed task
+    dependencies and "what needs approval" needed an approvals module.** `115` shipped the first
+    two migrations ago and `121` ships the second here. **A documented limitation needs an owner
+    or it becomes a claim the code no longer supports** - the note outlived the schema that
+    closed it by two migrations. It now names two genuinely open gaps (milestones, the client
+    portal), and `lib/my-work.test.ts` asserts the two closed ones never come back.
+
+**My Work now has ten sections and they are a personal preference.** Overdue, Due today, Blocked
+by others, Waiting on approval, Blocking others, In progress, Upcoming, Waiting on someone else,
+Personal tasks, Recently viewed, Assigned to me - order and visibility per user, per browser, in
+`localStorage` (`lib/my-work-preferences.ts`), per `097`'s standing rule that a presentational
+preference does not earn a table. `parseMyWorkPreferences` REPAIRS what it reads: an id that no
+longer exists is dropped and a NEW section is inserted at its default position, so shipping a
+section is not the same as shipping it invisible to everyone who ever opened the panel.
+  - ⚠️ **"Blocking others" means somebody ELSE is stuck**, and `isTaskOwnedBy` counts a task as
+    yours when you are assigned to it **or created it**. The first version of the browser harness
+    seeded "somebody else's work" as unassigned tasks created by the probe user, which are the
+    probe user's own work - so the section correctly reported nothing while the harness insisted
+    it should. A second account is required to test this at all.
+  - ⚠️ **Only relations whose other end this page can RESOLVE are counted.** A relation row is
+    readable only when both tasks are (115's policy), so an unresolvable end means the page
+    filtered it - an archived board. Counting it would put a number on screen with nothing behind
+    it. Stated in the code rather than left silent.
+
+**WorkNext was EXTENDED, not replaced.** `scoreTask(task, now, signals?)` takes an optional
+`WorkSignals`, so every existing caller keeps its exact old ranking (pinned by a test).
+Blocked = -60 with the reason "Blocked by N items", awaiting approval = -40, blocking others =
++20. The penalties deliberately do NOT hide a blocked task: badly-late blocked work still ranks,
+because the right next action there is to go and unblock it. Every signal is read ONCE into a
+local and used for both the score and the reason - the module has already shipped a reason line
+computed from a different expression than its score, and once is enough.
+
+**Two defects only the real browser found**, both fixed and both pinned:
+  - **The unread badge did not follow the page it mirrors.** Marking everything read emptied the
+    inbox and left the bell saying 3 until its next two-minute poll. `lib/notification-events.ts`
+    is a one-line DOM-event channel; a badge that disagrees with the page in front of you is
+    worse than no badge.
+  - **A slow `loadFollowState` overwrote a fast click.** Press Follow before the modal's initial
+    read returns and its stale answer lands afterwards, putting the button back to "Follow" while
+    the database says following. Fixed with a generation ref. It failed one run in three, which
+    is the shape of bug that never shows up in review.
+
+**Where the Inbox is:** `/inbox`, a real route (not a `?tab=`) in the nav for every role, plus a
+bell in `AppTopbar` - rendered OUTSIDE the `actions` fallback on purpose, because every host
+replaces `actions` with its own cluster and a bell inside it would exist on no screen at all.
+Two buckets and no more: the plan says "avoid overclassification", and the only split that
+changes behaviour is "does this need me, or is it telling me something". **Snoozed and Muted are
+their own scopes rather than simply hidden** - a control that makes something vanish with no way
+back is one people stop using - and the Muted view lists the mute rows THEMSELVES, so muting a
+project that has produced nothing yet is still undoable.
+
+⚠️ **An unknown notification `type` classifies as Action Required, not Updates.** Getting it wrong
+towards Updates buries something that needed a person; getting it wrong towards Action Required is
+noise the reader dismisses in one click. Noise is recoverable and a missed hand-off is not.
+
+⚠️ **`scripts/check-recurrence-ui.mjs` cannot finish on this Mac, and it is not Prompt F.** It
+passes 74 checks and then aborts in `page.request.get(...)` with `ECONNREFUSED ::1:3000`. Node
+resolves `localhost` to `::1` first (verified with `dns.lookup`) and `next dev` binds IPv4 only,
+so the Node-side request context fails where the browser's own `page.goto` succeeds. Same family
+as the `db.<ref>.supabase.co` IPv6 note above. Nothing in Prompt F touches the cron route.
 
 ### Prompt E - the shared query/view engine (`118`-`119`, dev AND prod, 2026-08-25)
 

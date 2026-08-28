@@ -3,6 +3,7 @@ import {
   parseQuickCapture,
   stripMatches,
   captureDueTimestamp,
+  findMentions,
   type ParsedCapture,
 } from './quick-capture'
 
@@ -409,5 +410,51 @@ describe('recurrence phrases describe themselves correctly on the chip', () => {
   ])('%s -> %s', (input, expected) => {
     const m = p(input).matches.find((x) => x.field === 'recurrence')
     expect(m?.display).toBe(expected)
+  })
+})
+
+describe('findMentions', () => {
+  const people = [
+    { id: 'bobby', name: 'Bobby Shanks' },
+    { id: 'kayla', name: 'Kayla Viehland' },
+    { id: 'kogan', name: 'Kogan Smith' },
+    { id: 'kayleigh', name: 'Kayleigh Brown' },
+  ]
+
+  it('finds an @name anywhere in free text', () => {
+    expect(findMentions('can you look at this @bobby before friday', people).map((m) => m.id))
+      .toEqual(['bobby'])
+  })
+
+  it('finds several, and never notifies the same person twice', () => {
+    const found = findMentions('@bobby @kogan @bobby take a look', people)
+    expect(found.map((m) => m.id)).toEqual(['bobby', 'kogan'])
+  })
+
+  it('resolves a full name as well as a first name', () => {
+    expect(findMentions('@Kayla.Viehland ping', people).map((m) => m.id)).toEqual(['kayla'])
+  })
+
+  it('flags an ambiguous token rather than picking whoever sorts first', () => {
+    // "kay" prefixes both Kayla and Kayleigh. The caller skips ambiguous hits: telling the
+    // wrong person they were addressed is a harm they have no way to detect.
+    const [hit] = findMentions('@kay please review', people)
+    expect(hit.ambiguous).toBe(true)
+  })
+
+  it('ignores a token that matches nobody, and an email address', () => {
+    expect(findMentions('email bob@example.com about @nobody', people).map((m) => m.id)).toEqual([])
+  })
+
+  it('survives empty and missing input', () => {
+    expect(findMentions('', people)).toEqual([])
+    expect(findMentions('hello @bobby', [])).toEqual([])
+    expect(findMentions(null as any, people)).toEqual([])
+  })
+
+  it('shares its resolution rule with quick capture, so @bobby cannot mean two people', () => {
+    const mentioned = findMentions('Ship it @bobby', people)
+    const assigned = parseQuickCapture('Ship it @bobby', { people }).assignees
+    expect(mentioned.map((m) => m.id)).toEqual(assigned)
   })
 })

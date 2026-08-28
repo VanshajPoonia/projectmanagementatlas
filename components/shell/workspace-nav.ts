@@ -72,8 +72,9 @@ export function boardHref(role: Role, boardId: string): string {
 /**
  * Build the sidebar groups for a viewer.
  *
- * Home and My Work are core: they are not registered modules and cannot be switched off,
- * because a workspace with no way to see your own work isn't a workspace.
+ * Home, My Work and Inbox are core: they are not registered modules and cannot be switched
+ * off, because a workspace with no way to see your own work - or the things addressed to you
+ * personally - isn't a workspace.
  */
 export function buildWorkspaceNav({
   role,
@@ -91,6 +92,10 @@ export function buildWorkspaceNav({
   const items: NavItem[] = [
     { id: homeTab, label: 'Home', icon: 'home', href: tab(homeTab), status: 'live' },
     { id: 'my-work', label: 'My Work', icon: 'inbox-check', href: '/my-work', status: 'live' },
+    // Inbox is core, not a module, for the same reason My Work is: a workspace where the
+    // things addressed to you personally can be switched off is not a workspace. A real
+    // route rather than a `?tab=`, so an admin's /dashboard redirect cannot strip it.
+    { id: 'inbox', label: 'Inbox', icon: 'bell', href: '/inbox', status: 'live' },
     // Views is core, not a module. Prompt E's claim is that the view is not the data - the
     // filter/sort/group model is the foundation the other surfaces sit on, so there is nothing
     // coherent to switch off. A real route, like /my-work and /crm, so `?tab=`'s admin redirect

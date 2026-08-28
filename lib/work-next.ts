@@ -12,6 +12,20 @@
 //   priority - the 1..5 scale (1 = highest, see scripts/046_flip_priority_scale.sql)
 //   momentum - a nudge for work already in progress, so half-done tasks get closed
 //              out instead of accumulating
+//
+// Three more signals arrive from outside the task row itself, and are supplied by the caller
+// as `WorkSignals` because they need queries this module must not run:
+//
+//   blocked  - something has to finish first (task_relations, migration 115). A large
+//              PENALTY: recommending work its owner cannot start is worse than recommending
+//              nothing, because they find out only after opening it.
+//   blocking - other people's work is waiting on this one (also 115). A boost, because the
+//              cost of a day's delay is multiplied by however many items are stuck behind it.
+//   approval - the item's status is flagged is_approval (migration 121). A penalty for the
+//              same reason as blocked: it is parked on somebody else's decision.
+//
+// Every one of them is DETERMINISTIC and every one of them appears in `reasons`. There is no
+// hidden term: if the list ranks something surprisingly, the row says why.
 
 import { getNormalizedTaskStatus } from './task-status'
 import { daysBetween, taskDueDate } from './calendar-grid'
@@ -24,7 +38,31 @@ export interface WorkNextItem {
   reasons: string[]
   /** True when the due date has passed - lets the UI style the row as a warning. */
   isOverdue: boolean
+  /** True when something has to finish first, or somebody has to approve it. */
+  isBlocked: boolean
 }
+
+/**
+ * What the surrounding graph says about one task. Supplied by the caller, never queried here:
+ * this module stays a pure function over data a screen already holds, and the relation and
+ * status-catalog reads belong to the page that owns them.
+ *
+ * Every field defaults to "no signal", so a caller that knows none of this gets exactly the
+ * ranking it got before any of these existed.
+ */
+export interface WorkSignals {
+  /** Open work items that must finish before this one can proceed (`blocked_by`). */
+  blockedBy?: number
+  /** Open work items belonging to somebody else that are waiting on this one (`blocks`). */
+  blocking?: number
+  /** The task sits in a status a super admin has marked as awaiting approval. */
+  awaitingApproval?: boolean
+}
+
+const NO_SIGNALS: WorkSignals = {}
+
+/** How a caller supplies signals per task. */
+export type WorkSignalsFor = (task: any) => WorkSignals
 
 const DEFAULT_PRIORITY = 3
 
@@ -91,22 +129,56 @@ function dueReason(days: number | null): string | null {
   return null
 }
 
-export function scoreTask(task: any, now: Date = new Date()): WorkNextItem {
+/**
+ * Penalty for work that cannot be started, and boost for work other people are stuck behind.
+ *
+ * The penalties are large enough to sink an item below undated work but NOT large enough to
+ * push it off the list entirely: something badly overdue AND blocked still deserves to be
+ * seen, because the right next action there is to go and unblock it.
+ */
+const BLOCKED_PENALTY = 60
+const APPROVAL_PENALTY = 40
+const BLOCKING_BOOST = 20
+
+export function scoreTask(task: any, now: Date = new Date(), signals: WorkSignals = NO_SIGNALS): WorkNextItem {
   const days = daysUntilDue(task?.due_date, now)
   const priority = normalizePriority(task?.priority)
   const inProgress = getNormalizedTaskStatus(task) === 'in_progress'
 
-  const score = urgencyScore(days) + priorityScore(priority) + (inProgress ? 25 : 0)
+  // ⚠️ Read once, into locals, and used for BOTH the score and the reason. The one bug this
+  // module has already shipped was a reason line that tested a different expression from the
+  // one the score used, so every unprioritised task was labelled "High priority".
+  const blockedBy = Math.max(0, Number(signals.blockedBy ?? 0) || 0)
+  const blocking = Math.max(0, Number(signals.blocking ?? 0) || 0)
+  const awaitingApproval = Boolean(signals.awaitingApproval)
 
-  // Ordered so the most decision-relevant reason reads first.
+  const score =
+    urgencyScore(days) +
+    priorityScore(priority) +
+    (inProgress ? 25 : 0) +
+    (blocking > 0 ? BLOCKING_BOOST : 0) -
+    (blockedBy > 0 ? BLOCKED_PENALTY : 0) -
+    (awaitingApproval ? APPROVAL_PENALTY : 0)
+
+  // Ordered so the most decision-relevant reason reads first. Being unable to act at all
+  // outranks a deadline: a due date tells you when, a blocker tells you whether.
   const reasons: string[] = []
+  if (blockedBy > 0) reasons.push(`Blocked by ${blockedBy} item${blockedBy === 1 ? '' : 's'}`)
+  if (awaitingApproval) reasons.push('Waiting on approval')
   const due = dueReason(days)
   if (due) reasons.push(due)
+  if (blocking > 0) reasons.push(`Blocks ${blocking} other item${blocking === 1 ? '' : 's'}`)
   if (priority <= 2) reasons.push(priority === 1 ? 'Highest priority' : 'High priority')
   if (inProgress) reasons.push('Already in progress')
   if (days === null) reasons.push('No due date')
 
-  return { task, score, reasons, isOverdue: days !== null && days < 0 }
+  return {
+    task,
+    score,
+    reasons,
+    isOverdue: days !== null && days < 0,
+    isBlocked: blockedBy > 0 || awaitingApproval,
+  }
 }
 
 /**
@@ -116,10 +188,15 @@ export function scoreTask(task: any, now: Date = new Date()): WorkNextItem {
  * Ties break toward the earlier due date, then the higher priority, so the order is
  * stable across renders rather than depending on the input array's order.
  */
-export function getWorkNext(tasks: any[], limit = 5, now: Date = new Date()): WorkNextItem[] {
+export function getWorkNext(
+  tasks: any[],
+  limit = 5,
+  now: Date = new Date(),
+  signalsFor?: WorkSignalsFor,
+): WorkNextItem[] {
   return (tasks ?? [])
     .filter((task) => !task?.deleted_at && getNormalizedTaskStatus(task) !== 'done')
-    .map((task) => scoreTask(task, now))
+    .map((task) => scoreTask(task, now, signalsFor ? signalsFor(task) : NO_SIGNALS))
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score
 

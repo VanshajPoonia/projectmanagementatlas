@@ -40,6 +40,7 @@ const ROUTES = [
   ['admin-marketing', '/admin?tab=marketing'],
   ['super-admin', '/admin/super-admin'],
   ['my-work', '/my-work'],
+  ['inbox', '/inbox'],
   ['views', '/views'],
   ['crm-dashboard', '/crm'],
   ['crm-orders', '/crm/orders'],

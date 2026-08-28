@@ -197,6 +197,15 @@ export default function AccountSettings({
 
         <div className="space-y-3 border-t pt-4">
           <Label>Email notifications</Label>
+          {/* These four switches are EMAIL only. Everything in-app - what is unread, what is
+              snoozed, which items and projects are muted - lives in the Inbox, and saying so
+              here is the difference between "I turned notifications off" meaning one thing and
+              meaning another. */}
+          <p className="text-xs text-muted-foreground">
+            These control email only. What lands in your{' '}
+            <a href="/inbox" className="underline">Inbox</a> - and what you have muted, followed
+            or snoozed - is managed there.
+          </p>
           <div className="space-y-3">
             {NOTIFICATION_OPTIONS.map(({ key, column, label, description }) => (
               <div key={key} className="flex items-center justify-between gap-3">

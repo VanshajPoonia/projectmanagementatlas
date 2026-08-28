@@ -18,9 +18,11 @@ import {
 import { ThemeControls } from '@/components/theme/theme-controls'
 import { Breadcrumbs, type Crumb } from './breadcrumbs'
 import { HelpDialog } from './help-dialog'
+import { InboxBell } from '@/components/notifications/inbox-bell'
 
 interface AppTopbarProps {
-  user: { full_name?: string | null; email?: string | null }
+  /** `id` feeds the Inbox bell's unread count; the rest is the account menu. */
+  user: { id?: string | null; full_name?: string | null; email?: string | null }
   breadcrumbs: Crumb[]
   onOpenCommand: () => void
   /** Host-supplied right-side controls (e.g. accent picker, account settings). When
@@ -65,6 +67,11 @@ export function AppTopbar({ user, breadcrumbs, onOpenCommand, actions }: AppTopb
           ⌘K
         </kbd>
       </Button>
+
+      {/* Outside the `actions` fallback on purpose: every host replaces `actions` with its
+          own cluster, so a bell rendered in there would exist on no screen at all - the
+          "working control nobody can reach" defect this repo keeps rediscovering. */}
+      <InboxBell userId={user.id} />
 
       <HelpDialog />
 

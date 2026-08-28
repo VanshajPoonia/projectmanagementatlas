@@ -475,6 +475,46 @@ function matchPerson(
   return null
 }
 
+/** One resolved `@name` inside a piece of free text. */
+export interface Mention {
+  /** The profile id. */
+  id: string
+  name: string
+  /** The token as typed, without the `@`. */
+  token: string
+  /** True when the token matched more than one person - see below. */
+  ambiguous: boolean
+}
+
+/**
+ * Every `@name` in free text that resolves to a real person.
+ *
+ * Shares `matchPerson` with quick capture on purpose: a workspace where "@bobby" assigns work
+ * to one person and mentions another would be worse than having no mentions at all, and two
+ * resolvers is two chances for that to happen.
+ *
+ * Ambiguous hits are RETURNED AND FLAGGED rather than dropped or silently resolved. A caller
+ * notifying people should skip them - telling the wrong person they were addressed is a small
+ * harm, but it is one they cannot detect - while a caller rendering the comment can use the
+ * flag to say why the mention did not go anywhere. Deduplicated by person, so "@ann @ann"
+ * notifies Ann once.
+ */
+export function findMentions(text: string, people: { id: string; name: string }[]): Mention[] {
+  const seen = new Set<string>()
+  const found: Mention[] = []
+
+  for (const m of String(text ?? '').matchAll(/@([\p{L}\p{N}][\p{L}\p{N}_.'-]*)/gu)) {
+    const token = m[1]
+    const hit = matchPerson(token, people ?? [])
+    if (!hit) continue
+    if (seen.has(hit.person.id)) continue
+    seen.add(hit.person.id)
+    found.push({ id: hit.person.id, name: hit.person.name, token, ambiguous: hit.ambiguous })
+  }
+
+  return found
+}
+
 /** The due_date value to write: a timestamp when a time was given, midnight otherwise. */
 export function captureDueTimestamp(parsed: ParsedCapture): string | null {
   if (!parsed.dueDate) return null

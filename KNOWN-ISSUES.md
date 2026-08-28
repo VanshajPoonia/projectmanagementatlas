@@ -4,7 +4,7 @@ Running list of bugs found, trade-offs accepted, and things deliberately left
 undone. Add to it rather than fixing silently - the point is that nothing gets
 rediscovered from scratch six months later.
 
-Last updated: 2026-08-21
+Last updated: 2026-08-28
 
 ---
 
@@ -24,6 +24,27 @@ not in the pipeline.
 **Fix:** add a flat config, then add the `lint` step to CI. Expect a backlog of
 findings on first run; land the config with rules calibrated to what the repo
 already does rather than to a default preset.
+
+### `pnpm check:recurrence-ui` cannot finish on this machine
+
+It passes 74 checks and then aborts in its last section with
+`apiRequestContext.get: connect ECONNREFUSED ::1:3000`.
+
+Node resolves `localhost` to `::1` before `127.0.0.1` (verified:
+`dns.lookup('localhost', {all:true})` returns the IPv6 address first) and
+`next dev` binds IPv4 only. Playwright's `page.request` runs in Node, so it
+fails where the browser's own `page.goto` succeeds - which is why every earlier
+check in the same run passes. Same family as the IPv6-only
+`db.<ref>.supabase.co` note in CLAUDE.md.
+
+**Consequence:** the three assertions about `/api/cron/scheduled-work`'s auth
+are unverifiable here. The route itself was verified by curl when it shipped.
+
+**Fix:** point that harness's `page.request` calls at `127.0.0.1` rather than
+`localhost`. Not done in Prompt F because a blind edit to an unrelated harness
+that could not be run end to end here is worse than a recorded limitation -
+`BASE_URL=http://127.0.0.1:3000` made sign-in itself time out, so the change
+needs its own session.
 
 ### `pnpm-workspace.yaml` placeholders keep coming back
 

@@ -274,7 +274,9 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   DEPLOYED** (merged to `main` as `2142cc8`, live 2026-08-27, deployment status `success`).
   That cleanup was meant to be three small items and turned up **two live production bugs**
   instead - read the Prompt-F entry below before starting F. It carried no SQL, so there was
-  no migration to sequence ahead of the merge; dev and prod both remain at `119`.
+  no migration to sequence ahead of the merge. ⚠️ **That sentence used to end "dev and prod both
+  remain at `119`" - both are at `122` now** (Prompt F, below). Run `pnpm migrate:status` rather
+  than trusting any number written here; this line has gone stale repeatedly.
 - ⚠️⚠️ **`tasks.due_date` is `TIMESTAMPTZ`, NOT a `DATE` column.** It stores MIDNIGHT on the
   chosen day, and there are two writers producing two shapes (`T00:00:00+00:00` from
   `create-task-dialog`'s `<input type="date">`, `T05:00:00+00:00` from `task-detail-modal`'s
@@ -289,16 +291,52 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
     sends** - My Work's were `toISOString()` timestamps, Prompt E's were bare `'2026-08-25'`
     strings, and each suite tested the one shape its own bug could not reach. When writing a
     fixture for a column, **query the column first and paste what it really returns.**
-- NEXT actual work is NOT decided - ASK THE OWNER. The owner has said they intend **Prompt F**
-  (My Work sections, WorkNext reasons, and the Inbox) next, but has not started it. Other open
-  candidates: **Prompt B**'s one honest gap (membership **audit events**). Also open: the
-  **Inbox** (Prompt F) - needs **no new table**, `task_notifications` (migration `035`) already
-  exists with inbox-shaped RLS (84 rows on the dev clone, split `assignment` 58 / `update` 26 -
-  which is already Prompt F's two-bucket shape; the prod count has not been re-read this session),
-  and now that the toast no longer eats them
-  unread state finally accumulates (open question: what to do with the ~121 already-unread
-  rows, some from June) - and work-item **context actions in ⌘K** (blocked: `board-view.tsx`
-  renders outside `AppShell`, so the shell has no selected-item context).
+- ✅ **Prompt F is SHIPPED to dev AND prod (`120`-`122`, 2026-08-28).** `/inbox` is a real route
+  in the nav for every role, with an unread bell in the topbar. All three migrations are purely
+  additive and `--allow-prod` eligible on the standing rule - **unlike `113` and `118`, none
+  needed an owner override.** Applied one file at a time with `--only=NNN --allow-prod`, verified
+  between each, after a `pg_restore --list`-verified backup (`~/Code/prod-backup-pre-120to122-20260828-140156.dump`,
+  55 tables). Prod went 119 -> 122, `pending: 0`, with **every row count identical before and
+  after**: 173 tasks, 11 boards, 46 columns, 10 profiles, 5 statuses, 193 notifications of which
+  133 unread.
+  - `120` - `snoozed_until` + `entity_type`/`entity_id` on `task_notifications`, plus
+    `task_follows` and `board_mutes`. Seeds nothing. **No new notifications table**: 035 already
+    had inbox-shaped RLS and 84 rows on dev, and a second inbox means two unread counts that
+    disagree.
+  - `121` - `task_statuses.is_approval`, seeded for `key = 'pending_approval'` by EXACT match.
+    Dev seeded 0 rows (no such status there); **prod seeded exactly 1**. ⚠️ **Its live effect is
+    3 tasks, all on Marketing PM Sheet** - CLAUDE.md's `112` note said "one live task sits in
+    that column" and that was true in August, so re-count before reasoning about it. They keep
+    category `started`, so no dashboard or report count moved; their assignees now see them
+    under "Waiting on approval" and WorkNext stops recommending them. Reversible with one UPDATE
+    (the migration header has it).
+  - `122` - `notify_task_watchers`, SECURITY DEFINER, `authenticated`-only. It exists because
+    `120` made follows private, so the person writing a comment cannot see who follows the task.
+  - Gates: `pnpm check:inbox` (49, real RLS), `pnpm check:inbox-ui` (32, real browser, stable
+    across four consecutive runs), `pnpm check:my-work` (33, was 20). 1573 unit tests under all
+    four timezones; `next build` clean with the dev ref confirmed baked.
+  - **What was actually broken:** commenting sent EMAIL and no in-app notification at all, and
+    the update path notified assignees only - so following a work item could never have worked.
+    Both fixed. `@name` mentions now notify, sharing quick capture's own resolver so `@bobby`
+    cannot mean two different people on two screens.
+  - **`UNANSWERED_QUESTIONS` was stale, not blocked.** It told users "what am I blocking?" needed
+    task dependencies and "what needs approval?" needed an approvals module; `115` shipped the
+    first two migrations earlier and `121` ships the second. Both now have real sections, and a
+    test asserts they do not come back to the list.
+  - **WorkNext was EXTENDED, not replaced** - optional `WorkSignals`, every existing caller keeps
+    its exact ranking (pinned by a test), and blocked/blocking/approval each carry a visible
+    reason computed from the same numbers as the score.
+  - **Deliberately not built:** digest preferences (the prompt says "later"), and following a
+    whole BOARD - that needs notification generation nothing currently does, and a control wired
+    to nothing is this repo's most-repeated defect.
+- NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **Prompt G** (optional agile
+  mode - the pack's next prompt, and explicitly optional);
+  **Prompt B**'s one honest gap (membership **audit events**); and work-item **context actions in
+  ⌘K** (blocked: `board-view.tsx` renders outside `AppShell`, so the shell has no selected-item
+  context). Still open as a data question, unchanged by Prompt F: what to do with the ~121
+  already-unread notification rows on prod, some from June - measured 2026-08-28 it is **133**
+  unread of 193, not the ~121 this file used to claim. The Inbox now shows them as a backlog
+  rather than eating them, so "show it" is the current behaviour by default.
 - **`095` closed the anon-grant gap (dev only).** `anon` now holds nothing on any table,
   sequence or function in `public`, and the *default privileges* are narrowed so new
   tables don't inherit it. `authenticated` keeps all its DML; only TRUNCATE/REFERENCES/

@@ -183,6 +183,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null)
   const [boardTags, setBoardTags] = useState<any[]>([])
   const [taskDetailOpen, setTaskDetailOpen] = useState(false)
+  const [highlightCommentId, setHighlightCommentId] = useState<string | null>(null)
   const [taskDetailTab, setTaskDetailTab] = useState<'comments' | 'activity'>('comments')
   const [chatDialogOpen, setChatDialogOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
@@ -219,6 +220,10 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     const taskParam = searchParams.get('task')
     if (taskParam) {
       setSelectedTaskId(taskParam)
+      // A notification about a comment carries the comment's id, so the reader lands on the
+      // comment rather than on a task with a conversation somewhere in it. Captured into
+      // state before the router.replace below strips the query string.
+      setHighlightCommentId(searchParams.get('comment'))
       setTaskDetailOpen(true)
       router.replace(buildBoardHref(platformRole, board.id))
     }
@@ -2213,6 +2218,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           onClose={() => {
             setTaskDetailOpen(false)
             setSelectedTaskId(null)
+            setHighlightCommentId(null)
           }}
           onUpdate={async () => {
             await refreshColumns()
@@ -2225,6 +2231,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
           boardRole={boardRole}
           columns={columns}
           initialTab={taskDetailTab}
+          highlightCommentId={highlightCommentId}
         />
       )}
 

@@ -80,7 +80,7 @@ const TODAY = businessToday()
 const YESTERDAY = shift(TODAY, -1)
 const TOMORROW = shift(TODAY, 1)
 
-let browser, userId, boardId
+let browser, userId, colleagueId, boardId, approvalKey
 const email = `myworkui-${stamp}@goatlasgo.us`
 const password = `Probe!${stamp}aA`
 const consoleErrors = []
@@ -136,6 +136,36 @@ try {
     return data
   }
 
+  // ---------------------------------------------------------------------------------------
+  // Prompt F fixtures: the questions this page used to name as unanswerable.
+  //
+  // ⚠️ A SECOND ACCOUNT IS REQUIRED, and the first version of this harness got it wrong.
+  // `isTaskOwnedBy` counts a task as yours when you are assigned to it OR CREATED IT - raising
+  // a task is a claim on it. So an "unassigned" task created by the probe user is still the
+  // probe user's work, and "Blocking others" correctly reported nothing while the harness
+  // insisted it should. Somebody else's work has to actually belong to somebody else.
+  // ---------------------------------------------------------------------------------------
+  const colleagueEmail = `myworkui-mate-${stamp}@goatlasgo.us`
+  const { data: colleague, error: mateErr } = await admin.auth.admin.createUser({
+    email: colleagueEmail, password: `Probe!${stamp}bB`, email_confirm: true,
+  })
+  if (mateErr) throw new Error(`createUser(colleague): ${mateErr.message}`)
+  colleagueId = colleague.user.id
+  await admin.from('profiles').upsert(
+    { id: colleagueId, email: colleagueEmail, full_name: 'My Work Colleague', role: 'user', is_active: true },
+    { onConflict: 'id' },
+  )
+
+  const seedTheirs = async (title, extra = {}) => {
+    const { data, error } = await admin.from('tasks').insert({
+      column_id: col.id, title: `${title}-${stamp}`, position: 0, created_by: colleagueId,
+      visibility: 'board', status: 'to_do', ...extra,
+    }).select('id').single()
+    if (error) throw new Error(`seedTheirs(${title}): ${error.message}`)
+    await admin.from('task_assignees').insert({ task_id: data.id, user_id: colleagueId })
+    return data
+  }
+
   const todayTask = await seed('DUETODAY', TODAY, { priority: 3 })
   await seed('DUEYESTERDAY', YESTERDAY, { priority: 3 })
   await seed('DUETOMORROW', TOMORROW, { priority: 3 })
@@ -147,6 +177,41 @@ try {
   // the day it means is the UTC date part - `2026-08-27T00:00:00+00:00`. This check is written
   // the way it is because the first version asserted a bare `YYYY-MM-DD` and failed, which is
   // how the real column shape was discovered. Assert what the database actually stores.
+  // BLOCKED is mine and cannot start; BLOCKER is not mine and is open.
+  const blockedTask = await seed('BLOCKED', TOMORROW, { priority: 3 })
+  const blockerTask = await seedTheirs('BLOCKER')
+  await admin.from('task_relations').insert({
+    source_task_id: blockerTask.id, target_task_id: blockedTask.id, relation_type: 'blocks', created_by: userId,
+  })
+
+  // BLOCKING is mine and something that is NOT mine is stuck behind it.
+  const blockingTask = await seed('BLOCKING', TOMORROW, { priority: 3 })
+  const waitingTask = await seedTheirs('WAITING')
+  await admin.from('task_relations').insert({
+    source_task_id: blockingTask.id, target_task_id: waitingTask.id, relation_type: 'blocks', created_by: userId,
+  })
+
+  // A status flagged is_approval (migration 121), on its own column so the lifecycle trigger
+  // leaves the task where it is put.
+  approvalKey = `mywork_approval_${stamp}`
+  const { data: lastPos } = await admin.from('task_statuses')
+    .select('position').order('position', { ascending: false }).limit(1)
+  await admin.from('task_statuses').insert({
+    key: approvalKey, label: `Awaiting sign-off ${stamp}`, color: '#8b5cf6',
+    position: (lastPos?.[0]?.position ?? 0) + 1, category: 'started', is_approval: true,
+  })
+  const { data: approvalCol } = await admin.from('columns')
+    .insert({ board_id: boardId, title: `Awaiting sign-off ${stamp}`, position: 1, status_key: approvalKey })
+    .select('id').single()
+  const { data: approvalTask } = await admin.from('tasks').insert({
+    column_id: approvalCol.id, title: `APPROVAL-${stamp}`, position: 0, created_by: userId,
+    visibility: 'board', status: approvalKey,
+  }).select('id, column_id').single()
+  if (approvalTask.column_id !== approvalCol.id) {
+    throw new Error('the lifecycle trigger moved the approval fixture; the assertions below would test the wrong row')
+  }
+  await admin.from('task_assignees').insert({ task_id: approvalTask.id, user_id: userId })
+
   check('the due date is stored as midnight on the intended day',
     String(todayTask.due_date).startsWith(TODAY),
     `stored ${todayTask.due_date}, expected an instant on ${TODAY}`)
@@ -261,6 +326,80 @@ try {
     `reasons rendered for the unset-priority task: ${reasonsAfter.slice(0, 160)}`)
 
   // =======================================================================================
+  section('Prompt F: the questions this page used to call unanswerable')
+  // =======================================================================================
+  // Both of these were listed on screen as gaps needing "task dependencies" and "an approvals
+  // module" for weeks after migrations 115 and 121 shipped the schema that closes them.
+  const blockedRows = await until(() => sectionTasks('blocked'), (r) => r.length > 0)
+  check('work with an open blocker is filed under "Blocked by others"',
+    blockedRows.some((r) => r.includes('BLOCKED')), `rows: ${JSON.stringify(blockedRows)}`)
+
+  const blockingRows = await sectionTasks('blocking')
+  check('work somebody else is stuck behind is filed under "Blocking others"',
+    blockingRows.some((r) => r.includes('BLOCKING')), `rows: ${JSON.stringify(blockingRows)}`)
+  check('and my own sequencing is not reported as blocking a colleague',
+    !blockingRows.some((r) => r.includes('BLOCKED-')), `rows: ${JSON.stringify(blockingRows)}`)
+
+  const approvalRows = await sectionTasks('awaiting-approval')
+  check('work in an is_approval status is filed under "Waiting on approval"',
+    approvalRows.some((r) => r.includes('APPROVAL')), `rows: ${JSON.stringify(approvalRows)}`)
+
+  const gapsText = await page.locator('#my-work-gaps').locator('..').innerText().catch(() => '')
+  check('the page no longer claims blocking and approval are unanswerable',
+    !/task dependencies/i.test(gapsText) && !/approvals module/i.test(gapsText),
+    `gap note still reads: ${gapsText.replace(/\n/g, ' ').slice(0, 200)}`)
+
+  const blockedStat = await statValue('stat-blocked')
+  check('the Blocked headline count agrees with the section', blockedStat === 1,
+    `Blocked reads ${blockedStat}, expected 1`)
+
+  // ⚠️ Deprioritised, not hidden. A blocked task must still be reachable - the next action is
+  // to go and clear the blocker - so the assertion is about ORDER, not absence.
+  const rankedText = await page.locator('[data-section="work-next"]').first().innerText()
+  const blockedIdx = rankedText.indexOf('BLOCKED-')
+  const blockingIdx = rankedText.indexOf('BLOCKING-')
+  check('the shortlist ranks work that blocks others above work that is itself blocked',
+    blockingIdx >= 0 && (blockedIdx === -1 || blockingIdx < blockedIdx),
+    `blocking at ${blockingIdx}, blocked at ${blockedIdx}`)
+  check('and it says WHY, rather than showing an unexplained score',
+    /Blocks 1 other item/.test(rankedText) || /Blocked by 1 item/.test(rankedText),
+    `shortlist reasons: ${rankedText.slice(0, 400)}`)
+
+  // =======================================================================================
+  section('Section order and visibility are a personal preference')
+  // =======================================================================================
+  // ⚠️ Assert the section is ON SCREEN before hiding it. Without this the "unticking removes
+  // it" check passes trivially for a section that was empty all along - a control case that
+  // passes for the wrong reason, which is worse than no case at all.
+  const blockingPresent = await page.locator('[data-section="blocking"]').count()
+  check('PRECONDITION: the section being hidden is actually rendered first', blockingPresent > 0)
+
+  await page.click('#my-work-customize')
+  await page.waitForSelector('#my-work-section-blocking', { timeout: 15000 })
+  await page.click('#my-work-section-blocking')
+  const blockingGone = await until(
+    () => page.locator('[data-section="blocking"]').count(), (n) => n === 0, 15000)
+  check('unticking a section really removes it from the page', blockingGone === 0)
+
+  // Per browser, per user. The reload is the check that matters: a preference that does not
+  // survive one is a preference nobody will set twice.
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  const stillGone = await until(
+    () => page.locator('[data-section="blocking"]').count(), (n) => n === 0, 20000)
+  check('and the choice survives a reload', stillGone === 0)
+
+  const untouched = await until(() => page.locator('[data-section="blocked"]').count(), (n) => n > 0, 20000)
+  check('CONTROL: hiding one section leaves the others alone', untouched > 0)
+
+  await page.click('#my-work-customize')
+  await page.waitForSelector('#my-work-reset', { timeout: 15000 })
+  await page.click('#my-work-reset')
+  const restored = await until(
+    () => page.locator('[data-section="blocking"]').count(), (n) => n > 0, 15000)
+  check('Reset to default brings every section back', restored > 0)
+  await page.keyboard.press('Escape')
+
+  // =======================================================================================
   section('The module toggles do what their label says')
   // =======================================================================================
   // Both used to be badged "toggle not consumed yet" in Super Admin long after they were wired.
@@ -337,13 +476,24 @@ try {
     if (colIds.length) {
       const { data: ts } = await admin.from('tasks').select('id').in('column_id', colIds)
       const taskIds = (ts ?? []).map((t) => t.id)
-      if (taskIds.length) await admin.from('task_assignees').delete().in('task_id', taskIds)
+      if (taskIds.length) {
+        await admin.from('task_assignees').delete().in('task_id', taskIds)
+        // task_relations cascades from tasks, but deleting explicitly keeps a failed run from
+        // leaving a relation pointing at a task this teardown could not remove.
+        await admin.from('task_relations').delete().in('source_task_id', taskIds)
+        await admin.from('task_relations').delete().in('target_task_id', taskIds)
+      }
       await admin.from('tasks').delete().in('column_id', colIds)
       await admin.from('columns').delete().in('id', colIds)
     }
     await admin.from('boards').delete().eq('id', boardId)
   }
+  if (approvalKey) await admin.from('task_statuses').delete().eq('key', approvalKey)
   if (userId) await admin.auth.admin.deleteUser(userId).catch(() => {})
+  if (colleagueId) {
+    await admin.from('profiles').delete().eq('id', colleagueId)
+    await admin.auth.admin.deleteUser(colleagueId).catch(() => {})
+  }
   console.log('\ncleaned up test fixtures.')
   console.log(failures === 0 ? `\n${checks}/${checks} checks passed` : `\n${failures} of ${checks} check(s) FAILED.`)
   process.exit(failures === 0 ? 0 : 1)

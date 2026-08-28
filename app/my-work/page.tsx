@@ -46,12 +46,27 @@ export default async function MyWorkPage() {
   // rather than rendering the fallback and correcting itself. See lib/shell-data.ts.
   const shell = await loadShellData(supabase)
 
+  // The three reads that answer the questions this page used to name as gaps. All are
+  // RLS-filtered; none of them re-implements visibility.
+  //
+  // ⚠️ `task_relations_expanded` is a security_invoker view (migration 115), so it returns
+  // only relations where BOTH ends are visible to this caller. That is why an unresolvable
+  // other end means "the page filtered it", not "hidden from you" - see relationSignals.
+  const [relationsResult, approvalStatusResult, personalResult] = await Promise.all([
+    supabase.from('task_relations_expanded').select('id,task_id,related_task_id,relation,is_inverse'),
+    supabase.from('task_statuses').select('key').eq('is_approval', true),
+    supabase.from('personal_tasks').select('*').eq('user_id', user.id).eq('is_done', false),
+  ])
+
   // The server's instant, so "today" means the same thing on both renders. Without it the page
   // reads the wall clock during render and hydration disagrees across a day boundary.
   return (
     <MyWorkView
       user={profile}
       tasks={tasks}
+      relations={relationsResult.data ?? []}
+      approvalStatusKeys={(approvalStatusResult.data ?? []).map((row: any) => row.key)}
+      personalTasks={personalResult.data ?? []}
       shell={shell}
       loadFailed={Boolean(tasksError)}
       now={new Date().toISOString()}
