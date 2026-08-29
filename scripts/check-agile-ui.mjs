@@ -108,6 +108,17 @@ try {
   const a = await seedTask('AGILEWORK-A', 'to_do', 5)
   const b = await seedTask('AGILEWORK-B', 'to_do', 3)
   const c = await seedTask('AGILEWORK-C', 'to_do', null)
+  // ⚠️ Three more that are NEVER planned into the window. The reorder section runs after the
+  // sprint has been filled and started, and the backlog is by definition work that is not in a
+  // live window - so without these it is empty by then and "no menu item" would look like a
+  // missing feature rather than an empty list.
+  const bl1 = await seedTask('BACKLOG-ONE', 'to_do', 1)
+  const bl2 = await seedTask('BACKLOG-TWO', 'to_do', 1)
+  const bl3 = await seedTask('BACKLOG-THREE', 'to_do', 1)
+  // Distinct positions, so "move to top" has an unambiguous before and after.
+  await admin.from('tasks').update({ position: 10 }).eq('id', bl1)
+  await admin.from('tasks').update({ position: 11 }).eq('id', bl2)
+  await admin.from('tasks').update({ position: 12 }).eq('id', bl3)
 
   // Remember the module's real state so the run leaves the workspace exactly as it found it.
   const { data: moduleRow } = await admin.from('app_modules').select('enabled').eq('module_key', 'agile').single()
@@ -118,12 +129,35 @@ try {
   const page = await context.newPage()
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push({ text: m.text(), url: page.url() }) })
 
+  /**
+   * ⚠️ PRESS UNTIL IT TAKES. `waitUntil: 'domcontentloaded'` returns on server-rendered HTML,
+   * and the form's submit handler does not exist until React has hydrated - so on a dev server
+   * busy recompiling, the first click lands on inert markup and simply does nothing. The result
+   * is a bare 40-second `waitForURL` timeout that reads like broken auth: measured here as one
+   * run in two, while `signInWithPassword` against the same project answered in 632ms.
+   *
+   * This is the same lesson already recorded for the `C` shortcut in check-recurrence-ui, one
+   * layer earlier in the page's life.
+   */
   const signIn = async () => {
     await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' })
     await page.fill('input[type="email"]', email)
     await page.fill('input[type="password"]', password)
-    await page.click('button[type="submit"]')
-    await page.waitForURL(/\/admin|\/dashboard/, { timeout: 60000 })
+
+    const deadline = Date.now() + 60000
+    while (Date.now() < deadline) {
+      await page.click('button[type="submit"]').catch(() => {})
+      try {
+        await page.waitForURL(/\/admin|\/dashboard/, { timeout: 6000 })
+        return
+      } catch {
+        // Report what the PAGE says rather than pressing forever against a real refusal.
+        const shown = await page.locator('[role="alert"], .text-destructive, [data-slot="alert"]')
+          .first().innerText({ timeout: 500 }).catch(() => '')
+        if (shown.trim()) throw new Error(`the login page says: ${shown.trim()}`)
+      }
+    }
+    throw new Error('sign-in never navigated, and the page showed no error')
   }
   // Three attempts: a cold `next dev` compiles /login, the auth round-trip and the dashboard on
   // first hit, and a timeout here reports "1 of 0 checks FAILED", which reads like a broken
@@ -228,9 +262,15 @@ try {
     (rows) => rows.length >= 1,
   )
   check('work planned in from the backlog reaches the database', planned.length >= 1)
+  // ⚠️ Compared against what this run actually seeded, never a literal. It used to say `=== 3`,
+  // which quietly became wrong the moment the fixture grew - reporting "the module forked the
+  // work item" about a harness that had simply created more tasks. A count assertion pinned to
+  // a number rather than to its source is a false alarm waiting for the next edit.
+  const taskCount = (await admin.from('tasks')
+    .select('id', { count: 'exact', head: true }).eq('column_id', columnIds.to_do)).count
   check('and it is a POINTER, not a copy - the task itself is untouched',
-    (await admin.from('tasks').select('id', { count: 'exact', head: true }).eq('column_id', columnIds.to_do)).count === 3,
-    'a second row would mean the module had forked the work item')
+    taskCount === taskIds.length,
+    ` rows in the column,  seeded - an extra row would mean the module had forked the work item`)
 
   // Push it over capacity (6) by adding B (3) and A (5) = 8.
   await admin.from('sprint_items').insert({ sprint_id: sprintRow.id, task_id: b })
@@ -263,6 +303,71 @@ try {
   )
   check('starting it marks everything in it as committed', committed.length === 3 && committed.every((r) => r.committed),
     JSON.stringify(committed))
+
+  // =======================================================================================
+  section('Priority order can actually be changed, and refuses when it cannot be honest')
+  // =======================================================================================
+  // Prompt G's backlog requirement is "prioritized ordering ... allow drag and explicit menu
+  // actions". The menu actions are the half that works on a phone and from a keyboard, and
+  // they were the half that did not exist: `moveInBacklog` sat in the library with no caller.
+  await page.goto(`${BASE}/agile?board=${boardId}`, { waitUntil: 'domcontentloaded' })
+  await page.click('#agile-tab-backlog')
+  await page.waitForSelector('#agile-backlog-search', { timeout: 20000 })
+
+  // The backlog defaults to "Open only", which is a filter - so reordering starts unavailable
+  // and says so. That message existing is the check.
+  const gated = await until(() => page.locator('#agile-reorder-unavailable').count(), (n) => n > 0)
+  check('with a filter on, the screen says why priority order cannot be changed', gated > 0)
+
+  await page.click('#agile-open-only')
+  const ungated = await until(() => page.locator('#agile-reorder-unavailable').count(), (n) => n === 0)
+  check('clearing the filter removes that message', ungated === 0)
+
+  // BACKLOG-THREE sits last of the three, so "Move to top" has somewhere to go.
+  const backlogIds = [bl1, bl2, bl3]
+  const before = (await admin.from('tasks').select('id, position').in('id', backlogIds)).data ?? []
+  const target = [...before].sort((x, y) => (y.position ?? 0) - (x.position ?? 0))[0]
+
+  const rowMenu = page.locator(`div:has(> div > button:text-is("BACKLOG-THREE-${stamp}")) button[aria-label^="Actions for"]`).first()
+  let reordered = false
+  for (let attempt = 0; attempt < 8 && !reordered; attempt++) {
+    await rowMenu.click({ timeout: 5000 }).catch(async () => {
+      await page.locator('button[aria-label^="Actions for"]').last().click().catch(() => {})
+    })
+    const top = page.locator('[role="menuitem"]:has-text("Move to top")').first()
+    reordered = await top.isVisible().catch(() => false)
+    if (reordered) { await top.click(); break }
+    await page.keyboard.press('Escape').catch(() => {})
+    await new Promise((r) => setTimeout(r, 300))
+  }
+  check('a work item offers "Move to top" once the list is complete', reordered)
+
+  if (reordered) {
+    // ⚠️ Poll on the FINAL condition, not on a weaker one. A reorder renumbers the whole column
+    // one row at a time, so "the moved item reached 0" becomes true after the FIRST write - and
+    // reading the column at that moment catches it mid-sequence and reports duplicate positions
+    // that are simply not finished yet. Measured: this exact check failed with [0,0,1,2,10,11],
+    // which was three of six writes, not a bug. Wait for the shape you are asserting.
+    //
+    // Asserted over the WHOLE column, not just the three backlog rows: the column also holds
+    // the work already planned into the window, and the renumber has to produce one dense
+    // sequence across all of it - otherwise two tasks share a position and the board's own
+    // drag-and-drop inherits an order nobody chose.
+    const readColumn = async () => (await admin.from('tasks').select('id, position')
+      .eq('column_id', columnIds.to_do).is('deleted_at', null).is('archived_at', null)).data ?? []
+    const isDense = (rows) => {
+      const ps = rows.map((r) => Number(r.position)).sort((x, y) => x - y)
+      return ps.length > 0 && ps.every((p, i) => p === i)
+    }
+    const whole = await until(readColumn, isDense)
+    const positions = whole.map((r) => Number(r.position)).sort((x, y) => x - y)
+    check('the whole column is renumbered densely - no gaps, no duplicate positions',
+      isDense(whole), `${whole.length} rows: ${JSON.stringify(positions)}`)
+
+    const moved = whole.find((r) => r.id === target?.id)
+    check('and the moved item really sits at the top in the database', Number(moved?.position) === 0,
+      `${target?.id} is now at ${moved?.position}, was ${target?.position}`)
+  }
 
   // =======================================================================================
   section('Every metric explains itself')
@@ -380,6 +485,12 @@ try {
     await page.goto(`${BASE}/admin/board/${boardId}?task=${taskId}`, { waitUntil: 'domcontentloaded' })
     try {
       await page.locator('[role="dialog"]').first().waitFor({ state: 'visible', timeout: 30000 })
+      // ⚠️ Then wait for the deep-link parameter to be stripped. board-view opens the modal and
+      // immediately `router.replace`s `?task=` away, and that navigation re-renders the modal -
+      // so an edit typed before it lands is reverted by the reload that follows, silently.
+      // Observed as one flaky run in two: typed 13, stored 3, no error and no console message.
+      await page.waitForFunction(() => !window.location.search.includes('task='), null, { timeout: 15000 })
+        .catch(() => {})
       return true
     } catch { return false }
   }
@@ -414,6 +525,11 @@ try {
     check('the field arrives already holding the stored estimate, not empty', await fieldSettled('3'),
       `reads "${await page.locator('#task-estimate').inputValue()}"`)
     await page.locator('#task-estimate').fill('13')
+    // Belt and braces: confirm the field still holds what was typed at the moment of saving.
+    // If a late load reverted it, retype rather than asserting against a value the form never
+    // had - the assertion below is about whether SAVING works, not about the race above it.
+    const held = await fieldSettled('13')
+    if (!held) { await page.locator('#task-estimate').fill('13'); await fieldSettled('13') }
     // The modal's submit is labelled "Update Task", not "Save" - located by its real text
     // rather than by a guess, so a rename shows up as a failure here instead of a timeout.
     await page.locator('button:has-text("Update Task")').first().click()
@@ -505,11 +621,23 @@ try {
     await admin.from('sprints').delete().eq('board_id', boardId)
     await admin.from('board_agile_settings').delete().eq('board_id', boardId)
   }
-  for (const id of taskIds) {
-    await admin.from('task_assignees').delete().eq('task_id', id)
-    await admin.from('tasks').delete().eq('id', id)
-  }
+  // ⚠️ Scoped to the BOARD, not to the ids this run happens to have tracked. A run that aborts
+  // early (sign-in timing out, say) leaves rows the tracking array never saw, and
+  // `prevent_nonempty_column_delete` then refuses the column delete, which refuses the board
+  // delete - so the sandbox silently accumulates fixtures. Observed once, and cleaned by hand.
   if (boardId) {
+    const { data: cols } = await admin.from('columns').select('id').eq('board_id', boardId)
+    const colIds = (cols ?? []).map((c) => c.id)
+    if (colIds.length) {
+      const { data: strays } = await admin.from('tasks').select('id').in('column_id', colIds)
+      for (const t of strays ?? []) {
+        await admin.from('sprint_items').delete().eq('task_id', t.id)
+        await admin.from('task_assignees').delete().eq('task_id', t.id)
+      }
+      // Children first: a subtask holds a foreign key to its parent.
+      await admin.from('tasks').delete().in('column_id', colIds).not('parent_task_id', 'is', null)
+      await admin.from('tasks').delete().in('column_id', colIds)
+    }
     await admin.from('columns').delete().eq('board_id', boardId)
     await admin.from('boards').delete().eq('id', boardId)
   }

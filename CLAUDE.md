@@ -342,7 +342,7 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `127`. **Dev is at `126`; prod has 1-124 and 126,
+- Migrations: numbered SQL in `scripts/`, continuing from `128`. **Dev is at `127`; prod has 1-124, 126 and 127,
   with `125` deliberately never applied, as of 2026-08-29** - so prod reports 1 pending
   forever. See the Prompt G section for why. As always, run
   `pnpm migrate:status` rather than trusting this sentence - it has gone stale three times. Wrap in `BEGIN; … COMMIT;`,
@@ -1210,10 +1210,11 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
     happen to sort. Query either end, or use a directional relation type in the fixture.
 
 
-### Prompt G - optional Agile mode (`123`-`126`, 2026-08-29)
+### Prompt G - optional Agile mode (`123`-`127`, 2026-08-29)
 
-Four migrations. **`123`, `124` and `126` are on dev AND prod. `125` is on DEV ONLY and is the
-one file that is not eligible** - read the per-file notes below before applying it.
+Five migrations. **`123`, `124`, `126` and `127` are on dev AND prod. `125` is on DEV ONLY and is
+the one file that is not eligible** - read the per-file notes below before applying it. Prod
+therefore reports `1 pending` permanently, and that gap is a decision rather than drift.
 
 Prod went `122` -> `126` on 2026-08-29, one file at a time via `--only=NNN --allow-prod`,
 verified between each, after a `pg_restore --list`-verified backup
@@ -1232,6 +1233,15 @@ about `125`. That gap is deliberate, not drift.
 | `124_sprint_metrics.sql` | `sprint_metrics` (frozen), `sprint_burndown_samples`, the two sampling functions | ✅ purely additive |
 | `125_wip_enforcement.sql` | the trigger that actually refuses a move into a full column | ⛔ **trigger on `tasks`** |
 | `126_wip_enforcement_probe.sql` | `wip_enforcement_installed()`, so the UI can tell which of the two worlds it is in | ✅ purely additive |
+| `127_capacity_enforcement.sql` | the trigger that makes `capacity_mode = 'enforcement'` actually refuse | ✅ trigger on a `123` table |
+
+⚠️ **`127` is the one to compare against `125`, because the pair is the clearest illustration of
+what the `--allow-prod` rule is actually asking.** Both make an "enforcement" mode real. `125`'s
+trigger sits on `tasks`, so it runs on every task move on every board in the product and is not
+eligible. `127`'s sits on `sprint_items`, a table `123` created three files earlier, so **no write
+path that existed before Prompt G passes through it** and nothing that already happens can start
+behaving differently. Same feature, two very different risks, two files - and only one of them
+needs an owner.
 
 ⚠️ **`125` is not eligible and must not get `--allow-prod` on an agent's judgement. It was
 deliberately held back when the other three went to prod on 2026-08-29.** It is the
@@ -1257,10 +1267,22 @@ contracting, real estate, finance, operations":
 3. `terminology` picks the noun - **sprint | cycle | iteration** - so one underlying model can be
    called whatever the board calls it. Every string on the screen comes from that setting.
 
-Gates: `pnpm check:agile` (66, real RLS) and `pnpm check:agile-ui` (51, real browser, needs
+Gates: `pnpm check:agile` (75, real RLS) and `pnpm check:agile-ui` (56, real browser, needs
 `pnpm dev` on :3000 - confirmed stable across three consecutive runs). Counts were read off a
-run. ⚠️ The RLS harness was **confirmed to fail** - 8 checks drop out when the two triggers are
-removed - rather than trusted to be meaningful.
+run. ⚠️ Both harnesses were **confirmed to fail** rather than trusted: 8 checks drop out when
+`123`'s triggers are removed, and 3 more when `127`'s is disabled.
+
+⚠️ **`check-agile-ui`'s sign-in presses the button until it takes, and that is not paranoia.**
+`waitUntil: 'domcontentloaded'` returns on server-rendered HTML, and the form's submit handler
+does not exist until React has hydrated - so on a dev server busy recompiling, the first click
+lands on inert markup and does nothing. It surfaced as a bare 40-second `waitForURL` timeout that
+reads exactly like broken auth, while `signInWithPassword` against the same project answered in
+632ms. Same lesson as the `C` shortcut in `check-recurrence-ui`, one layer earlier in the page's
+life. Two more traps from the same pass: **poll on the FINAL condition, not a weaker one** (a
+reorder renumbers a column one row at a time, so "the moved item reached 0" is true after the
+first write, and reading then reports duplicate positions that are simply not finished yet); and
+**never pin a count assertion to a literal** - `=== 3` quietly became a false "the module forked
+the work item" the moment the fixture grew.
 
 **The one architectural rule everything else follows.** Taiga's, and Prompt G quotes it: *the
 same underlying item is represented in Scrum and Kanban; never copy the task to make it appear in
@@ -1322,6 +1344,35 @@ worse than no velocity, because people plan against it.
   past day never does**, which is the whole rule expressed at row level.
 - **Velocity excludes rather than converts.** A window counted in hours is never averaged into a
   points velocity, and each exclusion is listed with its reason on screen.
+
+⚠️ **A post-ship audit found the library had been re-implemented inside the components, and that
+is worth reading before the next feature.** Seven exports had NO product call site: `agileActive`,
+`loadAgileBoardData`, `setColumnWipLimit`, `wipBlockReason`, `explainMetric`, `moveInBacklog` and
+`moveBetweenSprints`. Not one of them was unnecessary - each had a *second, inline copy* of itself
+in a component, or a feature built around it that was never wired to a button. That is this
+repo's most-expensive recurring shape (Prompt E's audit found three implementations of one filter,
+disagreeing with each other), and it was reintroduced by the same person writing both halves in
+one sitting. **A useful check before calling a feature done: list every export in its libraries
+and grep for a call site outside its own tests.** What it turned up here:
+  - **Backlog reordering did not exist.** Prompt G asks for "prioritized ordering ... drag and
+    explicit menu actions" and there was neither; `moveInBacklog` sat unused. Now Move to
+    top/up/down/bottom, offered **only when the list is unfiltered and ungrouped** - index 3 of a
+    filtered list is not index 3 of the real order - with the reason on screen when it is not.
+  - ⚠️ **`orderBacklog` sorted on `tasks.position` alone, which is not an order.** That column is
+    an index WITHIN a column, so two tasks in different columns routinely both hold 0 and the
+    comparator fell through to an alphabetical tie-break. It is `(column position, task position,
+    title)` now, and reordering renumbers against the column's COMPLETE contents - backlog and
+    sprint work together - because renumbering only the visible rows writes positions that
+    collide with the ones it did not show.
+  - **"Move to another sprint" was implemented and unreachable**, so carryover took two actions
+    with a window in between where the item belonged to nothing.
+  - **`canManage` conflated two capabilities**, so a board that had just switched agile on had a
+    completely inert backlog: nothing could be created, sized or ordered until somebody made a
+    sprint they had nothing to put in. Split into `canPlan` (needs an open window) and
+    `canManage` (ordinary backlog work).
+  - **`wipStatus`'s `enforcementAvailable` defaulted to `true`** - so a caller that forgot it
+    claimed the database would refuse a move it will happily accept. It is a REQUIRED parameter
+    now; the compiler found every omission, which is the point.
 
 ⚠️ **Four defects the harnesses found that review did not, all fixed:**
   - **`committed` was stamped at INSERT for a planned sprint, and that was wrong.** Work added to

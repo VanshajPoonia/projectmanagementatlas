@@ -24,9 +24,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { EmptyState } from '@/components/shell/states'
 import { WorkItemRow } from './work-item-row'
 import {
-  capacityStatus, formatEstimate, groupIntoSwimlanes, isOpenTask, orderBacklog, sprintNoun,
-  sumEstimates, planBlockedReason,
-  type AgileSettings, type SprintLike,
+  availableReorderActions, capacityStatus, formatEstimate, groupIntoSwimlanes, isOpenTask,
+  orderBacklog, planBlockedReason, sprintNoun, sumEstimates,
+  REORDER_LABELS, type AgileSettings, type ReorderAction, type SprintLike,
 } from '@/lib/agile'
 import type { StatusCatalog } from '@/lib/task-status'
 import type { Density } from '@/components/shell/density'
@@ -46,10 +46,24 @@ interface Props {
   sprint: (SprintLike & { id: string }) | null
   /** Work currently in that window. */
   sprintTasks: any[]
+  /**
+   * EVERY live task on the board, backlog and sprint work alike.
+   *
+   * ⚠️ Reordering renumbers a whole column, and a column holds both. Passing only the rows on
+   * screen would write positions that collide with the ones it does not show.
+   */
+  allBoardTasks: any[]
+  /** The other windows this item could be moved to, so carryover is one action rather than two. */
+  otherSprints: (SprintLike & { id: string })[]
+  /** Can work be planned into a window right now - i.e. is there an OPEN one. */
+  canPlan: boolean
+  /** Can this person change the backlog at all: quick create, estimate, reorder. */
   canManage: boolean
   onOpenTask: (id: string) => void
   onAdd: (taskIds: string[]) => void
   onRemove: (taskIds: string[]) => void
+  onMoveToSprint: (taskId: string, toSprintId: string) => void
+  onReorder: (taskId: string, action: ReorderAction) => void
   onEstimate: (taskId: string, value: number | null) => void
   onQuickCreate: (title: string) => void
   busy?: boolean
@@ -59,7 +73,8 @@ interface Props {
 
 export function BacklogPanel({
   settings, statuses, statusOptions, users, workItemTypes, density,
-  backlog, sprint, sprintTasks, canManage, onOpenTask, onAdd, onRemove, onEstimate,
+  backlog, sprint, sprintTasks, allBoardTasks, otherSprints, canPlan, canManage,
+  onOpenTask, onAdd, onRemove, onMoveToSprint, onReorder, onEstimate,
   onQuickCreate, busy, mode,
 }: Props) {
   const [search, setSearch] = useState('')
@@ -122,15 +137,38 @@ export function BacklogPanel({
     setSelected([])
   }
 
+  // ⚠️ Reordering is offered only over a COMPLETE list. "Move up" across a filtered or grouped
+  // view moves the item past rows the person cannot see, and the result looks like nothing
+  // happened. The write itself is always computed against the whole column (see planReorder);
+  // this flag governs whether the action appears at all, and the menu says why when it does not.
+  const listIsComplete =
+    search.trim() === '' && statusKey === ANY && assignee === ANY && typeKey === ANY && !openOnly && !grouped
+
   const rowFor = (task: any, where: 'backlog' | 'sprint') => {
     const blocked = planBlockedReason(task.type_key, workItemTypes, term)
     const actions: { label: string; onSelect: () => void; destructive?: boolean }[] = []
-    if (canManage && sprint && where === 'backlog' && !blocked) {
+    if (canPlan && sprint && where === 'backlog' && !blocked) {
       actions.push({ label: `Add to ${sprint.title}`, onSelect: () => onAdd([task.id]) })
     }
-    if (canManage && where === 'sprint') {
+    if (canPlan && where === 'sprint') {
       actions.push({ label: `Remove from ${sprintNoun(term)}`, onSelect: () => onRemove([task.id]), destructive: true })
+      // Carryover in one action rather than two. Removing and re-adding by hand is the same
+      // thing with a window in the middle where the item belongs to nothing.
+      for (const target of otherSprints) {
+        actions.push({
+          label: `Move to ${target.title}`,
+          onSelect: () => onMoveToSprint(task.id, target.id),
+        })
+      }
     }
+
+    if (canManage && where === 'backlog') {
+      const moves = availableReorderActions(allBoardTasks, task.id, { listIsComplete })
+      for (const move of moves) {
+        actions.push({ label: REORDER_LABELS[move], onSelect: () => onReorder(task.id, move) })
+      }
+    }
+
     actions.push({ label: 'Open work item', onSelect: () => onOpenTask(task.id) })
 
     return (
@@ -141,20 +179,20 @@ export function BacklogPanel({
           statuses={statuses}
           density={density}
           selected={where === 'backlog' ? selected.includes(task.id) : undefined}
-          onToggleSelect={where === 'backlog' && canManage && sprint ? toggle : undefined}
+          onToggleSelect={where === 'backlog' && canPlan && sprint ? toggle : undefined}
           onOpen={onOpenTask}
           actions={actions}
           onEstimate={onEstimate}
           canEstimate={canManage}
           trailing={
-            canManage && sprint && where === 'backlog' && !blocked ? (
+            canPlan && sprint && where === 'backlog' && !blocked ? (
               <Button
                 variant="ghost" size="sm" className="h-7 px-2 text-xs"
                 onClick={() => onAdd([task.id])} disabled={busy}
               >
                 Add
               </Button>
-            ) : canManage && where === 'sprint' ? (
+            ) : canPlan && where === 'sprint' ? (
               <Button
                 variant="ghost" size="sm" className="h-7 px-2 text-xs"
                 onClick={() => onRemove([task.id])} disabled={busy}
@@ -220,6 +258,15 @@ export function BacklogPanel({
             {grouped ? 'Flat list' : 'Group by parent'}
           </Button>
         </header>
+
+        {/* An unavailable action that explains itself, rather than one that quietly is not
+            there. The repo's own rule from ATLAS_01 10.2: say why, do not just hide it. */}
+        {canManage && !listIsComplete && (
+          <p className="text-muted-foreground text-xs" id="agile-reorder-unavailable">
+            Priority order can be changed from a work item&apos;s menu when nothing is filtered out.
+            Clear the search, filters and grouping to reorder.
+          </p>
+        )}
 
         {canManage && (
           <form

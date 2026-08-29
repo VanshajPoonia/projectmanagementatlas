@@ -26,6 +26,7 @@ import type { EstimateUnit, SprintLike } from './agile'
 import { formatEstimate, sprintDays } from './agile'
 import type { StatusCatalog } from './task-status'
 import { getTaskStatusCategory, isClosedCategory } from './task-status'
+import { isCompletedTask } from './agile'
 
 // ---------------------------------------------------------------------------------------
 // The explanation model
@@ -237,7 +238,13 @@ export function computeLiveMetrics(input: {
   const base = { unit, source: 'live' as const, lastUpdated: now }
 
   const committedRows = members.filter((m) => m.committed)
-  const completedRows = live.filter((m) => categoryOf(m.task_id) === 'completed')
+  // ⚠️ Through `isCompletedTask`, so the rule that CANCELLED work is closed but not delivered
+  // lives in exactly one place. Written inline here it would be a second copy of a distinction
+  // the whole velocity number depends on.
+  const completedRows = live.filter((m) => {
+    const task = byId.get(m.task_id)
+    return task ? isCompletedTask(task, statuses) : false
+  })
   const carryoverRows = live.filter((m) => {
     const c = categoryOf(m.task_id)
     return c ? !isClosedCategory(c) : true

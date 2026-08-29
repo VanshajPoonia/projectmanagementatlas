@@ -10,6 +10,23 @@ Last updated: 2026-08-28
 
 ## Open - infrastructure
 
+### Production reports `1 pending` migration, permanently and on purpose
+
+`scripts/125_wip_enforcement.sql` is applied to dev and **deliberately not** to
+production, so `migrate:status` against prod will always show one pending file.
+**That gap is a decision, not drift - do not "tidy" it by applying the file.**
+
+It puts a trigger on `tasks`, which runs on every task move on every board, so it
+is not `--allow-prod` eligible on this repo's own rule: the same class as `113`
+and `118`, both of which reached prod only as explicit owner decisions after the
+risk was written down. Until somebody decides, `public.wip_enforcement_installed()`
+returns false on prod and every WIP badge there honestly says "warning only -
+nothing is refused".
+
+Note this is specifically about WIP. **Capacity enforcement IS real on prod**
+(migration `127`), because its trigger sits on `sprint_items` - a table `123`
+created - so no pre-existing write path changed behaviour.
+
 ### `pnpm lint` cannot run - there is no eslint config
 
 `package.json` defines `lint` as `eslint .`, but the repo has no
@@ -64,10 +81,39 @@ before committing.
 
 ## Open - correctness
 
-*(Nothing open here right now. Two of the three entries that used to sit here -
-the competing status sources and the hardcoded email gate - are under "Resolved"
-below with their reasoning intact. The third, single-tenant unique constraints,
-moved to "Deliberately not building": it is moot, not fixed.)*
+*(The two entries that used to sit here - the competing status sources and the
+hardcoded email gate - are under "Resolved" below with their reasoning intact.
+The third, single-tenant unique constraints, moved to "Deliberately not
+building": it is moot, not fixed.)*
+
+### The task detail modal's dialog has no accessible description
+
+Opening a work item logs `Missing 'Description' or 'aria-describedby={undefined}'
+for {DialogContent}` from Radix. `components/board/task-detail-modal.tsx` has no
+`DialogDescription` at all. The dialog still has an accessible *name* (its title),
+so this is not an axe violation and screen readers are not left without a label -
+it is the weaker "no description" warning.
+
+**Pre-existing**, found while running the Prompt G browser harness in 2026-08.
+Deliberately not fixed there: the safe version is an `sr-only` description, that
+modal is one of the most-used shared components in the app, and attaching an
+unrelated a11y change to a feature branch is how a regression arrives with nothing
+to attribute it to. `sr-only` is `position: absolute` and has escaped an overflow
+container in this repo before, so it wants its own verification pass.
+
+### A backlog reorder is several UPDATEs, not one transaction
+
+`reorderBacklog` in `lib/agile-data.ts` renumbers a column one row at a time,
+because PostgREST has no multi-row UPDATE with per-row values. A tab closed
+mid-sequence leaves some rows renumbered and some not, which means duplicate
+`position` values until the next reorder.
+
+**Impact is display order only** - ties break by title - and the board's own
+drag-and-drop already writes multiple rows the same way, so this is consistent
+with existing behaviour rather than new. The fix, if it ever matters, is a
+`SECURITY INVOKER` RPC taking the whole ordering as one argument. It is written
+down rather than fixed because the cost is a migration and the symptom is
+cosmetic and self-healing.
 
 ---
 

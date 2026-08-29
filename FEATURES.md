@@ -243,7 +243,7 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       `WorkNext` was **extended, not replaced** - blocked, blocking and approval signals, each
       with a visible reason. Gates: `pnpm check:inbox` (49), `pnpm check:inbox-ui` (32),
       `pnpm check:my-work` (33).
-- [x] **9. Optional agile mode** (Prompt G, `123`/`124`/`126` on dev AND prod, `125` dev only, 2026-08-29) - `/agile`,
+- [x] **9. Optional agile mode** (Prompt G, `123`/`124`/`126`/`127` on dev AND prod, `125` dev only, 2026-08-29) - `/agile`,
       off by default at three levels: the `agile` module seeds disabled, every board's
       `is_enabled` seeds off, and the noun itself (**sprint | cycle | iteration**) is a board
       setting - so a marketing, contracting, real-estate, finance or operations board never sees
@@ -259,13 +259,20 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       re-categorising a status cannot silently change what June claims to have delivered - and a
       closed window with no snapshot says "no record" rather than recomputing. Every number
       carries its own definition/formula/unit/included/excluded/last-updated, rendered *from the
-      value*, not from a caption beside it. ⚠️ **`125` (the WIP enforcement trigger on `tasks`) is
-      NOT `--allow-prod` eligible and was deliberately held back**; the other three went to prod
-      on 2026-08-29 with every row count identical before and after, and the module seeded off,
-      so the deploy changed nothing anyone can see. Prod reports 1 pending forever by design. Deliberately
+      value*, not from a caption beside it. **Capacity enforcement is real at the database** (`127`) - a
+      `capacity_mode` honoured only by a React component would be the `requires_reason` defect
+      again, and its trigger sits on `sprint_items` rather than on `tasks`, which is what makes it
+      shippable. ⚠️ **`125` (WIP enforcement, a trigger on `tasks`) is NOT `--allow-prod` eligible
+      and was deliberately held back**; the other four went to prod on 2026-08-29 with every row
+      count identical before and after, and the module seeded off, so the deploy changed nothing
+      anyone can see. Prod reports 1 pending forever by design. A post-ship audit also found and
+      fixed seven library exports with no product call site - each one either a second inline copy
+      of itself in a component, or a built feature nobody could reach, including backlog
+      reordering and "move to another sprint". Deliberately
       not built: time tracking (Prompt G says it is a separate optional module, and Taiga has
-      none either). Gates: `pnpm check:agile` (66, real RLS - confirmed to lose 8 checks when the
-      triggers are removed), `pnpm check:agile-ui` (51, real browser, stable across three runs).
+      none either). Gates: `pnpm check:agile` (75, real RLS - confirmed to lose 8 checks when 123's
+      triggers are removed and 3 more when 127's is disabled), `pnpm check:agile-ui` (56, real
+      browser, stable across three runs).
 - [ ] **7. Saved views** · **8. Hierarchy/subtask context**
 
 **Blocked on schema, deliberately not faked:** the remaining two are milestone pressure and

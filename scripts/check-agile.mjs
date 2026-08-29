@@ -411,6 +411,85 @@ try {
   check('a limit of zero is refused - that hides a column rather than limiting it', Boolean(zeroLimit.error))
 
   // =======================================================================================
+  section('127 - capacity is enforced by the DATABASE when a board asks for it')
+  // =======================================================================================
+  // ⚠️ This section exists because `capacity_mode = 'enforcement'` was UI-deep when it shipped:
+  // honoured by one React component and by nothing underneath it, so an import, psql or a
+  // future automation could put a sprint over a capacity its own settings said to refuse. Same
+  // defect as crm_statuses.requires_reason (104), profiles.is_active (101) and app_modules.
+  const capBoard = await makeBoard('agile-capacity', owner.id)
+  await admin.from('board_agile_settings')
+    .insert({ board_id: capBoard.boardId, is_enabled: true, capacity_mode: 'warning', estimate_unit: 'points' })
+  const capSprint = await makeSprint(capBoard.boardId, 'capacity-window', { capacity: 5 })
+
+  const small = await makeTask('cap-small', capBoard.columns.to_do, owner.id, { estimate_value: 3 })
+  const big = await makeTask('cap-big', capBoard.columns.to_do, owner.id, { estimate_value: 4 })
+  const unsized = await makeTask('cap-unsized', capBoard.columns.to_do, owner.id)
+
+  // Warning mode first - the default, and what Prompt G asks for.
+  const warnFirst = await admin.from('sprint_items').insert({ sprint_id: capSprint.id, task_id: small.id }).select('id')
+  const warnOver = await admin.from('sprint_items').insert({ sprint_id: capSprint.id, task_id: big.id }).select('id')
+  check('CONTROL: in WARNING mode a sprint can be planned over its capacity - "do not block by default"',
+    landed(warnFirst) && landed(warnOver), warnOver.error?.message)
+
+  // Reset to just the 3-point item, then switch the board to enforcement.
+  await admin.from('sprint_items').update({ removed_at: new Date().toISOString() })
+    .eq('sprint_id', capSprint.id).eq('task_id', big.id)
+  await admin.from('board_agile_settings').update({ capacity_mode: 'enforcement' }).eq('board_id', capBoard.boardId)
+
+  // ⚠️ A FRESH task, with no membership row of its own. Reusing `big` here made the refusal
+  // ambiguous: it already had a soft-removed row, so the INSERT would also have violated
+  // sprint_items_unique - and because a BEFORE trigger runs ahead of the uniqueness check, the
+  // test passed while proving nothing about capacity. A control that would pass for a second
+  // reason is not a control.
+  const fresh = await makeTask('cap-fresh', capBoard.columns.to_do, owner.id, { estimate_value: 4 })
+  const blocked = await admin.from('sprint_items').insert({ sprint_id: capSprint.id, task_id: fresh.id }).select('id')
+  check('in ENFORCEMENT mode work that would exceed capacity is refused BY THE DATABASE',
+    Boolean(blocked.error), 'a service-role insert got past it, so no import or script would be stopped either')
+  check('and the refusal names the numbers a person needs to act on',
+    /capacity/i.test(blocked.error?.message ?? '') && /5/.test(blocked.error?.message ?? ''),
+    blocked.error?.message)
+
+  const unsizedIn = await admin.from('sprint_items').insert({ sprint_id: capSprint.id, task_id: unsized.id }).select('id')
+  check('CONTROL: an UNESTIMATED item still goes in - it counts as zero, exactly as the screen says',
+    landed(unsizedIn), unsizedIn.error?.message)
+
+  const removeUnderEnforcement = await admin.from('sprint_items')
+    .update({ removed_at: new Date().toISOString() })
+    .eq('sprint_id', capSprint.id).eq('task_id', small.id).select('id')
+  check('CONTROL: removal is never refused by the capacity rule - only an arrival can breach it',
+    landed(removeUnderEnforcement), removeUnderEnforcement.error?.message)
+
+  // Re-adding is an UPDATE clearing removed_at, never a second INSERT - 123 keeps the row so
+  // the history survives. This exercises the trigger's UPDATE branch, which is the one that has
+  // to tell a re-add apart from a removal and from the activation stamp.
+  const nowFits = await admin.from('sprint_items').update({ removed_at: null })
+    .eq('sprint_id', capSprint.id).eq('task_id', big.id).select('id')
+  check('CONTROL: once there is room, re-adding the removed item is accepted',
+    landed(nowFits), nowFits.error?.message)
+
+  const reAddOver = await admin.from('sprint_items').update({ removed_at: null })
+    .eq('sprint_id', capSprint.id).eq('task_id', small.id).select('id')
+  check('but a RE-ADD that would breach capacity is refused too - it is an arrival like any other',
+    Boolean(reAddOver.error), reAddOver.error?.message ?? 'the update was allowed')
+
+  // Activation writes `committed` across every live row. If the capacity trigger fired on that
+  // UPDATE it would refuse to start any sprint that is exactly at capacity - a deadlock the
+  // "only an arrival" guard exists to prevent.
+  const startFull = await admin.from('sprints').update({ state: 'active' }).eq('id', capSprint.id).select('state')
+  check('a sprint AT capacity can still be started - the activation stamp is not an arrival',
+    landed(startFull) && startFull.data?.[0]?.state === 'active', startFull.error?.message)
+
+  const noCapBoard = await makeBoard('agile-nocap', owner.id)
+  await admin.from('board_agile_settings')
+    .insert({ board_id: noCapBoard.boardId, is_enabled: true, capacity_mode: 'enforcement' })
+  const noCapSprint = await makeSprint(noCapBoard.boardId, 'no-capacity-window')
+  const huge = await makeTask('nocap-huge', noCapBoard.columns.to_do, owner.id, { estimate_value: 9999 })
+  const noCapIn = await admin.from('sprint_items').insert({ sprint_id: noCapSprint.id, task_id: huge.id }).select('id')
+  check('CONTROL: with no capacity declared, enforcement has nothing to enforce', landed(noCapIn),
+    noCapIn.error?.message)
+
+  // =======================================================================================
   section('123 - estimates')
   // =======================================================================================
   const negative = await admin.from('tasks').update({ estimate_value: -1 }).eq('id', t1.id).select('id')

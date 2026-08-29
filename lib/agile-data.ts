@@ -272,6 +272,35 @@ export async function setColumnWipLimit(
   return { outcome: await classifyWrite(res) }
 }
 
+/**
+ * Persist a priority reordering.
+ *
+ * ⚠️ `expected` is the row count, so a PARTIAL refusal is reported as a failure rather than as
+ * a success over a half-renumbered column. That matters more here than almost anywhere else in
+ * the module: a reorder that lands for four of six rows leaves duplicate positions, and the
+ * board's own drag-and-drop then has to reconcile an order nobody chose.
+ *
+ * The writes go one at a time because PostgREST has no multi-row UPDATE with per-row values,
+ * and the alternative - an upsert of whole task rows - would send every other column of every
+ * task back to the server and race with anyone editing one.
+ */
+export async function reorderBacklog(
+  supabase: Client, updates: { id: string; position: number }[],
+): Promise<AgileWrite & { moved: number }> {
+  let moved = 0
+  let firstFailure: WriteOutcome | null = null
+
+  for (const { id, position } of updates) {
+    const res = await supabase.from('tasks').update({ position }).eq('id', id).select('id')
+    const outcome = await classifyWrite(res)
+    if (didWrite(outcome)) moved++
+    else if (!firstFailure) firstFailure = outcome
+  }
+
+  if (firstFailure && moved < updates.length) return { outcome: firstFailure, moved }
+  return { outcome: { kind: 'ok' }, moved }
+}
+
 /* ── Burndown sampling ────────────────────────────────────────────────────────────── */
 
 /**

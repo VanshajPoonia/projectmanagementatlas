@@ -329,8 +329,8 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   - **Deliberately not built:** digest preferences (the prompt says "later"), and following a
     whole BOARD - that needs notification generation nothing currently does, and a control wired
     to nothing is this repo's most-repeated defect.
-- ✅ **Prompt G is SHIPPED to dev AND prod (`123`, `124`, `126`), 2026-08-29. `125` is on DEV
-  ONLY and was deliberately held back.** ⚠️ **Prod therefore reports `1 pending` forever** -
+- ✅ **Prompt G is SHIPPED to dev AND prod (`123`, `124`, `126`, `127`), 2026-08-29. `125` is on
+  DEV ONLY and was deliberately held back.** ⚠️ **Prod therefore reports `1 pending` forever** -
   that gap is a decision, not drift. Run `pnpm migrate:status` against both rather than
   trusting this line; it has gone stale before.
   - Prod went `122` -> `126` one file at a time via `--only=NNN --allow-prod`, verified between
@@ -342,6 +342,18 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
     its previous 8 triggers.
   - `public.wip_enforcement_installed()` returns **false** on prod, so every WIP badge and the
     settings dialog there say "warning only - nothing is refused", which is true.
+  - ⚠️ **`127` (capacity enforcement) IS on prod, and the contrast with `125` is the thing to
+    understand before writing another enforcement rule.** Both make an "enforcement" mode real.
+    `125`'s trigger is on `tasks`, so it runs on every task move in the product - not eligible.
+    `127`'s is on `sprint_items`, a table `123` created, so no pre-existing write path goes
+    through it - eligible, applied, done. Ask which table the trigger lands on before assuming a
+    feature needs an owner decision.
+  - **A post-ship audit found seven library exports with no product call site**, each one either
+    a second inline copy of itself in a component or a built feature wired to no button. All
+    fixed: backlog reordering (Move to top/up/down/bottom, offered only over an unfiltered list),
+    "move to another sprint" for carryover, board-view now using `wipStatus`/`setColumnWipLimit`
+    instead of its own copies, and one loader instead of two. **Worth repeating on the next
+    feature: list every export in its libraries and grep for a call site outside its own tests.**
   - Code is live as **`64c7e22`** (deployment confirmed via the GitHub deployments API, not by
     matching timestamps). `/agile` 307s to `/login` unauthenticated, and redirects a signed-in
     user to their dashboard while the module is off.
@@ -370,8 +382,8 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
     with the ledger's own immutability rule, resolved with a transaction-local GUC that names the
     sprint being activated. Also: the tab strip pushed the page sideways at 320px - only
     `scripts/audit-mobile.mjs` saw it.
-  - Gates: `pnpm check:agile` (66, real RLS, **confirmed to lose 8 checks when the triggers are
-    removed**) and `pnpm check:agile-ui` (51, real browser, stable across three runs). 1657 unit
+  - Gates: `pnpm check:agile` (75, real RLS, **confirmed to lose 8 checks when 123's triggers are
+    removed and 3 more when 127's is disabled**) and `pnpm check:agile-ui` (56, real browser, stable across three runs). 1669 unit
     tests under all four timezones; `next build` clean with the dev ref confirmed baked.
   - **Deliberately not built:** time tracking. Prompt G calls it a separate optional module and
     notes Taiga has none natively.

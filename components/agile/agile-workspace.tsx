@@ -35,21 +35,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDensity } from '@/components/shell/use-density'
 import { DENSITIES, DENSITY_LABELS } from '@/components/shell/density'
-import { useAppModules } from '@/lib/modules'
+import { useAppModules, isModuleEnabled } from '@/lib/modules'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
 import { useFavorites } from '@/lib/use-favorites'
 import { allows } from '@/lib/capabilities'
 import type { ShellData } from '@/lib/shell-data'
 import { createClient } from '@/lib/supabase/client'
 import {
-  addToSprint, createSprint, deleteSprint, didWrite, removeFromSprint, sampleBurndown,
-  saveAgileSettings, setSprintState, setTaskEstimate, updateSprint, writeFailureMessage,
+  addToSprint, createSprint, deleteSprint, didWrite, loadAgileBoardData, moveBetweenSprints,
+  removeFromSprint, reorderBacklog, sampleBurndown, saveAgileSettings, setSprintState,
+  setTaskEstimate, updateSprint, writeFailureMessage,
   type SprintDraft, type SprintItemRow, type SprintRow,
 } from '@/lib/agile-data'
 import {
-  agileBoardStorageKey, defaultSprint, normalizeAgileSettings, resolveAgileBoardId,
-  sprintNoun, sprintNounPluralTitle, sprintNounTitle, sprintWindow, startBlockedReason,
-  SPRINT_STATE_LABELS, type AgileSettings,
+  agileActive, agileBoardStorageKey, defaultSprint, normalizeAgileSettings, planReorder,
+  resolveAgileBoardId, sprintNoun, sprintNounPluralTitle, sprintNounTitle, sprintWindow,
+  startBlockedReason, SPRINT_STATE_LABELS, type AgileSettings, type ReorderAction,
 } from '@/lib/agile'
 import type { BurndownSampleRow, SprintMetricsRow } from '@/lib/sprint-metrics'
 import { BacklogPanel } from './backlog-panel'
@@ -140,23 +141,21 @@ export default function AgileWorkspace({
   const [busy, setBusy] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
+  // ⚠️ ONE loader, in lib/agile-data.ts. This used to be a second, inline copy of the same four
+  // queries - which is precisely the shape Prompt E's audit found three times over
+  // (reports-view, board-view and calendar-view each filtering tasks their own way, and
+  // disagreeing). Two copies of one query do not stay identical; they diverge the first time
+  // somebody adds a column to one of them.
   const refresh = useCallback(async (id: string) => {
     setLoading(true)
-    const [s, i, m, b] = await Promise.all([
-      supabase.from('sprints').select('*').eq('board_id', id).order('start_date', { ascending: false }),
-      supabase.from('sprint_items').select('*, sprint:sprints!inner(board_id)').eq('sprint.board_id', id),
-      supabase.from('sprint_metrics').select('*'),
-      supabase.from('sprint_burndown_samples').select('*').order('on_date'),
-    ])
-    const rows: SprintRow[] = s.data ?? []
-    const ids = new Set(rows.map((r) => r.id))
-    setSprints(rows)
-    setItems((i.data ?? []) as SprintItemRow[])
-    setSnapshots(((m.data ?? []) as SprintMetricsRow[]).filter((r) => ids.has(r.sprint_id)))
-    setSamples(((b.data ?? []) as BurndownSampleRow[]).filter((r) => ids.has(r.sprint_id)))
+    const data = await loadAgileBoardData(supabase, id)
+    setSprints(data.sprints)
+    setItems(data.items)
+    setSnapshots(data.snapshots)
+    setSamples(data.samples)
     // Kept rather than discarded: a failed query rendered as "no sprints yet" is the most
     // reassuring possible way to tell somebody their workspace is broken.
-    setLoadError(s.error?.message ?? i.error?.message ?? null)
+    setLoadError(data.errorMessage)
     setLoading(false)
   }, [supabase])
 
@@ -305,6 +304,37 @@ export default function AgileWorkspace({
     await refresh(boardId)
   })
 
+  const moveToSprint = (taskId: string, toSprintId: string) => run(async () => {
+    if (!sprint || !boardId) return
+    const target = sprints.find((s) => s.id === toSprintId)
+    const res = await moveBetweenSprints(supabase, sprint.id, toSprintId, taskId, userId || null)
+    if (report(res.outcome, `Moved to ${target?.title ?? `the other ${sprintNoun(term)}`}.`, 'this move')) {
+      await refresh(boardId)
+    }
+  })
+
+  const reorder = (taskId: string, action: ReorderAction) => run(async () => {
+    if (!boardId) return
+    // ⚠️ Planned against every live task on the BOARD, not the filtered backlog on screen. A
+    // column holds backlog and sprint work side by side; renumbering only the visible rows
+    // would hand them positions that collide with the ones this panel does not show.
+    const plan = planReorder(boardTasks, taskId, action, { listIsComplete: true })
+    if (plan.blockedReason) { toast.error(plan.blockedReason); return }
+    if (plan.updates.length === 0) return
+
+    const res = await reorderBacklog(supabase, plan.updates)
+    if (!didWrite(res.outcome)) {
+      // Never a green toast over a half-renumbered column: a partial reorder leaves duplicate
+      // positions that the board's own drag-and-drop then has to reconcile.
+      const message = writeFailureMessage(res.outcome, 'order')
+      toast.error(message?.title ?? 'That reorder did not save', {
+        description: `${res.moved} of ${plan.updates.length} items moved. Reload before trying again.`,
+      })
+    }
+    router.refresh()
+    await refresh(boardId)
+  })
+
   const [localTasks, setLocalTasks] = useState(tasks)
   useEffect(() => { setLocalTasks(tasks) }, [tasks])
 
@@ -381,6 +411,42 @@ export default function AgileWorkspace({
 
   const activeSettings = settings ?? (boardId ? normalizeAgileSettings(boardId, null) : null)
   const window_ = sprint ? sprintWindow(sprint, today) : null
+
+  // Agile is on only when the MODULE is on and this board opted in - one function, so the two
+  // halves of that rule cannot drift apart between the places that ask.
+  const agileOn = agileActive(isModuleEnabled(modules, 'agile'), activeSettings)
+
+  /**
+   * ⚠️ Two different capabilities, and conflating them was a real defect.
+   *
+   * `canPlan` needs an OPEN window to plan into. `canManage` does not: quick-capturing a work
+   * item, estimating one and changing priority order are all ordinary backlog work, and gating
+   * them on a sprint existing meant a board that had just switched agile on presented a
+   * completely inert backlog - no way to add anything, size anything or order anything until
+   * somebody created a sprint they had nothing to put in yet.
+   */
+  const sprintIsOpen = Boolean(sprint) && sprint!.state !== 'completed' && sprint!.state !== 'cancelled'
+
+  const backlogProps = {
+    settings: activeSettings!,
+    statuses, statusOptions: statuses, users, workItemTypes, density,
+    backlog: backlog.map((t: any) => localTasks.find((l: any) => l.id === t.id) ?? t),
+    sprint: sprint as any,
+    sprintTasks: sprintTasks.map((t: any) => localTasks.find((l: any) => l.id === t.id) ?? t),
+    allBoardTasks: boardTasks,
+    // Only windows that can still accept work, and never the one already on screen.
+    otherSprints: sprints.filter((s) => s.id !== sprint?.id && (s.state === 'planned' || s.state === 'active')) as any,
+    canPlan: sprintIsOpen,
+    canManage: agileOn,
+    onOpenTask: openTask,
+    onAdd: addTasks,
+    onRemove: removeTasks,
+    onMoveToSprint: moveToSprint,
+    onReorder: reorder,
+    onEstimate: estimate,
+    onQuickCreate: quickCreate,
+    busy: busy || loading,
+  }
 
   return (
     <AppShell
@@ -538,27 +604,14 @@ export default function AgileWorkspace({
                   <TabsContent value="planning">
                     <BacklogPanel
                       mode="planning"
-                      settings={activeSettings} statuses={statuses} statusOptions={statuses}
-                      users={users} workItemTypes={workItemTypes} density={density}
-                      backlog={backlog.map((t: any) => localTasks.find((l: any) => l.id === t.id) ?? t)}
-                      sprint={sprint as any}
-                      sprintTasks={sprintTasks.map((t: any) => localTasks.find((l: any) => l.id === t.id) ?? t)}
-                      canManage={Boolean(sprint) && sprint!.state !== 'completed' && sprint!.state !== 'cancelled'}
-                      onOpenTask={openTask} onAdd={addTasks} onRemove={removeTasks}
-                      onEstimate={estimate} onQuickCreate={quickCreate} busy={busy || loading}
+                      {...backlogProps}
                     />
                   </TabsContent>
 
                   <TabsContent value="backlog">
                     <BacklogPanel
                       mode="backlog"
-                      settings={activeSettings} statuses={statuses} statusOptions={statuses}
-                      users={users} workItemTypes={workItemTypes} density={density}
-                      backlog={backlog.map((t: any) => localTasks.find((l: any) => l.id === t.id) ?? t)}
-                      sprint={sprint as any} sprintTasks={sprintTasks}
-                      canManage={Boolean(sprint) && sprint!.state !== 'completed' && sprint!.state !== 'cancelled'}
-                      onOpenTask={openTask} onAdd={addTasks} onRemove={removeTasks}
-                      onEstimate={estimate} onQuickCreate={quickCreate} busy={busy || loading}
+                      {...backlogProps}
                     />
                   </TabsContent>
 

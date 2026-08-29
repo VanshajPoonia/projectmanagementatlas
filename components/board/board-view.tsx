@@ -37,7 +37,9 @@ import ChatPanel from '@/components/chat/chat-panel'
 import MobileBottomNav, { type NavItem } from '@/components/dashboard/mobile-bottom-nav'
 import { getAssigneeIds, getAssignees, getAssigneeNames } from '@/lib/assignees'
 import { allows, can, type Actor, type PlatformRole } from '@/lib/capabilities'
-import { classifyWrite, writeFailureMessage } from '@/lib/rls-write'
+import { classifyWrite, didWrite, writeFailureMessage } from '@/lib/rls-write'
+import { wipStatus, wipBlockReason, type EnforcementMode } from '@/lib/agile'
+import { setColumnWipLimit } from '@/lib/agile-data'
 import { ActionGuard } from '@/components/shell/action-guard'
 import { CommandPalette } from '@/components/shell/command-palette'
 import {
@@ -166,6 +168,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   // finance board the moment this ships, which is exactly what Prompt G forbids. Defaults to
   // false, so a failed or slow lookup hides the control rather than revealing it.
   const [agileOn, setAgileOn] = useState(false)
+  const [wipMode, setWipMode] = useState<EnforcementMode>('warning')
 
   const [editingBoardTitle, setEditingBoardTitle] = useState(false)
   const [boardTitle, setBoardTitle] = useState(board.title)
@@ -223,11 +226,16 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
     let live = true
     void supabase
       .from('board_agile_settings')
-      .select('is_enabled')
+      // ⚠️ `wip_mode` too, not just the switch. Without it this screen could only say "where
+      // this board is set to enforce..." - hedging at the reader instead of telling them what
+      // will happen, because it did not actually know.
+      .select('is_enabled, wip_mode')
       .eq('board_id', board.id)
       .maybeSingle()
       .then(({ data, error }: any) => {
-        if (live) setAgileOn(!error && Boolean(data?.is_enabled))
+        if (!live) return
+        setAgileOn(!error && Boolean(data?.is_enabled))
+        setWipMode(data?.wip_mode === 'enforcement' ? 'enforcement' : 'warning')
       })
     return () => { live = false }
   }, [board?.id, supabase])
@@ -939,15 +947,16 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
       return
     }
 
-    const { data, error } = await supabase
-      .from('columns')
-      .update({ wip_limit: limit })
-      .eq('id', columnId)
-      .select('id, wip_limit')
-
-    if (error || !data || data.length === 0) {
-      toast.error('Could not save that limit', {
-        description: error?.message ?? 'You no longer have permission to change this column. Reload to see the current state.',
+    // ⚠️ Through lib/agile-data.ts, not a second hand-rolled UPDATE. That helper already
+    // classifies the write through lib/rls-write.ts, which is the only thing that separates
+    // "saved" from "silently refused" - an RLS refusal on `columns` returns zero rows and no
+    // error, and a second copy of that check here is a second place for it to be got wrong.
+    const { outcome } = await setColumnWipLimit(supabase, columnId, limit)
+    if (!didWrite(outcome)) {
+      const message = writeFailureMessage(outcome, 'limit')
+      toast.error(message?.title ?? 'Could not save that limit', {
+        description: message?.description
+          ?? 'You no longer have permission to change this column. Reload to see the current state.',
       })
       return
     }
@@ -1840,22 +1849,36 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                                   database enforces against. It says "of N" rather than claiming
                                   a state, and the enforcing trigger is the authority. Same
                                   distinction migration 108 had to draw for column deletion. */}
-                              {agileOn && column.wip_limit ? (
-                                <span
-                                  className={`relative shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium leading-none tabular-nums ${
-                                    (column.tasks?.length ?? 0) >= column.wip_limit
-                                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
-                                      : 'bg-background text-muted-foreground'
-                                  }`}
-                                  title={
-                                    wipEnforced
-                                      ? `Work-in-progress limit ${column.wip_limit}. Where this board is set to enforce, a move in is refused once it is full.`
-                                      : `Work-in-progress limit ${column.wip_limit}. This board warns only - nothing is refused.`
-                                  }
-                                >
-                                  WIP {column.tasks?.length ?? 0}/{column.wip_limit}
-                                </span>
-                              ) : null}
+                              {/* ⚠️ Resolved by lib/agile.ts's `wipStatus`, not by a second
+                                  comparison written here. This used to be an inline
+                                  `count >= limit` next to a hand-written title string - a
+                                  parallel implementation of a rule the taskboard already asks
+                                  the library for, and the two would have drifted the first time
+                                  either changed. `enforcementAvailable` is required by that
+                                  function precisely so this call cannot forget it. */}
+                              {agileOn && column.wip_limit ? (() => {
+                                const wip = wipStatus({
+                                  count: column.tasks?.length ?? 0,
+                                  limit: column.wip_limit,
+                                  mode: wipMode,
+                                  enforcementAvailable: wipEnforced,
+                                })
+                                return (
+                                  <span
+                                    className={`relative shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium leading-none tabular-nums ${
+                                      wip.state === 'under'
+                                        ? 'bg-background text-muted-foreground'
+                                        : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                                    }`}
+                                    title={
+                                      wipBlockReason(column.title, wip)
+                                      ?? `Work-in-progress limit ${wip.limit}. ${wip.message} This board warns only - nothing is refused.`
+                                    }
+                                  >
+                                    WIP {wip.count}/{wip.limit}
+                                  </span>
+                                )
+                              })() : null}
                             </div>
                           </div>
                           <div className="flex items-center gap-1">

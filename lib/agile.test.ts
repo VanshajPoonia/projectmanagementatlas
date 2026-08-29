@@ -6,7 +6,7 @@ import {
   capacityStatus, wipStatus, wipBlockReason,
   orderBacklog, moveInBacklog, groupIntoSwimlanes, sumEstimates,
   canPlanIntoSprint, planBlockedReason, isOpenTask, isCompletedTask,
-  resolveAgileBoardId, agileBoardStorageKey,
+  resolveAgileBoardId, agileBoardStorageKey, planReorder, availableReorderActions,
   type SprintLike,
 } from './agile'
 
@@ -202,17 +202,17 @@ describe('capacity warns and only blocks when configured', () => {
 
 describe('WIP never claims a refusal the database will not make', () => {
   it('is silent with no limit', () => {
-    expect(wipStatus({ count: 99, limit: null, mode: 'enforcement' }).state).toBe('none')
+    expect(wipStatus({ count: 99, limit: null, mode: 'enforcement', enforcementAvailable: true }).state).toBe('none')
   })
 
   it('warns at the limit without blocking in warning mode', () => {
-    const s = wipStatus({ count: 3, limit: 3, mode: 'warning' })
+    const s = wipStatus({ count: 3, limit: 3, mode: 'warning', enforcementAvailable: true })
     expect(s.state).toBe('at')
     expect(s.blocks).toBe(false)
   })
 
   it('blocks at the limit in enforcement mode', () => {
-    expect(wipStatus({ count: 3, limit: 3, mode: 'enforcement' }).blocks).toBe(true)
+    expect(wipStatus({ count: 3, limit: 3, mode: 'enforcement', enforcementAvailable: true }).blocks).toBe(true)
   })
 
   it('does NOT block when the enforcing migration is not applied - a warning that turns out untrue is worse than none', () => {
@@ -222,13 +222,13 @@ describe('WIP never claims a refusal the database will not make', () => {
   })
 
   it('names the column and the limit in the refusal', () => {
-    const reason = wipBlockReason('In Progress', wipStatus({ count: 3, limit: 3, mode: 'enforcement' }))
+    const reason = wipBlockReason('In Progress', wipStatus({ count: 3, limit: 3, mode: 'enforcement', enforcementAvailable: true }))
     expect(reason).toContain('In Progress')
     expect(reason).toContain('3')
   })
 
   it('gives no reason when nothing is blocked', () => {
-    expect(wipBlockReason('To Do', wipStatus({ count: 1, limit: 3, mode: 'enforcement' }))).toBeNull()
+    expect(wipBlockReason('To Do', wipStatus({ count: 1, limit: 3, mode: 'enforcement', enforcementAvailable: true }))).toBeNull()
   })
 })
 
@@ -387,5 +387,94 @@ describe('which board the agile screen opens on', () => {
 
   it('returns null when there are no boards at all', () => {
     expect(resolveAgileBoardId({ boards: [] })).toBeNull()
+  })
+})
+
+describe('backlog order is the board\'s own, read as (column, position)', () => {
+  const t = (id: string, colPos: number, pos: number, colId = `c${colPos}`) =>
+    ({ id, title: id.toUpperCase(), position: pos, column: { id: colId, position: colPos } })
+
+  it('orders by the COLUMN first, then position within it', () => {
+    const ids = orderBacklog([t('c', 1, 0), t('a', 0, 0), t('b', 0, 1)]).map((x) => x.id)
+    expect(ids).toEqual(['a', 'b', 'c'])
+  })
+
+  it('does not let two columns\' position-0 rows fall through to an alphabetical tie-break', () => {
+    // The bug this replaced: tasks.position is an index WITHIN a column, so these two both
+    // hold 0 and the old comparator resolved them by title - "zeta" before "alpha" purely
+    // because of which column each sat in was invisible to it.
+    const ids = orderBacklog([
+      { id: 'alpha', title: 'alpha', position: 0, column: { id: 'later', position: 5 } },
+      { id: 'zeta', title: 'zeta', position: 0, column: { id: 'first', position: 0 } },
+    ]).map((x) => x.id)
+    expect(ids).toEqual(['zeta', 'alpha'])
+  })
+
+  it('still puts a task with no position last within its column', () => {
+    const ids = orderBacklog([
+      { id: 'none', title: 'N', position: null, column: { id: 'c', position: 0 } },
+      { id: 'first', title: 'F', position: 0, column: { id: 'c', position: 0 } },
+    ]).map((x) => x.id)
+    expect(ids).toEqual(['first', 'none'])
+  })
+})
+
+describe('reordering is planned, and refuses when it cannot be honest', () => {
+  const col = { id: 'todo', position: 0 }
+  const rows = [
+    { id: 'a', title: 'A', position: 0, column: col },
+    { id: 'b', title: 'B', position: 1, column: col },
+    { id: 'c', title: 'C', position: 2, column: col },
+  ]
+
+  it('moves an item up and renumbers the whole column densely', () => {
+    const plan = planReorder(rows, 'c', 'up')
+    expect(plan.blockedReason).toBeNull()
+    expect(plan.updates).toEqual([
+      { id: 'a', position: 0 }, { id: 'c', position: 1 }, { id: 'b', position: 2 },
+    ])
+  })
+
+  it('moves to top and to bottom', () => {
+    expect(planReorder(rows, 'c', 'top').updates.map((u) => u.id)).toEqual(['c', 'a', 'b'])
+    expect(planReorder(rows, 'a', 'bottom').updates.map((u) => u.id)).toEqual(['b', 'c', 'a'])
+  })
+
+  it('is a no-op at the ends rather than an error', () => {
+    expect(planReorder(rows, 'a', 'up').updates).toEqual([])
+    expect(planReorder(rows, 'a', 'up').blockedReason).toBeNull()
+    expect(planReorder(rows, 'c', 'down').updates).toEqual([])
+  })
+
+  it('REFUSES while the list is filtered - index 3 of a filtered list is not index 3 of the order', () => {
+    const plan = planReorder(rows, 'c', 'top', { listIsComplete: false })
+    expect(plan.updates).toEqual([])
+    expect(plan.blockedReason).toMatch(/filters/i)
+  })
+
+  it('only ever renumbers ONE column, never work in another', () => {
+    const mixed = [...rows, { id: 'x', title: 'X', position: 0, column: { id: 'doing', position: 1 } }]
+    const plan = planReorder(mixed, 'c', 'top')
+    expect(plan.updates.map((u) => u.id)).toEqual(['c', 'a', 'b'])
+    expect(plan.updates.some((u) => u.id === 'x')).toBe(false)
+  })
+
+  it('refuses an item with no column - it has no position to change', () => {
+    const plan = planReorder([{ id: 'loose', title: 'L', position: 0, column: null }], 'loose', 'top')
+    expect(plan.blockedReason).toMatch(/no board column|not on a board/i)
+  })
+
+  it('offers only the actions that would actually do something', () => {
+    expect(availableReorderActions(rows, 'a')).toEqual(['down', 'bottom'])
+    expect(availableReorderActions(rows, 'c')).toEqual(['top', 'up'])
+    expect(availableReorderActions(rows, 'b')).toEqual(['top', 'up', 'down', 'bottom'])
+  })
+
+  it('offers nothing at all while the list is incomplete', () => {
+    expect(availableReorderActions(rows, 'b', { listIsComplete: false })).toEqual([])
+  })
+
+  it('offers nothing for a column holding a single item', () => {
+    expect(availableReorderActions([rows[0]], 'a')).toEqual([])
   })
 })

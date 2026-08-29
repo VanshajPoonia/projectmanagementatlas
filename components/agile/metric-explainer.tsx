@@ -13,7 +13,7 @@ import { Info } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Badge } from '@/components/ui/badge'
 import { formatEstimate } from '@/lib/agile'
-import type { MetricValue } from '@/lib/sprint-metrics'
+import { explainMetric, type MetricValue } from '@/lib/sprint-metrics'
 
 function whenLabel(iso: string): string {
   // A plain absolute stamp, never "3 minutes ago": elapsed time computed during render makes
@@ -90,7 +90,11 @@ export function MetricExplainer({ metric }: { metric: MetricValue }) {
 /** A number with its explanation attached. The two are never rendered apart. */
 export function MetricTile({ metric, showCount = true }: { metric: MetricValue; showCount?: boolean }) {
   return (
-    <div className="bg-card rounded-lg border p-3">
+    // ⚠️ The whole explanation is on the tile as accessible text, not only inside a popover a
+    // pointer has to open. Prompt G requires every chart to EXPOSE its definition, and a
+    // disclosure that exists only behind a hover is exposed to some readers and not others.
+    // `explainMetric` builds it from the same value the number came from.
+    <div className="bg-card rounded-lg border p-3" role="group" aria-label={explainMetric(metric)}>
       <div className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
         <span>{metric.label}</span>
         <MetricExplainer metric={metric} />

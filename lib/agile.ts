@@ -331,14 +331,21 @@ export function wipStatus(input: {
   count: number
   limit: number | null | undefined
   mode: EnforcementMode
-  enforcementAvailable?: boolean
+  /**
+   * ⚠️ REQUIRED, deliberately. It used to default to `true`, which meant a caller that simply
+   * forgot it would claim the database was going to refuse a move that it will happily accept -
+   * over-promising in the one direction that teaches people to ignore the next warning. There
+   * is no safe default for "does the enforcing trigger exist", so the type makes every call
+   * site answer it and the compiler finds the ones that do not.
+   */
+  enforcementAvailable: boolean
 }): WipStatus {
   const limit = input.limit ?? null
   const count = input.count
   if (limit === null || limit <= 0) {
     return { state: 'none', count, limit: null, blocks: false, message: '' }
   }
-  const blocks = input.mode === 'enforcement' && input.enforcementAvailable !== false
+  const blocks = input.mode === 'enforcement' && input.enforcementAvailable
   if (count > limit) {
     return {
       state: 'over',
@@ -376,25 +383,123 @@ export interface BacklogTask {
   estimate_value?: number | null
   parent_task_id?: string | null
   type_key?: string | null
-  column?: { status_key?: string | null } | null
+  column?: { id?: string; status_key?: string | null; position?: number | null } | null
   status?: string | null
   assigned_to?: string | null
   task_assignees?: { user_id: string }[] | null
 }
 
 /**
- * Prompt G's backlog is "prioritized ordering", and the ordering is the board's own `position`
- * - deliberately NOT a second ranking column. A backlog that sorts differently from the board
- * it belongs to is two orders that must agree forever, which is what 115 refused for relations
- * and what this codebase has been bitten by every time it kept two copies of one truth.
+ * Prompt G's backlog is "prioritized ordering", and the ordering is the board's own, read as
+ * (column position, task position) - deliberately NOT a second ranking column. A backlog that
+ * sorts differently from the board it belongs to is two orders that must agree forever, which
+ * is what 115 refused for relations and what this codebase has been bitten by every time it
+ * kept two copies of one truth.
+ *
+ * ⚠️ The COLUMN's position has to be the first key, and leaving it out was a real bug.
+ * `tasks.position` is an index WITHIN a column, so two tasks in different columns routinely
+ * both hold position 0 - sorting on it alone made the order between them fall through to an
+ * alphabetical tie-break, which is not a priority order at all, just a stable-looking one.
  */
 export function orderBacklog<T extends BacklogTask>(tasks: T[]): T[] {
+  const key = (t: T) => [
+    t.column?.position ?? Number.MAX_SAFE_INTEGER,
+    t.position ?? Number.MAX_SAFE_INTEGER,
+  ]
   return [...tasks].sort((a, b) => {
-    const pa = a.position ?? Number.MAX_SAFE_INTEGER
-    const pb = b.position ?? Number.MAX_SAFE_INTEGER
+    const [ca, pa] = key(a)
+    const [cb, pb] = key(b)
+    if (ca !== cb) return ca - cb
     if (pa !== pb) return pa - pb
     return a.title.localeCompare(b.title)
   })
+}
+
+/* ── Reordering ───────────────────────────────────────────────────────────────────── */
+
+export type ReorderAction = 'top' | 'up' | 'down' | 'bottom'
+
+export const REORDER_LABELS: Record<ReorderAction, string> = {
+  top: 'Move to top',
+  up: 'Move up',
+  down: 'Move down',
+  bottom: 'Move to bottom',
+}
+
+export interface ReorderPlan {
+  /** The writes to make. Empty when the move is a no-op. */
+  updates: { id: string; position: number }[]
+  /** Why the move was refused, in the words the UI should use. Null when it can go ahead. */
+  blockedReason: string | null
+}
+
+/**
+ * Plan a priority move.
+ *
+ * ⚠️ REORDERING HAPPENS WITHIN ONE COLUMN, and that is a consequence of the model rather than a
+ * limitation invented here: `tasks.position` is an index inside a column, so "third in the
+ * backlog" has no meaning that survives the backlog spanning three columns. Moving work between
+ * columns is a change of STATUS, which the board and the status picker already own. Offering a
+ * cross-column drag here would write a position number the person did not mean.
+ *
+ * ⚠️ It is also refused while a filter, a search or grouping is active. Index 3 of a filtered
+ * list is not index 3 of the real order, so honouring the drop would silently reorder rows the
+ * person cannot see. Saying so beats writing the wrong number.
+ */
+export function planReorder<T extends BacklogTask>(
+  pool: T[],
+  taskId: string,
+  action: ReorderAction,
+  options: { listIsComplete: boolean } = { listIsComplete: true },
+): ReorderPlan {
+  const none = (reason: string | null): ReorderPlan => ({ updates: [], blockedReason: reason })
+
+  if (!options.listIsComplete) {
+    return none('Clear the filters and grouping first - with a partial list on screen, a move would reorder work you cannot see.')
+  }
+
+  const moving = pool.find((t) => t.id === taskId)
+  if (!moving) return none('That work item is no longer in this list.')
+
+  const columnId = moving.column?.id ?? null
+  if (!columnId) return none('This work item is not on a board column, so it has no position to change.')
+
+  // ⚠️ `pool` must be EVERY live task on the board, not the filtered backlog on screen. A
+  // column holds backlog work and sprint work side by side, and renumbering only the rows this
+  // panel happens to show would hand them positions that collide with the ones it does not -
+  // an order the board's own drag-and-drop would then have to reconcile. The filtered view
+  // decides whether the action is OFFERED (see `listIsComplete`); the full column decides what
+  // the numbers become.
+  const siblings = orderBacklog(pool.filter((t) => (t.column?.id ?? null) === columnId))
+  if (siblings.length < 2) return none(null)
+
+  const ids = siblings.map((t) => t.id)
+  const from = ids.indexOf(taskId)
+  const to = action === 'top' ? 0
+    : action === 'bottom' ? ids.length - 1
+    : action === 'up' ? from - 1
+    : from + 1
+
+  if (to < 0 || to > ids.length - 1 || to === from) return none(null)
+
+  const next = moveInBacklog(ids, from, to)
+  // Renumber the whole column from zero. Assigning only the two moved rows leaves gaps and
+  // duplicates that the board's own drag-and-drop then has to reconcile; a dense sequence is
+  // the one shape both surfaces can agree on.
+  return {
+    updates: next.map((id, index) => ({ id, position: index })),
+    blockedReason: null,
+  }
+}
+
+/** Which reorder actions can actually do anything, so the menu never offers a dead entry. */
+export function availableReorderActions<T extends BacklogTask>(
+  pool: T[],
+  taskId: string,
+  options: { listIsComplete: boolean } = { listIsComplete: true },
+): ReorderAction[] {
+  return (['top', 'up', 'down', 'bottom'] as ReorderAction[])
+    .filter((action) => planReorder(pool, taskId, action, options).updates.length > 0)
 }
 
 /** Pure list move, returning the ids in their new order. The caller persists positions. */
