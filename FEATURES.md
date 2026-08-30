@@ -265,7 +265,7 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       shippable. ⚠️ **`125` (WIP enforcement, a trigger on `tasks`) is NOT `--allow-prod` eligible
       and was deliberately held back**; the other four went to prod on 2026-08-29 with every row
       count identical before and after, and the module seeded off, so the deploy changed nothing
-      anyone can see. Prod reports 1 pending forever by design. A post-ship audit also found and
+      anyone can see. Prod reports `held: 1` by design (`scripts/held-migrations.mjs`). A post-ship audit also found and
       fixed seven library exports with no product call site - each one either a second inline copy
       of itself in a component, or a built feature nobody could reach, including backlog
       reordering and "move to another sprint". Deliberately

@@ -10,11 +10,15 @@ Last updated: 2026-08-28
 
 ## Open - infrastructure
 
-### Production reports `1 pending` migration, permanently and on purpose
+### Production holds one migration back, permanently and on purpose
 
 `scripts/125_wip_enforcement.sql` is applied to dev and **deliberately not** to
-production, so `migrate:status` against prod will always show one pending file.
-**That gap is a decision, not drift - do not "tidy" it by applying the file.**
+production. Since 2026-08-30 that is recorded in `scripts/held-migrations.mjs`, so
+`migrate:status` against prod reports `pending: 0   held: 1` and prints why - rather
+than the `pending: 1` it used to show, which was indistinguishable from a file nobody
+had got round to. **The gap is a decision, not drift - do not "tidy" it by applying
+the file**, and note the runner will now refuse to unless you pass
+`--release-hold=125`.
 
 It puts a trigger on `tasks`, which runs on every task move on every board, so it
 is not `--allow-prod` eligible on this repo's own rule: the same class as `113`

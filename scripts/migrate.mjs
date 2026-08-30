@@ -21,6 +21,7 @@ import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { assertMigrationTarget } from './guard-db.mjs'
+import { HELD_MIGRATIONS, heldByNumber, splitHeld } from './held-migrations.mjs'
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url))
 
@@ -39,6 +40,11 @@ if (!DB_URL) {
 //                  pending file pending. Needed when an earlier pending file is destructive and
 //                  still awaiting sign-off, but a later additive one must ship to fix a live bug.
 //                  Skipping a predecessor is the caller's responsibility - check the dependency.
+//   --release-hold=NNN
+//                  required to apply (or baseline) a migration listed in held-migrations.mjs.
+//                  A hold is a recorded decision, not a backlog item: without this flag a held
+//                  file is excluded from `pending` entirely, so no bare `pnpm migrate
+//                  --allow-prod` can sweep it up on the way to a later migration.
 const ARGS = process.argv.slice(2)
 const ALLOW_PROD = ARGS.includes('--allow-prod')
 const throughArg = ARGS.find((a) => a.startsWith('--through='))
@@ -47,7 +53,20 @@ const onlyArg = ARGS.find((a) => a.startsWith('--only='))
 const ONLY = onlyArg
   ? new Set(onlyArg.split('=')[1].split(',').map((s) => Number.parseInt(s.trim(), 10)))
   : null
+const releaseArgs = ARGS.filter((a) => a.startsWith('--release-hold='))
+const RELEASED = new Set(
+  releaseArgs.flatMap((a) => a.split('=')[1].split(',').map((s) => Number.parseInt(s.trim(), 10)))
+)
 const mode = ARGS.find((a) => ['--status', '--baseline', '--apply'].includes(a)) || '--apply'
+
+// Naming a hold that does not exist is a typo, and a typo here reads as "released" to the
+// person who typed it. Refuse rather than proceed with the hold still in place.
+for (const n of RELEASED) {
+  if (!heldByNumber(n)) {
+    console.error(`--release-hold=${n} names a migration that is not held. Nothing to release.`)
+    process.exit(1)
+  }
+}
 
 // Zero-padded numeric prefix of a migration filename, e.g. 076_foo.sql -> 76.
 const prefixNum = (f) => Number.parseInt(f.match(/^(\d+)/)[1], 10)
@@ -116,16 +135,55 @@ function record(file) {
 ensureTable()
 const applied = appliedSet()
 const files = migrationFiles()
-const pending = files.filter((f) => !applied.has(f))
+const allPending = files.filter((f) => !applied.has(f))
+
+// A held migration is not pending - it is decided. It only rejoins the queue when its number
+// is named with --release-hold, which forces whoever is running this past the recorded reason.
+const { pending, held } = splitHeld(allPending, RELEASED)
+
+// Answered BEFORE the "nothing to do" exit below, because --only=125 against a database where
+// 125 is the only outstanding file would otherwise report "up to date", which is the opposite
+// of what the operator needs to hear.
+if (ONLY && mode === '--apply') {
+  const blocked = [...ONLY].map((n) => heldByNumber(n)).filter((h) => h && held.includes(h.file))
+  if (blocked.length) {
+    for (const h of blocked) {
+      console.error(`--only names a HELD migration: ${h.file}`)
+      console.error(`  why it is held: ${h.reason}`)
+      console.error(`  to release it:  ${h.releaseNeeds}`)
+    }
+    process.exit(1)
+  }
+}
+
+function reportHolds() {
+  if (!HELD_MIGRATIONS.length) return
+  console.log('')
+  for (const h of HELD_MIGRATIONS) {
+    const state = applied.has(h.file)
+      ? 'already applied on THIS database'
+      : RELEASED.has(prefixNum(h.file))
+        ? 'RELEASED for this run'
+        : 'held back here'
+    console.log(`held: ${h.file}  (${state}, since ${h.since})`)
+    console.log(`  why: ${h.reason}`)
+    if (!applied.has(h.file)) console.log(`  to release: ${h.releaseNeeds}`)
+  }
+}
 
 if (mode === '--status') {
-  console.log(`applied: ${applied.size}   pending: ${pending.length}   total: ${files.length}`)
+  console.log(
+    `applied: ${applied.size}   pending: ${pending.length}   held: ${held.length}   total: ${files.length}`
+  )
   if (pending.length) console.log('pending:\n  ' + pending.join('\n  '))
+  reportHolds()
   process.exit(0)
 }
 
 if (mode === '--baseline') {
-  let toRecord = files.filter((f) => !applied.has(f))
+  // Baselining a held file would record it as applied WITHOUT running it, which is strictly
+  // worse than applying it: the ledger would then claim prod has a trigger it does not have.
+  let toRecord = files.filter((f) => !applied.has(f) && !held.includes(f))
   if (THROUGH !== null) toRecord = toRecord.filter((f) => prefixNum(f) <= THROUGH)
   if (!toRecord.length) { console.log('nothing to baseline - all files already recorded.'); process.exit(0) }
   // One round-trip, not one-per-file (the DB is remote).
@@ -135,10 +193,15 @@ if (mode === '--baseline') {
      values ${values}
      on conflict (filename) do nothing;`])
   console.log(`baselined ${toRecord.length} migration(s) as already-applied - nothing was executed.`)
+  reportHolds()
   process.exit(0)
 }
 
-if (!pending.length) { console.log('up to date - no pending migrations.'); process.exit(0) }
+if (!pending.length) {
+  console.log('up to date - no pending migrations.')
+  reportHolds()
+  process.exit(0)
+}
 
 // --only runs a subset; everything it skips stays pending and is reported, so a deliberately
 // held-back migration can never be mistaken for one that already ran.
@@ -167,3 +230,4 @@ for (const f of toApply) {
   }
 }
 console.log(`applied ${toApply.length} migration(s).`)
+reportHolds()

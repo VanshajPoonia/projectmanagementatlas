@@ -330,9 +330,17 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
     whole BOARD - that needs notification generation nothing currently does, and a control wired
     to nothing is this repo's most-repeated defect.
 - ✅ **Prompt G is SHIPPED to dev AND prod (`123`, `124`, `126`, `127`), 2026-08-29. `125` is on
-  DEV ONLY and was deliberately held back.** ⚠️ **Prod therefore reports `1 pending` forever** -
-  that gap is a decision, not drift. Run `pnpm migrate:status` against both rather than
-  trusting this line; it has gone stale before.
+  DEV ONLY and was deliberately held back.** ⚠️ **Prod therefore reports `held: 1`** (not
+  `pending: 1`) - the hold is registered in `scripts/held-migrations.mjs`, which prints the
+  reason and makes the runner refuse to apply it without `--release-hold=125`. That gap is a
+  decision, not drift. Run `pnpm migrate:status` against both rather than trusting this line;
+  it has gone stale before.
+  - **Re-examined 2026-08-30 on the owner's "do what's best for the product" and the answer
+    was still no.** Nothing shipped depends on `125`; the WIP badge and settings dialog ask
+    `wip_enforcement_installed()` and honestly say "warning only" where it is absent. The two
+    prior overrides (`113`, `118`) were each forced by code that could not ship without them,
+    and "the ledger looks untidy" is not that. What DID change is that the untidiness is gone
+    without shipping the trigger, and the accident path is closed.
   - Prod went `122` -> `126` one file at a time via `--only=NNN --allow-prod`, verified between
     each, after a `pg_restore --list`-verified backup
     (`~/Code/prod-backup-pre-123to126-20260829-021936.dump`, 7.3 MB, 57 tables, chmod 444).

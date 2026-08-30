@@ -343,8 +343,9 @@ deliberately left out.
 ## Conventions
 
 - Migrations: numbered SQL in `scripts/`, continuing from `128`. **Dev is at `127`; prod has 1-124, 126 and 127,
-  with `125` deliberately never applied, as of 2026-08-29** - so prod reports 1 pending
-  forever. See the Prompt G section for why. As always, run
+  with `125` deliberately never applied, as of 2026-08-30.** Prod reports
+  `pending: 0   held: 1` - see "Holding a migration back" below, and the Prompt G section for
+  why this particular one. As always, run
   `pnpm migrate:status` rather than trusting this sentence - it has gone stale three times. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
@@ -366,6 +367,28 @@ deliberately left out.
   lives. This block has been wrong twice before (it said prod was at `095` when it was at
   `101`, then at `101` when it was at `104`), which is why the rule above is to run
   `pnpm migrate:status` rather than read this sentence.
+- **Holding a migration back is a first-class state, not an empty slot in the queue**
+  (`scripts/held-migrations.mjs`, 2026-08-30). Before it, a file that was deliberately not
+  applied looked exactly like one nobody had got round to, and two things followed. The
+  status command reported `pending: 1` on prod forever, so the day a *genuine* second file
+  went unapplied it would read `pending: 2` and be dismissed as "yeah, that's the known one" -
+  the same "a control labelled broken is a control nobody touches" defect, aimed at the safety
+  mechanism itself. And worse: **a bare `pnpm migrate --allow-prod` run to ship a LATER
+  migration applied the held one as a side effect.** The only thing between production and a
+  held-back trigger was somebody remembering to type `--only=NNN`, which is a rule enforced by
+  memory, which is not a rule.
+  - A held file is excluded from `pending`, reported separately with its recorded reason and
+    release path in **every** mode, and refused by `--apply`, `--only` and `--baseline` alike
+    unless its number is named with **`--release-hold=NNN`**. Baseline refuses it too, because
+    recording a file as applied without running it is strictly worse than applying it - the
+    ledger would then claim prod has a trigger it does not have.
+  - Releasing a hold is still the owner decision described above; the flag does not replace
+    that, it just means the decision cannot happen by accident. Deleting an entry from the
+    manifest **is** the same decision as applying the file - it is not tidying.
+  - Gate: `tests/held-migrations.test.ts` (9), confirmed to drop 3 checks when the exclusion
+    rule is removed rather than trusted to be meaningful. It also asserts each held file's own
+    SQL header still says it is not `--allow-prod` eligible, so the manifest and the migration
+    cannot quietly disagree.
 - ⚠️ **Both `db.<ref>.supabase.co` hosts are IPv6-ONLY, and this Mac has no IPv6 route** - only
   link-local addresses on its VPN `utun` interfaces. macOS `getaddrinfo` drops an AAAA it cannot
   route, so libpq reports **`could not translate host name ... nodename nor servname provided`**,
@@ -1213,8 +1236,9 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
 ### Prompt G - optional Agile mode (`123`-`127`, 2026-08-29)
 
 Five migrations. **`123`, `124`, `126` and `127` are on dev AND prod. `125` is on DEV ONLY and is
-the one file that is not eligible** - read the per-file notes below before applying it. Prod
-therefore reports `1 pending` permanently, and that gap is a decision rather than drift.
+the one file that is not eligible** - read the per-file notes below before applying it. It is
+registered in `scripts/held-migrations.mjs`, so prod reports `pending: 0   held: 1` and no bare
+`pnpm migrate --allow-prod` can sweep it up on the way to a later file.
 
 Prod went `122` -> `126` on 2026-08-29, one file at a time via `--only=NNN --allow-prod`,
 verified between each, after a `pg_restore --list`-verified backup
@@ -1224,8 +1248,14 @@ identical before and after**: 173 tasks, 11 boards, 46 columns, 5 statuses, 11 w
 seed (11 -> 12), and it seeds **disabled**. `enforce_wip_limit` is absent from prod's `tasks`,
 which still carries exactly the 8 triggers it had before; `public.wip_enforcement_installed()`
 therefore returns **false** there, and every WIP badge on production says "warning only".
-⚠️ `pnpm migrate:status` against prod will report **1 pending forever** until somebody decides
-about `125`. That gap is deliberate, not drift.
+⚠️ `pnpm migrate:status` against prod reports **`held: 1`**, not `pending: 1`, and prints the
+recorded reason. Applying it needs `--only=125 --allow-prod --release-hold=125` plus the owner
+decision and backup that any override needs. **Re-examined 2026-08-30 and the answer was still
+no**, for a reason worth keeping: `113` and `118` were both overridden because shipped code hard
+-depended on them, and nothing depends on `125`. The badge and the settings dialog already ask
+`wip_enforcement_installed()` (126) and say "warning only" where it is absent, so the product is
+honest without it, and applying it would be the first override justified by nothing more than a
+tidy ledger.
 
 | file | what | prod eligible? |
 |---|---|---|
