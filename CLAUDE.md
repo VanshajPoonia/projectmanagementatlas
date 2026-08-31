@@ -342,7 +342,7 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `128`. **Dev is at `127`; prod has 1-124, 126 and 127,
+- Migrations: numbered SQL in `scripts/`, continuing from `129`. **Dev is at `128`; prod has 1-124 and 126-128,
   with `125` deliberately never applied, as of 2026-08-30.** Prod reports
   `pending: 0   held: 1` - see "Holding a migration back" below, and the Prompt G section for
   why this particular one. As always, run
@@ -1251,6 +1251,43 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
     normalises the pair by uuid order, so the check passes or fails by how two random uuids
     happen to sort. Query either end, or use a directional relation type in the fixture.
 
+
+### Migration `128` - owner decisions live in the product (dev AND prod, 2026-08-30)
+
+`public.owner_decisions` plus a **Decisions** tab on `/admin/super-admin`. Purely additive: one
+new table, one new function, one trigger **on that new table**, so no write path that existed
+before passes through it. `--allow-prod` eligible, applied to prod the same day via
+`--only=128 --allow-prod` after a `pg_restore --list`-verified backup
+(`~/Code/prod-backup-pre-128-20260831-215237.dump`, 7.4 MB, 62 tables, chmod 444). Every row count
+identical before and after: 173 tasks, 11 boards, 46 columns, 8 triggers on `tasks`, 1355
+marketing items. It seeded **2 open and 2 resolved** decisions.
+
+**It replaced `docs/product/open-owner-decisions.md`, which lasted one day.** A hand-maintained
+file is a copy of a state nobody is obliged to update: the moment somebody resolves a decision the
+file still says "waiting on you", and nothing distinguishes a live decision from a stale sentence.
+That is this repo's most-repeated defect, and it is why `app_modules` is a table rather than a
+constant. The file is now a pointer to the screen and nothing else.
+
+- ⚠️ **Super-admin-only, and `private.is_admin_user()` would have been WRONG while looking
+  right.** That helper is true for `admin` AND `super_admin` here, so the plausible mistake
+  exposes governance records to three more people with nothing on screen saying so. Every policy
+  is `private.is_super_admin_user()`. `pnpm check:decisions` has a plain-admin control case, and
+  it was **confirmed to drop from 21/21 to 20/21** when the policy was widened to
+  `is_admin_user()`, rather than trusted to be meaningful.
+- **Closing a decision needs a note, enforced by a trigger rather than by the dialog** - six
+  months on, the note is the only record of why. Reopening clears the note, resolver and
+  timestamp together, so a reopened decision never carries an outcome that is no longer true
+  (`103`'s carrier-column lesson).
+- ⚠️ **`resolved_by` / `resolved_at` are stamped on UPDATE and cannot be supplied**, so the log
+  cannot be made to say somebody else made a call they did not. They ARE honoured on INSERT, so
+  a decision genuinely made last week can be entered with its real date; the asymmetry is the
+  point, and only super admins can write at all.
+- **Deprovisioning decided at creation** (119's lesson): `created_by`/`resolved_by` are
+  `ON DELETE SET NULL`, never cascade and never reassigned. A decision is org furniture, so
+  deleting its author must not destroy it, and reassigning would make the row claim somebody
+  else made the call. The delete-user route needs no change.
+- Gates: `pnpm check:decisions` (21, real RLS) and `lib/owner-decisions.test.ts` (13), plus a
+  real-browser pass over the tab.
 
 ### Prompt G - optional Agile mode (`123`-`127`, 2026-08-29)
 

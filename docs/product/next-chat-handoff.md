@@ -395,10 +395,13 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
     tests under all four timezones; `next build` clean with the dev ref confirmed baked.
   - **Deliberately not built:** time tracking. Prompt G calls it a separate optional module and
     notes Taiga has none natively.
-- ⚠️ **`docs/product/open-owner-decisions.md` is the standing list of things waiting on the
-  owner** (2026-08-30), each with production facts re-queried on the day it was written: `125`,
-  the "TEST" marketing calendar and Vanshaj's access, four cadence-less recurring tasks, and
-  which boards should opt into agile. Re-query before acting on any of them.
+- ⚠️ **Owner decisions live in the PRODUCT now: Super Admin -> Decisions** (migration `128`,
+  dev AND prod, 2026-08-30). `docs/product/open-owner-decisions.md` is a pointer to that screen
+  and nothing else - it was a hand-maintained list for one day, which is a copy of a state
+  nobody is obliged to update. **Read the table, not a document.** Two are resolved (`125`
+  stays held; the "TEST" marketing calendar was archived on 2026-08-30 on the owner's ruling
+  that Vanshaj does not need Marketing access) and two are open (the four cadence-less
+  recurring tasks, and which board opts into agile first).
 - ✅ **The `agile` module was switched ON for the org on 2026-08-30** (owner instruction; a
   one-row `app_modules` update, not a migration). `/agile` is in the nav for everyone and
   **no board has agile enabled**, which is the intended state. An ⓘ button beside the Agile

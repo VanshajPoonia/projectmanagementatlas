@@ -275,6 +275,15 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       triggers are removed and 3 more when 127's is disabled), `pnpm check:agile-ui` (56, real
       browser, stable across three runs).
 - [ ] **7. Saved views** · **8. Hierarchy/subtask context**
+- [x] **10. Decisions live in the product** (migration `128` on dev AND prod, 2026-08-30) -
+      `public.owner_decisions` plus a **Decisions** tab on `/admin/super-admin`, super-admin-only.
+      It replaced a markdown list that lasted one day: a hand-maintained file is a copy of a state
+      nobody is obliged to update, so the moment somebody resolves a decision it still reads
+      "waiting on you". Closing one needs a note, enforced by a trigger rather than the dialog,
+      because six months on the note is the only record of why; reopening clears the note,
+      resolver and timestamp together; and `resolved_by`/`resolved_at` are stamped on update so
+      the log cannot be made to say somebody else made a call. Gates: `pnpm check:decisions` (21,
+      confirmed to drop a check when the policy is widened to `is_admin_user`), 13 unit tests.
 
 **Blocked on schema, deliberately not faked:** the remaining two are milestone pressure and
 client requests. ⚠️ This paragraph used to name "what am I blocking?" and "what needs my
