@@ -232,6 +232,12 @@ try {
     ['what happens to unsized work', 'unestimated'],
     ['that closed numbers are frozen', 'frozen'],
     ['how to turn it off again', 'ordinary board again'],
+    // ⚠️ Pinned because the answer is easy to get wrong in the RESTRICTIVE direction, and being
+    // wrong that way still takes an ability away from someone the database was built to serve.
+    // board_agile_settings writes are is_admin_user() (admin AND super_admin), and running a
+    // window needs neither - it is open to any active member who is not a guest or client.
+    ['who can change what', 'any admin'],
+    ['that day-to-day use needs no owner', 'everyone else'],
   ]) {
     check(`the guide covers ${what}`, infoText.includes(needle), `missing: ${needle}`)
   }

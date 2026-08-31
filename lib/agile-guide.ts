@@ -162,6 +162,21 @@ export const AGILE_GUIDE = {
         'every time you looked at it.',
     },
     {
+      id: 'who-can',
+      heading: 'Who can change what',
+      body:
+        'Three levels, and the day-to-day one is deliberately wide. Nothing about running a ' +
+        'window needs the owner.',
+      steps: [
+        'Super admin: switches the whole agile module on or off for the workspace, in Super Admin. Nothing else here needs that level.',
+        'Any admin: turns agile on for a particular board, picks its noun and unit, sets a window capacity, and sets a column\'s work-in-progress limit.',
+        'Everyone else: creates and runs windows, adds to the backlog, orders it, sizes items and plans them in.',
+      ],
+      note:
+        'Guests and clients on a board stay read-only here exactly as they are everywhere else, ' +
+        'so opening agile on a board shared with a client changes nothing about what they can do.',
+    },
+    {
       id: 'turning-off',
       heading: 'Turning it off',
       body:
@@ -204,8 +219,12 @@ export const AGILE_GUIDE = {
       a: 'A warning shows the limit is exceeded and lets the move through. Enforcement means the database refuses it. Where enforcement is not installed the badge says so, so a limit never promises something it cannot deliver.',
     },
     {
-      q: 'Who can change these settings?',
-      a: 'An admin, per board. Ordinary members can see and use the backlog and taskboard but cannot change a board\'s agile settings, its capacity, or a column\'s limit.',
+      q: 'Who can do what?',
+      a: 'Three levels. A super admin switches the whole module on or off for the workspace, in Super Admin. Any admin turns agile on for a particular board and sets its noun, its unit, its capacity and a column\'s work-in-progress limit. Everyone else can do the day-to-day work: create and run windows, add to the backlog, order it, estimate items and plan them in. Guests and clients on a board stay read-only, exactly as they are everywhere else.',
+    },
+    {
+      q: 'Does the owner have to be involved in day-to-day use?',
+      a: 'No. Only two things need a super admin: switching the module on for the workspace, and it is already on. Everything after that, including turning agile on for a board and setting limits, is an ordinary admin action.',
     },
   ] as GuideQuestion[],
 } as const
