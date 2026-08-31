@@ -244,7 +244,8 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       with a visible reason. Gates: `pnpm check:inbox` (49), `pnpm check:inbox-ui` (32),
       `pnpm check:my-work` (33).
 - [x] **9. Optional agile mode** (Prompt G, `123`/`124`/`126`/`127` on dev AND prod, `125` dev only, 2026-08-29) - `/agile`,
-      off by default at three levels: the `agile` module seeds disabled, every board's
+      opt-in at three levels: the `agile` module seeds disabled (**switched on for this org
+      2026-08-30; no board has opted in, so nothing about any board changed**), every board's
       `is_enabled` seeds off, and the noun itself (**sprint | cycle | iteration**) is a board
       setting - so a marketing, contracting, real-estate, finance or operations board never sees
       Scrum vocabulary, which is Prompt G's first requirement. Backlog with search/filters/bulk

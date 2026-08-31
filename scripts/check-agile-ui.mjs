@@ -204,6 +204,30 @@ try {
   check('and offers no way to create a sprint on it', newSprintHidden === 0)
 
   // =======================================================================================
+  section('Somebody landing here can find out what it is')
+  // =======================================================================================
+  // ⚠️ The fact being pinned is not "a dialog opens" - it is that the dialog states the one
+  // thing an admin is most likely to get wrong, that switching the MODULE on changes no board.
+  // Every other module in this workspace becomes visible AND active at once, so agile is the
+  // exception, and an exception nobody is told about is a support question.
+  check('an info button sits beside the Agile heading', await page.locator('#agile-info-button').count() > 0)
+
+  await page.click('#agile-info-button')
+  await page.waitForSelector('[role="dialog"]:has-text("What agile mode is")', { timeout: 15000 })
+  const infoText = (await page.locator('[role="dialog"]:has-text("What agile mode is")').innerText()).toLowerCase()
+  check('it opens an explanation of what agile mode is', infoText.length > 0)
+  check(
+    'which says switching the module on changes no board',
+    infoText.includes('changes no board') && infoText.includes('until an admin turns agile on'),
+    infoText.slice(0, 160),
+  )
+  check('and explains the work is not copied', infoText.includes('does not duplicate'))
+
+  await page.keyboard.press('Escape')
+  await until(() => page.locator('[role="dialog"]:has-text("What agile mode is")').count(), (n) => n === 0)
+  check('and closes again', await page.locator('[role="dialog"]:has-text("What agile mode is")').count() === 0)
+
+  // =======================================================================================
   section('An admin can reach every control from a screen')
   // =======================================================================================
   await page.click('#agile-settings-button')

@@ -21,6 +21,7 @@ import { createClient } from '@/lib/supabase/client'
 import { DEFAULT_MODULES, type ModuleKey } from '@/lib/modules'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { AgileInfoButton } from '@/components/agile/agile-info'
 
 interface ModuleRow {
   module_key: ModuleKey
@@ -156,6 +157,13 @@ export default function ModuleManagement() {
                       ) : (
                         <Badge variant="outline" className="text-muted-foreground">Off</Badge>
                       )}
+                      {/* ⚠️ Agile is the only module here whose switch does NOT activate the
+                          thing it names: it makes /agile reachable and changes no board. Every
+                          other switch on this screen turns its feature on outright, so that
+                          exception is exactly the kind of surprise that becomes a support
+                          question. It sits beside the name rather than trailing the description
+                          so it is a real target, not a 20px afterthought inside a sentence. */}
+                      {row.module_key === 'agile' && <AgileInfoButton />}
                     </div>
                     {copy && (
                       <p className="text-muted-foreground mt-0.5 text-sm">{copy.description}</p>

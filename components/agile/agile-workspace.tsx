@@ -58,6 +58,7 @@ import { SprintTaskboard } from './sprint-taskboard'
 import { SprintMetricsPanel } from './sprint-metrics-panel'
 import { SprintDialog } from './sprint-dialog'
 import { AgileSettingsDialog } from './agile-settings-dialog'
+import { AgileInfoButton } from './agile-info'
 
 interface Props {
   user: any
@@ -460,7 +461,10 @@ export default function AgileWorkspace({
     >
       <div className="space-y-4 p-4 md:p-6">
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Agile</h1>
+          <div className="flex items-center gap-1">
+            <h1 className="text-2xl font-semibold tracking-tight">Agile</h1>
+            <AgileInfoButton />
+          </div>
           <p className="text-muted-foreground text-sm">
             Optional per board. A board that has it switched off is an ordinary board and never sees this vocabulary.
           </p>

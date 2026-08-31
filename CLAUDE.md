@@ -1292,6 +1292,11 @@ contracting, real estate, finance, operations":
 1. `app_modules.agile` seeds **disabled**, like `appointments` (080) and `crm` (103). No nav
    item, and `/agile` itself redirects - the module is checked on the server, not only in the
    nav, because a toggle that hides a link is not a toggle (the `ai_assistant` lesson).
+   ⚠️ **The module was switched ON for this org on 2026-08-30, on the owner's instruction**
+   (a one-row `app_modules` update, the same write the Modules tab makes - not a migration).
+   The SEED is unchanged and levels 2 and 3 are untouched: **no board has agile enabled**, so
+   `/agile` is merely reachable and no board's vocabulary changed. Which boards opt in is
+   tracked in `docs/product/open-owner-decisions.md`.
 2. `board_agile_settings.is_enabled`, per board, and **`123` seeds zero rows**. A board with no
    settings row is a board with agile off, so nothing changed for any existing board.
 3. `terminology` picks the noun - **sprint | cycle | iteration** - so one underlying model can be

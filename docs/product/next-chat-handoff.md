@@ -395,10 +395,18 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
     tests under all four timezones; `next build` clean with the dev ref confirmed baked.
   - **Deliberately not built:** time tracking. Prompt G calls it a separate optional module and
     notes Taiga has none natively.
-- NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **switching the `agile`
-  module on for the org and opting one board in** (nothing is visible until somebody does);
-  **whether `125` gets an owner override** so a WIP limit is actually enforced rather than
-  merely warned about; **Prompt H** (goals, ideas, strategy, retrospectives -
+- ⚠️ **`docs/product/open-owner-decisions.md` is the standing list of things waiting on the
+  owner** (2026-08-30), each with production facts re-queried on the day it was written: `125`,
+  the "TEST" marketing calendar and Vanshaj's access, four cadence-less recurring tasks, and
+  which boards should opt into agile. Re-query before acting on any of them.
+- ✅ **The `agile` module was switched ON for the org on 2026-08-30** (owner instruction; a
+  one-row `app_modules` update, not a migration). `/agile` is in the nav for everyone and
+  **no board has agile enabled**, which is the intended state. An ⓘ button beside the Agile
+  heading and on the Modules row explains that the switch changes no board - both render
+  `AGILE_EXPLAINER` from `lib/agile.ts`, one copy, two surfaces.
+- NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **opting one board into
+  agile**; **whether `125` gets an owner override** so a WIP limit is actually enforced rather
+  than merely warned about; **Prompt H** (goals, ideas, strategy, retrospectives -
   the pack's next prompt);
   **Prompt B**'s one honest gap (membership **audit events**); and work-item **context actions in
   ⌘K** (blocked: `board-view.tsx` renders outside `AppShell`, so the shell has no selected-item
