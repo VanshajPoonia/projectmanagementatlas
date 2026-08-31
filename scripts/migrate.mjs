@@ -181,9 +181,12 @@ if (mode === '--status') {
 }
 
 if (mode === '--baseline') {
+  // Deliberately the SAME `pending` the apply path uses, not a second hand-written filter.
   // Baselining a held file would record it as applied WITHOUT running it, which is strictly
   // worse than applying it: the ledger would then claim prod has a trigger it does not have.
-  let toRecord = files.filter((f) => !applied.has(f) && !held.includes(f))
+  // Re-deriving that rule here is how two copies of one filter end up disagreeing, so there
+  // is one copy, in splitHeld, and it is the one the tests cover.
+  let toRecord = [...pending]
   if (THROUGH !== null) toRecord = toRecord.filter((f) => prefixNum(f) <= THROUGH)
   if (!toRecord.length) { console.log('nothing to baseline - all files already recorded.'); process.exit(0) }
   // One round-trip, not one-per-file (the DB is remote).
