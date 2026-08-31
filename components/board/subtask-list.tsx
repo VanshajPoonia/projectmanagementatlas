@@ -13,6 +13,7 @@ import { logTaskActivity } from '@/lib/task-activity'
 import { sendTaskAssignmentEmail } from '@/lib/email'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { isRequestAborted } from '@/lib/request-aborted'
 
 interface SubtaskListProps {
   /** The parent task. Subtasks copy its column and visibility. */
@@ -67,7 +68,9 @@ export default function SubtaskList({
       .order('position', { ascending: true })
 
     if (error) {
-      console.error('[v0] Failed to load subtasks:', error)
+      // Same reasoning as the comments/activity loads: an abort is this panel unmounting, not
+      // a failure. See lib/request-aborted.ts.
+      if (!isRequestAborted(error)) console.error('[v0] Failed to load subtasks:', error)
       return
     }
     setSubtasks(data ?? [])

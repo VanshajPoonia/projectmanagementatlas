@@ -367,6 +367,25 @@ deliberately left out.
   lives. This block has been wrong twice before (it said prod was at `095` when it was at
   `101`, then at `101` when it was at `104`), which is why the rule above is to run
   `pnpm migrate:status` rather than read this sentence.
+- ⚠️ **An aborted request is not a failure, and logging it as one is not merely untidy**
+  (`lib/request-aborted.ts`, 2026-08-30). supabase-js aborts its in-flight fetches when a
+  component unmounts or the page navigates, and PostgREST surfaces that as an ordinary error
+  object, so `task-detail-modal.tsx` and `subtask-list.tsx` printed
+  `[v0] Failed to load comments: AbortError` every time somebody closed a work item. Nothing had
+  failed. The cost is that a genuine load failure and a normal unmount are then indistinguishable
+  in the console, so every appearance has to be triaged as a real defect - and it made
+  `pnpm check:agile-ui`'s zero-console-errors assertion fail for a non-reason. The helper is
+  deliberately narrow and its tests pin the important half: it does NOT swallow an RLS refusal
+  (`42501`), a constraint violation (`23505`), a `Failed to fetch`, a **`TimeoutError`** (that
+  request really did not complete, and the viewer is looking at stale data), or a message that
+  merely mentions aborting. **Any new load path that logs its own errors owes the same check.**
+- ⚠️ **`next dev` compiles a route on first request, and that will fake a product regression in
+  a browser harness.** Editing `help-dialog.tsx` (which the board imports) made the first task
+  modal open blow `check-agile-ui`'s 8s field budget, and it reported "agile is on but there is
+  no estimate field" - a regression that had not happened. The fix is a **warm-up navigation
+  that asserts nothing**, before any check with a timeout on it, so the compiler is out of the
+  measurement; the sign-in loop in the same file already existed for the same reason one route
+  earlier. Re-running until green would have hidden both this and the abort bug above.
 - **Holding a migration back is a first-class state, not an empty slot in the queue**
   (`scripts/held-migrations.mjs`, 2026-08-30). Before it, a file that was deliberately not
   applied looked exactly like one nobody had got round to, and two things followed. The

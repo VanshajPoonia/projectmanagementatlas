@@ -55,6 +55,7 @@ import { DensityToggle } from '@/components/shell/density-toggle'
 import { useDensity } from '@/components/shell/use-density'
 import { ThemeControls } from '@/components/theme/theme-controls'
 import { HelpDialog } from '@/components/shell/help-dialog'
+import { AgileInfoButton } from '@/components/agile/agile-info'
 import { cleanBoardDescription, cleanTaskDescription } from '@/lib/display-text'
 import {
   getNormalizedTaskStatus,
@@ -1592,6 +1593,14 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                   the only place any shortcut is written down. Without this, the feature was
                   documented exclusively on the screens where it does nothing. */}
               <HelpDialog />
+
+              {/* ⚠️ Only where this board actually uses agile, and gated on exactly the same
+                  `agileOn` as the WIP badge and the column menu's WIP item - so a board that
+                  has not opted in never sees the vocabulary, which is Prompt G's first
+                  requirement. It matters most HERE rather than on /agile: the WIP badge and
+                  the estimate field live on this screen, and somebody who wonders what
+                  "WIP 3/5" means is standing on the board, not on the planning page. */}
+              {agileOn && <AgileInfoButton />}
 
               {/* This is a public-audience change, so the same capability and RLS rule
                   must gate board links and task links. In particular, a platform admin

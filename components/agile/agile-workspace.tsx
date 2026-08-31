@@ -533,12 +533,40 @@ export default function AgileWorkspace({
             </div>
 
             {!activeSettings?.is_enabled ? (
+              /* ⚠️ EmptyState's own contract is title = what this is, description = why it
+                 matters, action = the first useful thing to do - and this one used to pass no
+                 action at all, so the only route forward was "open Settings, find the switch,
+                 save". Turning agile on for a board is one decision, so it is one button. The
+                 full guide is the ⓘ beside the heading. */
               <EmptyState
                 title={`Agile is off for ${board?.title ?? 'this board'}`}
                 description={
                   isAdmin
-                    ? 'Switch it on in Settings to plan work in windows. Nothing about this board changes for anyone else until you do.'
+                    ? 'Turning it on adds a backlog, planning windows and delivery metrics to this board and nothing else. No task changes, and you can turn it off again at any time.'
                     : 'An admin can switch it on for this board. Until then it works as an ordinary board.'
+                }
+                action={
+                  isAdmin ? (
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <Button
+                        size="sm"
+                        id="agile-enable-here"
+                        disabled={busy || loading}
+                        onClick={() => saveSettings({ is_enabled: true })}
+                      >
+                        Turn on agile for this board
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        id="agile-enable-more-options"
+                        onClick={() => setSettingsOpen(true)}
+                      >
+                        <Settings2 className="mr-1 h-4 w-4" /> More options
+                      </Button>
+                      <AgileInfoButton id="agile-info-empty" label="How it works" />
+                    </div>
+                  ) : undefined
                 }
               />
             ) : (

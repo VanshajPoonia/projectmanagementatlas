@@ -1,9 +1,26 @@
 # Open owner decisions
 
-Things that are waiting on Bobby, not on code. Each one is a real choice with a cost either
-way, which is why an agent has not made it. Every fact below was **re-queried against
-production on 2026-08-30** rather than copied from a note; CLAUDE.md's own equivalents have
-gone stale three times, so re-run the query before acting.
+Things waiting on Bobby, not on code. Every fact below was **re-queried against production on
+2026-08-30** rather than copied from a note; CLAUDE.md's own equivalents have gone stale three
+times, so re-run the query before acting.
+
+## Status at a glance
+
+| # | Decision | Status | Cost of leaving it |
+|---|---|---|---|
+| 1 | Migration `125`, should WIP limits refuse? | ✅ **Decided: no** | None. The runner now refuses to apply it by accident. |
+| 2 | The "TEST" marketing calendar and Vanshaj's access | ⏳ **Needs you** | A tidy-up nobody is blocked on. |
+| 3 | Four recurring tasks with no schedule | ⏳ **Needs you** | None. The app already explains them honestly on screen. |
+| 4 | Which boards should use agile mode | ⏳ **Needs you** | Agile is reachable but no board uses it. One click each. |
+| 5 | The notification backlog | ℹ️ Context only | Nothing. |
+
+**Nothing here is broken, and nothing is blocking anyone.** Item 1 is closed. Items 2 and 3 are
+tidy-ups whose right answer depends on facts only you have. Item 4 is the one with actual upside:
+it is the difference between the agile feature existing and being used.
+
+Why an agent did not simply decide 2 and 3: item 2 grants or removes a named person's access to
+1355 live events, and item 3 asks whether four pieces of your marketing team's work are meant to
+repeat. Both are business facts, not engineering ones.
 
 ---
 
@@ -81,8 +98,12 @@ All four are on **Marketing PM Sheet**, all created 2026-06-18, none has a due d
 - Migrate AGC clients in HOUZZ to Brevo
 
 They carry `is_recurring = true` but no cadence, so the backfill deliberately skipped them
-rather than guessing whether "repeats" meant daily or monthly. Nothing is broken: they simply
-never generate anything, and the recurrence panel reports them as incomplete.
+rather than guessing whether "repeats" meant daily or monthly.
+
+**Nothing is broken, and the app is already honest about it.** Open any of the four and the
+recurrence panel says, in plain words: "This task is marked as repeating, but it has no schedule,
+so nothing has ever been created from it", with a **Set up a real schedule** button beside it.
+So the only cost of leaving these alone is four tasks carrying a prompt nobody has answered.
 
 Read as written, they are ongoing efforts rather than scheduled repeats. "Constantly" and
 "continuously" are not cadences.
@@ -105,10 +126,15 @@ Agile is opt-in per board on purpose. Prompt G's first requirement is that marke
 contracting, real estate, finance and operations boards never have Scrum vocabulary put in
 front of them, so enabling it everywhere would defeat the feature.
 
-**Recommendation: pick one board to try it on.** `/agile` -> choose the board -> Settings ->
-switch it on, and choose whether that board says sprint, cycle or iteration, and whether it
-sizes work in points, hours or days. Backing out is the same switch; no data is destroyed.
-The ⓘ button beside the Agile heading explains the rest.
+**Recommendation: pick one board to try it on.** Open **Agile** in the sidebar, choose the board,
+and press **Turn on agile for this board**. That is the whole setup; **More options** is there if
+you want to pick the noun (sprint, cycle or iteration) and the unit (points, hours or days) at the
+same time, and both are changeable later with no migration and no data loss.
+
+Backing out is the same switch, and turning agile off leaves the board exactly as it was with
+every task intact. **How it works** on that same screen, and the ⓘ beside the Agile heading,
+open the complete guide: what it adds, how a window runs, what every number means, and the
+questions people actually ask.
 
 ---
 

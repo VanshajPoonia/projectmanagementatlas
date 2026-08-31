@@ -212,10 +212,11 @@ try {
   // exception, and an exception nobody is told about is a support question.
   check('an info button sits beside the Agile heading', await page.locator('#agile-info-button').count() > 0)
 
+  const guide = '[role="dialog"]:has-text("How agile mode works")'
   await page.click('#agile-info-button')
-  await page.waitForSelector('[role="dialog"]:has-text("What agile mode is")', { timeout: 15000 })
-  const infoText = (await page.locator('[role="dialog"]:has-text("What agile mode is")').innerText()).toLowerCase()
-  check('it opens an explanation of what agile mode is', infoText.length > 0)
+  await page.waitForSelector(guide, { timeout: 15000 })
+  const infoText = (await page.locator(guide).innerText()).toLowerCase()
+  check('it opens the guide', infoText.length > 0)
   check(
     'which says switching the module on changes no board',
     infoText.includes('changes no board') && infoText.includes('until an admin turns agile on'),
@@ -223,9 +224,38 @@ try {
   )
   check('and explains the work is not copied', infoText.includes('does not duplicate'))
 
+  // ⚠️ These assert the guide still ANSWERS the questions it exists to answer, not that some
+  // dialog opened. A help page that quietly loses its point still renders perfectly.
+  for (const [what, needle] of [
+    ['how to set a board up', 'turn on agile for this board'],
+    ['what a window is', 'sprint, cycle or iteration'],
+    ['what happens to unsized work', 'unestimated'],
+    ['that closed numbers are frozen', 'frozen'],
+    ['how to turn it off again', 'ordinary board again'],
+  ]) {
+    check(`the guide covers ${what}`, infoText.includes(needle), `missing: ${needle}`)
+  }
+  check('and answers common questions', infoText.includes('common questions'))
+
   await page.keyboard.press('Escape')
-  await until(() => page.locator('[role="dialog"]:has-text("What agile mode is")').count(), (n) => n === 0)
-  check('and closes again', await page.locator('[role="dialog"]:has-text("What agile mode is")').count() === 0)
+  await until(() => page.locator(guide).count(), (n) => n === 0)
+  check('and closes again', await page.locator(guide).count() === 0)
+
+  // =======================================================================================
+  section('An admin can turn agile on for a board without hunting for the switch')
+  // =======================================================================================
+  check('the empty state offers a one-click enable', await page.locator('#agile-enable-here').count() === 1)
+  check('and still offers the full settings dialog', await page.locator('#agile-enable-more-options').count() === 1)
+  // ⚠️ A second entry point to the SAME guide, labelled rather than a bare icon, because the
+  // person staring at "agile is off for this board" is exactly the one with the question and is
+  // the least likely to go hunting for an ⓘ. Distinct id: two elements sharing one is a real
+  // DOM bug and makes every locator here ambiguous.
+  check('and the guide is reachable right there, labelled', await page.locator('#agile-info-empty').count() === 1)
+  await page.click('#agile-info-empty')
+  await page.waitForSelector(guide, { timeout: 15000 })
+  check('which opens the same guide', (await page.locator(guide).innerText()).toLowerCase().includes('changes no board'))
+  await page.keyboard.press('Escape')
+  await until(() => page.locator(guide).count(), (n) => n === 0)
 
   // =======================================================================================
   section('An admin can reach every control from a screen')
@@ -537,6 +567,15 @@ try {
     } catch { return false }
   }
 
+  // ⚠️ Warm the board route before asserting anything with a timeout on it. `next dev` compiles
+  // a route on its first request, and /admin/board/[id] is one of the heaviest in this app, so a
+  // cold first open blew the 8s field budget and reported "agile is on but there is no estimate
+  // field" - a product regression that had not happened. Same reasoning as the sign-in loop
+  // above, one route later. The warm-up asserts nothing; it only removes the compiler from the
+  // measurement, so the checks that follow are about the product.
+  await openTaskModal(b)
+  await page.keyboard.press('Escape').catch(() => {})
+
   const modalOpen = await openTaskModal(b)
   check('the work item really opened - every assertion below is otherwise meaningless', modalOpen)
   const hasField = modalOpen ? await seesField() : false
@@ -614,7 +653,33 @@ try {
     menuOpened)
   await page.keyboard.press('Escape').catch(() => {})
 
+  // ⚠️ The guide is gated on the same `agileOn` as the WIP badge and the WIP menu item, and is
+  // checked as a control PAIR for the same reason: a board that never opted in must not see any
+  // of this vocabulary, which is Prompt G's first requirement.
+  check(
+    'CONTROL: with agile OFF the board header carries no agile guide either',
+    (await page.locator('#agile-info-button').count()) === 0,
+  )
+
   await admin.from('board_agile_settings').update({ is_enabled: true }).eq('board_id', boardId)
+
+  // =======================================================================================
+  section('The guide is reachable from the board itself, where the WIP badge lives')
+  // =======================================================================================
+  // Somebody wondering what "WIP 3/5" means is standing on the BOARD, not on the planning
+  // page, so the guide has to be one click from here rather than a navigation away.
+  await page.goto(`${BASE}/admin/board/${boardId}`, { waitUntil: 'domcontentloaded' })
+  const onBoard = await page.locator('#agile-info-button').first()
+    .waitFor({ state: 'visible', timeout: 30000 }).then(() => true).catch(() => false)
+  check('with agile ON the board header carries the guide', onBoard)
+  if (onBoard) {
+    await page.click('#agile-info-button')
+    await page.waitForSelector(guide, { timeout: 15000 })
+    const boardGuide = (await page.locator(guide).innerText()).toLowerCase()
+    check('and it is the same guide, not a second shorter copy', boardGuide.includes('changes no board') && boardGuide.includes('unestimated'))
+    await page.keyboard.press('Escape')
+    await until(() => page.locator(guide).count(), (n) => n === 0)
+  }
 
   // =======================================================================================
   section('No console errors anywhere in that run')

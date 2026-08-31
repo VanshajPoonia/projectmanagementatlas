@@ -47,6 +47,7 @@ import TaskCustomFields from './task-custom-fields'
 import TaskRelationsPanel from './task-relations-panel'
 import TaskRecurrencePanel from './task-recurrence-panel'
 import TaskRemindersPanel from './task-reminders-panel'
+import { isRequestAborted } from '@/lib/request-aborted'
 
 // Mirrors the marketing calendar's custom-recurrence weekday row (and the booking
 // restriction dialog it was itself borrowed from) - 0=Sunday..6=Saturday.
@@ -335,7 +336,9 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       .eq('task_id', taskId)
       .order('created_at', { ascending: true })
     if (error) {
-      console.error('[v0] Failed to load comments:', error)
+      // An abort is the modal closing or the page navigating, not a failure. See
+      // lib/request-aborted.ts for why reporting it as one is actively harmful.
+      if (!isRequestAborted(error)) console.error('[v0] Failed to load comments:', error)
       return
     }
     if (data) setComments(data)
@@ -348,7 +351,9 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
       .eq('task_id', taskId)
       .order('created_at', { ascending: false })
     if (error) {
-      console.error('[v0] Failed to load activity:', error)
+      // An abort is the modal closing or the page navigating, not a failure. See
+      // lib/request-aborted.ts for why reporting it as one is actively harmful.
+      if (!isRequestAborted(error)) console.error('[v0] Failed to load activity:', error)
       return
     }
     if (data) setActivity(data)

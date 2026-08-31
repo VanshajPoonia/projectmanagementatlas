@@ -36,62 +36,6 @@ export const ESTIMATE_UNITS: readonly EstimateUnit[] = ['points', 'hours', 'days
 export type EnforcementMode = 'warning' | 'enforcement'
 export const ENFORCEMENT_MODES: readonly EnforcementMode[] = ['warning', 'enforcement'] as const
 
-/**
- * What agile mode is, in the words an admin deciding whether to switch it on actually needs.
- *
- * ⚠️ Pure data, and deliberately in this file rather than inside a component, because it is
- * rendered in two places - the /agile header and Super Admin > Modules - and the one thing it
- * must never do is say two different things about what the switch does. The specific fact
- * worth protecting: turning the MODULE on changes no board. That is the whole design (Prompt
- * G: "do not force Scrum language on marketing, contracting, real estate, finance,
- * operations"), and it is also the thing an admin is most likely to get wrong, because every
- * other module in this workspace becomes visible AND active the moment it is switched on.
- */
-export const AGILE_EXPLAINER = {
-  summary:
-    'A planning layer for boards that want one. It adds a backlog, work planned into named ' +
-    'windows, and metrics about what actually got delivered - on the boards that opt in, and ' +
-    'nowhere else.',
-  sections: [
-    {
-      heading: 'Switching this on changes no board',
-      body:
-        'The module only makes the Agile page reachable. Every board stays exactly as it is ' +
-        'until an admin turns agile on for that specific board in its Settings, so a ' +
-        'marketing, contracting or finance board never has this vocabulary put in front of it.',
-    },
-    {
-      heading: 'It is the same work, not a copy',
-      body:
-        'A backlog item is an ordinary task on an ordinary board. Planning it into a window ' +
-        'does not duplicate it, and opening one here opens the same task detail the board ' +
-        'uses. Nothing can drift out of sync, because there is only one of everything.',
-    },
-    {
-      heading: 'Your own words',
-      body:
-        'Each board picks whether to call its windows sprints, cycles or iterations, and ' +
-        'whether to size work in points, hours or days. Every label on the page follows that ' +
-        'choice, and changing it later needs no data migration.',
-    },
-    {
-      heading: 'Numbers that stay true',
-      body:
-        'While a window is open its numbers are live. The moment it closes they are frozen, ' +
-        'so re-estimating work or reorganising a board later cannot quietly rewrite what last ' +
-        'quarter delivered. Every figure shows what it counted and what it left out, and ' +
-        'unestimated items are reported as their own number rather than counted as zero.',
-    },
-    {
-      heading: 'Limits warn before they refuse',
-      body:
-        'A column can carry a work-in-progress limit and a window can carry a capacity. Both ' +
-        'start as warnings. Where a limit cannot actually be enforced by the database, the ' +
-        'badge says so rather than promising a refusal that will not happen.',
-    },
-  ],
-} as const
-
 export type SprintState = 'planned' | 'active' | 'completed' | 'cancelled'
 export const SPRINT_STATES: readonly SprintState[] = ['planned', 'active', 'completed', 'cancelled'] as const
 

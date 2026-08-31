@@ -402,8 +402,13 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
 - ✅ **The `agile` module was switched ON for the org on 2026-08-30** (owner instruction; a
   one-row `app_modules` update, not a migration). `/agile` is in the nav for everyone and
   **no board has agile enabled**, which is the intended state. An ⓘ button beside the Agile
-  heading and on the Modules row explains that the switch changes no board - both render
-  `AGILE_EXPLAINER` from `lib/agile.ts`, one copy, two surfaces.
+  heading and on the Modules row opens the **complete user guide** - what agile mode is, how to
+  set a board up, how a window runs, what every number means, and eight common questions. It is
+  pure data in `lib/agile-guide.ts`, rendered from that one source on all three surfaces that
+  show it, and deliberately **in the app only** - no separate document to drift. The `/agile`
+  empty state also has a
+  one-click **Turn on agile for this board**, because `EmptyState`'s own contract asks for the
+  first useful action and that slot had been left empty.
 - NEXT actual work is NOT decided - ASK THE OWNER. Open candidates: **opting one board into
   agile**; **whether `125` gets an owner override** so a WIP limit is actually enforced rather
   than merely warned about; **Prompt H** (goals, ideas, strategy, retrospectives -

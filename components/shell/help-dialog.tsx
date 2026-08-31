@@ -39,6 +39,16 @@ const FEATURE_GROUPS: { title: string; items: string[] }[] = [
     ],
   },
   {
+    // Listed unconditionally, like the marketing calendar and AI assistant above it: this panel
+    // describes what the product can do, not what this workspace currently has switched on.
+    title: 'Planning',
+    items: [
+      'Agile mode: an optional per-board backlog, planning windows and delivery metrics',
+      'Windows are called sprints, cycles or iterations, whichever the board prefers',
+      'Open Agile in the sidebar and press the ⓘ beside the heading for the full guide',
+    ],
+  },
+  {
     title: 'Reporting & AI',
     items: [
       'Reports for a cross-board view of progress',
