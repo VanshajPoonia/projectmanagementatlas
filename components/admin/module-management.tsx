@@ -22,6 +22,7 @@ import { DEFAULT_MODULES, type ModuleKey } from '@/lib/modules'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { AgileInfoButton } from '@/components/agile/agile-info'
+import { StrategyInfoButton } from '@/components/strategy/strategy-info'
 
 interface ModuleRow {
   module_key: ModuleKey
@@ -45,6 +46,7 @@ const MODULE_COPY: Record<string, { label: string; description: string }> = {
   appointments: { label: 'Appointments', description: 'Public booking pages and the appointment schedule.' },
   project_ids: { label: 'Project IDs', description: 'The claim-a-number ledger for project references.' },
   agile: { label: 'Agile mode', description: 'Sprints/cycles, a backlog, WIP limits and sprint metrics - and only on the boards that opt in.' },
+  strategy: { label: 'Strategy', description: 'Goals with outcome and execution kept separate, an idea pipeline, project purpose, SWOT, and retrospectives.' },
   crm: { label: 'CRM', description: 'Clients, contacts, orders, and the order status history the cycle-time reports are built on.' },
 }
 
@@ -164,6 +166,7 @@ export default function ModuleManagement() {
                           question. It sits beside the name rather than trailing the description
                           so it is a real target, not a 20px afterthought inside a sentence. */}
                       {row.module_key === 'agile' && <AgileInfoButton />}
+                      {row.module_key === 'strategy' && <StrategyInfoButton />}
                     </div>
                     {copy && (
                       <p className="text-muted-foreground mt-0.5 text-sm">{copy.description}</p>

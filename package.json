@@ -57,7 +57,9 @@
     "check:inbox-ui": "node --env-file=.env.local scripts/check-inbox-ui.mjs",
     "check:agile": "node --env-file=.env.local scripts/check-agile.mjs",
     "check:agile-ui": "node --env-file=.env.local scripts/check-agile-ui.mjs",
-    "check:decisions": "node --env-file=.env.local scripts/check-decisions.mjs"
+    "check:decisions": "node --env-file=.env.local scripts/check-decisions.mjs",
+    "check:strategy": "node --env-file=.env.local scripts/check-strategy.mjs",
+    "check:strategy-ui": "node --env-file=.env.local scripts/check-strategy-ui.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",

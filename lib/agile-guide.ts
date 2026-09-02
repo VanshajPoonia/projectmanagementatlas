@@ -8,24 +8,14 @@
 // It lives entirely in the app, deliberately. A guide kept as a separate document is one more
 // thing to remember to update, and it is never open at the moment somebody has the question.
 
-export interface GuideSection {
-  id: string
-  heading: string
-  /** One or two sentences. The point of the section, before any detail. */
-  body: string
-  /** Numbered when order matters (setup), bulleted when it does not. */
-  steps?: string[]
-  ordered?: boolean
-  /** The caveat somebody hits on day two. */
-  note?: string
-}
+// The types moved to lib/product-guide.ts when the strategy module needed a guide too. They
+// are re-exported here so every existing import keeps working - the same courtesy
+// lib/modules.ts extends to lib/module-registry.ts.
+import type { GuideQuestion, GuideSection, ProductGuide } from './product-guide'
 
-export interface GuideQuestion {
-  q: string
-  a: string
-}
+export type { GuideSection, GuideQuestion, ProductGuide } from './product-guide'
 
-export const AGILE_GUIDE = {
+export const AGILE_GUIDE: ProductGuide = {
   title: 'Agile mode',
   tagline:
     'A planning layer for the boards that want one. Everything below is optional, per board, ' +

@@ -395,6 +395,32 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
     tests under all four timezones; `next build` clean with the dev ref confirmed baked.
   - **Deliberately not built:** time tracking. Prompt G calls it a separate optional module and
     notes Taiga has none natively.
+- ✅ **Prompt H is BUILT and is on DEV ONLY (`129`-`132`), 2026-09-02.** Goals, project purpose,
+  an idea pipeline, SWOT and retrospectives, behind one optional `strategy` module at
+  `/strategy`. All four migrations are purely additive and `--allow-prod` eligible on the
+  standing rule; **the app code hard-depends on all four**, so they have to reach prod before
+  this code merges. Order matters: `132` needs `123`.
+  - **The one rule everything follows:** execution progress and outcome progress are shown
+    separately and are never combined. `lib/goals.ts` has no function that returns "goal
+    progress" and no component renders a blended track, because a project can finish every task
+    and still fail its outcome. The page warns in words when the two diverge.
+  - **Anonymity in retrospectives is enforced by a grant that does not exist**, not a flag:
+    the real author lives in `retro_note_authors`, on which `authenticated` holds no privilege
+    and which has no policy. You can still edit your own note, through a definer function that
+    returns only your own ids. The residual - somebody watching notes appear live can infer who
+    wrote what - is stated in the create dialog and in the guide rather than hidden.
+  - **Refused on the record:** Lean Canvas and the stakeholder map. Prompt H says do not build a
+    whiteboard engine to claim parity, and a *map* means positions. Impact/effort has no schema
+    at all - it reads the impact and effort already on every idea.
+  - Gates: `pnpm check:strategy` (89, real RLS) and `pnpm check:strategy-ui` (55, real browser,
+    needs `pnpm dev` on :3000). The RLS one was confirmed to FAIL (87/89) when the anonymity
+    grant was widened, rather than trusted.
+  - ⚠️ **A correction this work forced into CLAUDE.md:** an RLS policy that calls a function
+    checks **EXECUTE against the CALLER**, not the table owner. Measured -
+    `has_schema_privilege('authenticated','private','USAGE')` is false while every policy helper
+    holds EXECUTE. A new `private.` helper that copies its neighbours' `REVOKE ... FROM
+    authenticated` and forgets the `GRANT EXECUTE` makes every policy calling it fail with
+    "permission denied for function", which reads exactly like broken auth.
 - ⚠️ **Owner decisions live in the PRODUCT now: Super Admin -> Decisions** (migration `128`,
   dev AND prod, 2026-08-30). `docs/product/open-owner-decisions.md` is a pointer to that screen
   and nothing else - it was a hand-maintained list for one day, which is a copy of a state
@@ -473,16 +499,17 @@ future session, that's a regression - don't assume it's still pending.
   assertMigrationTarget({allowProd}) = the migration runner: dev always
   allowed, prod ONLY via an explicit --allow-prod flag + loud banner. Only
   additive/non-destructive migrations may ever use --allow-prod.
-- Migrations: numbered SQL in scripts/, next number is 104. Dev is at 103;
-  production is at 095 with 096–103 NOT applied, and 087 has never been applied
-  to prod either (nobody is affected by its absence - see CLAUDE.md). 088–093
-  and 097 went to prod via `--only=… --allow-prod`, which is how you skip a
-  held-back predecessor. ⚠️ **102 (cross-board task move) rewrites an RLS
-  policy, so it is not `--allow-prod` eligible, AND the "Move" button on a task
-  cannot ship without it** - apply it deliberately before merging that code.
-  103 (CRM) IS purely additive and `--allow-prod` eligible, and it seeds the
-  module `enabled = false`, so applying it changes nothing visible until a
-  super admin turns CRM on. Always confirm with `pnpm migrate:status` rather
+- Migrations: numbered SQL in scripts/, **next number is 133**. As of 2026-09-02
+  dev is at 132 and prod is at 128, with 129-132 (Prompt H) NOT yet applied to
+  prod and 125 deliberately HELD there. ⚠️ This paragraph claimed "next number
+  is 104, dev is at 103, production is at 095" until 2026-09-02, which was five
+  migrations and three prompts out of date - **it is the single most
+  stale-prone line in this file, so run `pnpm migrate:status` against both
+  databases and believe that instead.** 129-132 are all purely additive and
+  `--allow-prod` eligible on the standing rule, and the strategy module seeds
+  `enabled = false`, so applying them changes nothing visible until a super
+  admin turns it on - but the app code hard-depends on all four, so they must
+  land on prod BEFORE the code merges. Always confirm with `pnpm migrate:status` rather
   than trusting these numbers.
   New tables need an explicit REVOKE ALL first - Supabase default-grants ALL on
   every new public table to anon and authenticated (see 090).

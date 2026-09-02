@@ -45,6 +45,10 @@ const ROUTES = [
   // Gated on the `agile` module: when it is off this redirects to the dashboard, which is
   // itself worth sweeping - a redirect that scrolls sideways is still a broken page.
   ['agile', '/agile'],
+  // Gated on the `strategy` module, same as agile. Its tab strip grows with the feature set,
+  // which is the shape that pushed the board header sideways twice - so it is swept here
+  // rather than trusted to the module's own harness.
+  ['strategy', '/strategy'],
   ['crm-dashboard', '/crm'],
   ['crm-orders', '/crm/orders'],
   ['crm-clients', '/crm/clients'],

@@ -138,6 +138,12 @@ export function buildWorkspaceNav({
   if (on('agile')) {
     items.push({ id: 'agile', label: 'Agile', icon: 'agile', href: '/agile', status: 'live' })
   }
+  // Strategy is a module and nothing else - unlike agile there is no per-board opt-in, because
+  // every part of it is created explicitly by a person. A workspace with the module on and no
+  // goals is a page that explains itself, which is the honest state to land on.
+  if (on('strategy')) {
+    items.push({ id: 'strategy', label: 'Strategy', icon: 'strategy', href: '/strategy', status: 'live' })
+  }
   if (on('project_ids')) {
     items.push({ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: tab('project-ids'), status: 'live' })
   }

@@ -45,7 +45,9 @@ const FEATURE_GROUPS: { title: string; items: string[] }[] = [
     items: [
       'Agile mode: an optional per-board backlog, planning windows and delivery metrics',
       'Windows are called sprints, cycles or iterations, whichever the board prefers',
-      'Open Agile in the sidebar and press the ⓘ beside the heading for the full guide',
+      'Strategy: goals whose result is shown separately from how much work is done',
+      'Also under Strategy: an idea pipeline, project purpose, SWOT and short reviews',
+      'Open either in the sidebar and press the ⓘ beside the heading for the full guide',
     ],
   },
   {

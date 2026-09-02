@@ -22,6 +22,7 @@ export type ModuleKey =
   | 'project_ids'
   | 'crm'
   | 'agile'
+  | 'strategy'
 
 export interface AppModule {
   module_key: ModuleKey
@@ -53,11 +54,33 @@ export const DEFAULT_MODULES: AppModule[] = [
   // contracting, real-estate, finance or operations board never has Scrum vocabulary put in
   // front of it, so a fallback that revealed it would defeat the feature's first requirement.
   { module_key: 'agile', enabled: false },
+  // Prompt H's optional strategy layer (migration 129 seeds it disabled). Same rule again:
+  // the fallback must not reveal a module a super admin has never switched on, and this one
+  // adds a whole page to the sidebar rather than a widget in a corner.
+  { module_key: 'strategy', enabled: false },
 ]
 
+/**
+ * Is this module switched on for the workspace?
+ *
+ * ⚠️ A key that is ABSENT from `app_modules` falls back to DEFAULT_MODULES, not to `true`.
+ * That matters the moment a module's migration has not reached a database yet: this function
+ * used to return `true` for any unknown key while `isModuleEnabledOnServer` fell back to
+ * DEFAULT_MODULES, so the two disagreed about exactly the modules that seed OFF. The visible
+ * result would be a nav item for a module the server then refuses - a dead link for everyone,
+ * which is the defect this repo keeps re-learning.
+ *
+ * It never bit before only because `appointments`, `crm` and `agile` all had their rows
+ * everywhere by the time anything read them. `strategy` (129) is the first module whose code
+ * can reach a database that predates its migration, and prod is exactly that database today.
+ *
+ * A key in neither place still returns `true`, which is the original every-module-available
+ * rule: a failure to read `app_modules` must never silently hide working features.
+ */
 export function isModuleEnabled(modules: AppModule[], key: ModuleKey): boolean {
   const found = modules.find((m) => m.module_key === key)
-  return found ? found.enabled : true
+  if (found) return found.enabled
+  return DEFAULT_MODULES.find((module) => module.module_key === key)?.enabled ?? true
 }
 
 /**

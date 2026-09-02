@@ -342,7 +342,7 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `129`. **Dev is at `128`; prod has 1-124 and 126-128,
+- Migrations: numbered SQL in `scripts/`, continuing from `133`. **Dev is at `128`; prod has 1-124 and 126-128,
   with `125` deliberately never applied, as of 2026-08-30.** Prod reports
   `pending: 0   held: 1` - see "Holding a migration back" below, and the Prompt G section for
   why this particular one. As always, run
@@ -759,11 +759,25 @@ deliberately left out.
   (`column_hidden_by_board_privacy` / `column_restricted_by_board_role`) into the WITH CHECK,
   where `column_id` is the NEW value. Gate: `pnpm check:task-move` (19 checks); `board-roles`,
   `access-matrix`, `task-lifecycle` and `deactivation` were all re-run green after it.
-  - Two things worth keeping. **`authenticated` has no USAGE on schema `private`** - RLS can
-    call `private.*` because policy expressions are evaluated as the *table owner*, but an
-    ordinary function body invoked by a signed-in user cannot. A first draft put the helper in
-    `private` and every call died with "permission denied for schema private"; it lives in
-    `public` now and gates itself on `can_manage_task`. **And the RPC is SECURITY INVOKER on
+  - Two things worth keeping. **`authenticated` has no USAGE on schema `private`**, so an
+    ordinary function body invoked by a signed-in user cannot reach `private.*`. A first draft
+    put the helper in `private` and every call died with "permission denied for schema
+    private"; it lives in `public` now and gates itself on `can_manage_task`.
+    - ⚠️ **This line used to add "RLS can call `private.*` because policy expressions are
+      evaluated as the *table owner*", and that explanation is HALF WRONG - measured
+      2026-09-02 while building `132`.** Schema USAGE is indeed not checked when a policy
+      calls a qualified function, but **EXECUTE on the function IS checked against the
+      CALLER**. Proved by querying rather than reasoning:
+      `has_schema_privilege('authenticated','private','USAGE')` is **false**, while
+      `has_function_privilege` is **true** for every helper a policy calls
+      (`is_admin_user`, `is_active_user`, `can_view_task`, `can_manage_task`) - each one
+      pairs `REVOKE ... FROM PUBLIC` with an explicit `GRANT EXECUTE ... TO authenticated`,
+      `101`'s `is_active_user` being the worked example. A new helper that copies the REVOKE
+      and forgets the GRANT makes every policy calling it fail with **"permission denied for
+      function ..."** for every user, which reads like broken auth rather than a missing
+      grant. **Trigger functions are exempt** - they are invoked by the trigger machinery,
+      not called by the user, so no EXECUTE check happens and revoking from everyone is
+      correct there. **And the RPC is SECURITY INVOKER on
     purpose** - RLS stays the authority; plpgsql is there only so `GET DIAGNOSTICS` can turn a
     refusal into a raised exception instead of PostgREST's silent zero-row report, and so a
     parent and its subtasks move in one transaction.
@@ -1251,6 +1265,225 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
     normalises the pair by uuid order, so the check passes or fails by how two random uuids
     happen to sort. Query either end, or use a directional relation type in the fixture.
 
+
+### Prompt H - goals, purpose, ideas, strategy and retrospectives (`129`-`132`, DEV ONLY, 2026-09-02)
+
+Four migrations behind one optional module (`strategy`), one route (`/strategy`), five tabs.
+**All four are on DEV ONLY as of 2026-09-02.** Every one of them is purely additive - new
+tables, triggers **on new tables only**, one `app_modules` row that seeds disabled - so all
+four are `--allow-prod` eligible on this repo's own rule, unlike `113`/`118`/`125`. Applying
+them to prod changes nothing anyone can see until a super admin switches the module on.
+⚠️ Run `pnpm migrate:status` rather than trusting this paragraph; it has gone stale four times.
+
+⚠️ **The app code hard-depends on all four** and `/strategy` is in the nav for every role when
+the module is on, so the migrations must reach prod **before** the code merges. Keep the order:
+`132` needs `123` (its optional `sprint_id`), and `130`/`131` need nothing but `129`'s module row.
+
+| file | what | prod eligible? |
+|---|---|---|
+| `129_purpose_and_goals.sql` | `board_purpose`, `goals`, `goal_links`, `goal_checkins`, the `strategy` module row | ✅ purely additive |
+| `130_idea_pipeline.sql` | `ideas`, `idea_events`, `idea_notes` | ✅ purely additive |
+| `131_strategy_canvas.sql` | `strategy_items` (SWOT) | ✅ purely additive |
+| `132_retrospectives.sql` | `retrospectives`, `retro_note_groups`, `retro_notes`, `retro_note_authors`, `retro_votes`, `retro_actions` | ✅ purely additive |
+
+Gates: `pnpm check:strategy` (89, real RLS) and `pnpm check:strategy-ui` (55, real browser,
+needs `pnpm dev` on :3000). Counts were read off a run. ⚠️ The RLS harness was **confirmed to
+fail** rather than trusted: granting `authenticated` SELECT on `retro_note_authors` drops it to
+87/89, naming both anonymity checks.
+
+**The module ships OFF and was then switched on for this org**, exactly as agile was: `129`
+seeds `enabled = false`, and dev was flipped to `true` afterwards with a one-row `app_modules`
+update (the same write the Modules tab makes, not a migration). The seed is unchanged.
+
+#### THE ONE RULE EVERYTHING ELSE FOLLOWS
+
+Prompt H spends most of its words on a distinction, not a feature: *"Display separately -
+execution progress (how much planned work is complete) and outcome progress (did the target
+business/user metric improve). Never imply they are the same."* ATLAS_01 10.6 states the cost:
+**a project can complete all tasks and still fail its outcome.**
+
+That only survives if the two numbers come from two different places, so:
+- **Execution** is computed from `tasks` through `goal_links` at read time and is NEVER stored.
+- **Outcome** is three numbers a human maintains (start, current, target) and is NEVER inferred
+  from task completion.
+- **`lib/goals.ts` has no function that returns "goal progress"**, and no component renders a
+  single blended track. A caller wanting one percentage has to choose which it means, in the
+  open, at the call site. `components/strategy/progress-pair.tsx` always renders BOTH bars, even
+  when one is unavailable, so a missing figure reads as missing rather than as the other one.
+- **`progressDivergence()` says it out loud** when they disagree by 40 points or more, in both
+  directions, and returns `null` otherwise so the warning never becomes noise people skip.
+- **Null is not zero, anywhere.** No linked work means `percent: null` and "Nothing linked", not
+  0%; no target means a stated reason, not 0%; start equal to target returns `null` rather than
+  0% or 100%. Same rule as `unestimated_count` in `124`.
+- **Outcome is direction-aware.** "Cut callbacks from 12 to 4" is a goal, and a formula assuming
+  bigger is better reports it as -200% while it is going perfectly.
+
+#### `129` - purpose and goals
+
+- **`board_purpose` has no NOT NULL anywhere.** Prompt H: "Do not require these fields to create
+  a board." A board with no row is the normal case, and there is no step in board creation that
+  asks for one.
+- **`goals` is workspace-scoped, not board-scoped.** A goal that could only point at one board
+  makes "Goal → Project" meaningless, and spanning projects is why the object exists.
+- **`goal_links` carries two typed, foreign-keyed columns** (`board_id`, `task_id`) with a
+  `num_nonnulls(...) = 1` CHECK, rather than a polymorphic `(entity_type, entity_id)` pair - a
+  uuid with no FK is a reference the database cannot police. **Milestones are a third column the
+  day milestones exist** (Prompt I); there is deliberately no placeholder for them, because a
+  column nothing writes is a claim the product cannot keep.
+- **`goal_checkins` is trigger-written and `authenticated` holds SELECT and nothing else** - the
+  `crm_order_status_history` (103) / `recurrence_occurrences` (116) / `sprint_metrics` (124)
+  pattern. Without a history "did the metric improve" has no answer at all, and a history the
+  application can write is one that can be made to agree with whatever this quarter needs.
+- ⚠️ **`goals.checkin_note` is a write-only carrier and `104`'s lesson is applied in full**: no
+  `OF column` clause, and the trigger **blanks the carrier first and decides second**, so every
+  path out of it - including the ones that write nothing - leaves it NULL. `104`'s actual defect
+  was an early `RETURN` that skipped exactly that line, and the next real transition stamped a
+  stale sentence onto a record nobody had supplied it for.
+- **Three triggers, not one**, and `103`'s timing lesson is why: `BEFORE INSERT` may edit `NEW`
+  but the row does not exist, so writing history there fails the FK; `AFTER INSERT` can write it
+  but can no longer edit `NEW`, which is why a note supplied at creation is **refused** rather
+  than accepted and silently kept; `BEFORE UPDATE` does both in one pass.
+- **A goal's OWNER can update it, deliberately wider than create/delete.** Recording this
+  month's number is the most frequent action on this table, and routing it through an admin is
+  how a current value silently stops being current.
+
+#### `130` - the idea pipeline
+
+- **Three tables because two things want to live in an idea's history with opposite trust
+  models.** `idea_events` is what happened (trigger-written, SELECT-only); `idea_notes` is
+  research people write (editable by its author). Folding them together means either a forgeable
+  transition log or an uneditable note.
+- ⚠️ **Rejecting an idea needs a reason, enforced by the trigger and not by the dialog** -
+  `128`'s rule for owner decisions, and `104`'s for `crm_statuses.requires_reason`, which was
+  honoured by one screen and by nothing underneath it. Six months on, that reason is the only
+  thing stopping the same idea being raised again from scratch.
+- **`rejected` and `archived` are different endings, and the UI keeps them different**
+  ("Rejected" and "Parked"). Rejected is a decision with a reason; parked is "not now, nothing
+  decided against it". Labelling both as some flavour of closed loses what the schema was built
+  to keep.
+- **Converting writes a POINTER, never a move or a copy.** A real `tasks` row (or board) is
+  created and the idea stays exactly where it is with all its research. `converted_at` is
+  stamped by the trigger and is the durable fact; the two pointers are `ON DELETE SET NULL`, so
+  deleting the board must not make a converted idea look untouched.
+- **Anyone signed in may capture one**, and the RLS policy is deliberately just as wide: an idea
+  box gated to admins is a suggestion box with a lock on it.
+- **Conversion targets are derived from `work_item_types`**, not hardcoded, so activating
+  `feature` in Super Admin makes it an option with no code change. `113` seeded eleven types and
+  only two are active; a hardcoded list would ignore the other nine forever.
+
+#### `131` - one canvas, and the three that were refused
+
+Prompt H is blunt: *"Only add canvases that users will actually use... Do not build a whiteboard
+engine merely to claim parity."* So:
+- **SWOT: built.** Four buckets of short statements, which is all it has ever been.
+- **Impact/effort: NO SCHEMA AT ALL.** `130` already stores `impact` and `effort` on every idea,
+  so the matrix is a way of LOOKING at the pipeline. A second table holding the same two
+  judgements would be two sources of truth for one fact.
+- **Lean Canvas: not built.** A startup artifact for validating a new business, in a workspace
+  that runs contracting and real estate. Nine text boxes and one widened CHECK the day somebody
+  asks - `canvas` is a column and not a table name for exactly that reason.
+- **Stakeholder map: not built**, and it is the one with a real cost - a *map* means positions,
+  which means a canvas engine with drag, zoom and collision. The useful half (who they are) is
+  already a field on `board_purpose`.
+- ⚠️ **`medium` counts as HIGH impact and LOW effort** in the matrix - the optimistic reading in
+  both directions - and that choice is on screen rather than buried, because a two-by-two has to
+  put a three-valued scale somewhere. **An unscored idea is listed, never placed:** putting one
+  in "Time sinks" because two fields were blank is an accusation the data does not support.
+
+#### `132` - retrospectives, and anonymity that is actually enforced
+
+Prompt H attaches a condition: *"If anonymous mode is added, enforce anonymity server-side."* A
+boolean that only stops the UI printing a name is the `requires_reason` defect (104) aimed at the
+one feature where being wrong is unrecoverable - a person cannot un-say something they said
+believing nobody would know.
+
+- **The author of an anonymous note is not stored anywhere the client can read.**
+  `retro_notes.author_id` is set BY A TRIGGER and is NULL when the review is anonymous;
+  the real author goes in **`retro_note_authors`, a table `authenticated` holds NO privilege
+  on** - not SELECT, nothing - with no policy either. Both halves are asserted by the
+  migration's post-conditions. **Not a revoked column on a readable table**, which a later
+  GRANT could quietly re-expose.
+- **Editing your own anonymous note still works**, through `private.is_retro_note_author()`,
+  a SECURITY DEFINER helper the POLICY calls. Finding your own notes on screen goes through
+  **`public.my_retro_note_ids(retro)`**, which returns only the caller's own ids - the
+  documented answer in this codebase to "hidden from you and does not exist arrive looking
+  identical" (`122`'s `notify_task_watchers`).
+  - ⚠️ `lib/retrospectives.ts`'s `canEditNote` reads that id set and **not** `author_id`.
+    Deriving "mine" from `author_id` would make every anonymous note uneditable by its own
+    author: a UI stricter than its policy, taking an ability away from exactly the people the
+    design serves. Pinned by a test.
+- **`retro_votes` is scoped to the caller's OWN rows in every direction**, so "who voted for
+  this" is unanswerable by anybody including a super admin - on a named review too, where
+  knowing who agreed with a criticism is the same disclosure by another route. The public
+  number lives in `retro_notes.vote_count`, maintained by a trigger, with **no UPDATE grant on
+  that column**.
+- ⚠️ **`is_anonymous` is IMMUTABLE after creation, in both directions.** Flipping it would
+  retroactively expose people who wrote under the opposite promise, and there is no undo.
+- ⚠️ **THE HONEST RESIDUAL, and it is product copy rather than a code comment.** This protects
+  the STORED record; somebody watching the board live can still infer who typed what from the
+  order notes appear in. `ANONYMITY_RESIDUAL` says so in the create dialog and in the guide,
+  because over-trusting a privacy feature is worse than not having it.
+- **The template map lives in SQL** (`private.retro_template_columns`) and is mirrored in
+  `lib/retrospectives.ts`. A note filed under a column the template does not render is
+  invisible, which is this repo's most expensive recurring shape - so the database is the
+  authority. **`check-strategy.mjs` is the parity gate**: it writes every key the TypeScript
+  side declares against the real database plus one bogus key, per template.
+- **Actions become canonical work items**, never copies: a real `tasks` row on the board, so it
+  shows up in My Work like anything else.
+
+#### ⚠️ Five defects the harnesses found that review did not
+
+Every one of these was caught by running something, not by reading it.
+
+1. **An RLS policy that calls a function checks EXECUTE against the CALLER.** `132` shipped
+   `REVOKE ALL ON FUNCTION private.is_retro_note_author(...) FROM PUBLIC, anon, authenticated`
+   by analogy with the trigger functions beside it, and every note edit then failed with
+   "permission denied for function is_retro_note_author" - for everyone. Trigger functions are
+   exempt (the trigger machinery invokes them); policy helpers are not. See the corrected
+   Conventions note above, which used to claim policy expressions run wholly as the table owner.
+2. **An AFTER trigger cannot read a write-only carrier.** `130`'s ledger writer read
+   `OLD.state_note`, which is ALWAYS NULL - the carrier's whole contract is that it never comes
+   to rest, so the pre-update row can never hold it. Every rejection reached the history with no
+   reason attached, silently. The UPDATE-side ledger write now happens in the BEFORE trigger,
+   where the note is still readable (129's goal ledger does the same), and the post-condition
+   asserts the note **by value**: "a state change was recorded" was true and useless.
+3. **A rollback script has to be RUN.** `132`'s dropped its functions before the tables, and a
+   POLICY depends on the function it calls - so it failed with "cannot drop function ... because
+   other objects depend on it" and aborted the whole transaction. Tables first, then functions.
+4. **A trigger cannot tell one UPDATE from another**, so the vote counter collided with the note
+   trigger's own "votes are counted from the votes themselves" rule. Fixed with a
+   transaction-local GUC permit naming the note being recounted - `123`'s
+   `agile.commitment_stamp` pattern - and the post-condition **tries the forgery**: setting the
+   permit by hand and smuggling a body edit alongside the count is refused.
+5. **`tasks` has no `board_id` column**, and `position` and `visibility` are both required.
+   Sending `board_id` is a PGRST204; omitting `position` is a 400; taking `visibility`'s
+   `'assigned'` default makes a converted action **visible to its converter alone**, which is
+   worse than not converting it because everyone else believes it was captured. All four facts
+   are now stated on `createWorkItem`.
+
+Plus one fixture defect worth keeping: the RLS harness seeded its task with the default
+`visibility = 'assigned'` and no assignee, so the goal-link CONTROL case failed for a reason
+that had nothing to do with goal links. The policy was right. The harness now seeds one
+board-visible task **and one deliberately hidden one**, so the refusal it asserts is about
+visibility rather than about the member's tier.
+
+#### The shared guide dialog
+
+`lib/product-guide.ts` (types) + `components/shell/guide-dialog.tsx` (one renderer) were
+extracted from `components/agile/agile-info.tsx` when strategy needed the same affordance.
+Copying it would have given the product two guide dialogs that drift in layout and in what they
+choose to render - a section with `steps` shown in one and swallowed in the other, with nothing
+erroring. `AGILE_GUIDE` and `STRATEGY_GUIDE` both render through it; `lib/strategy-guide.test.ts`
+(21) pins the shape of both and the specific sentences a person acts on.
+
+**Where things are:** `/strategy` is a real route (not a `?tab=`), in the nav for every role when
+the module is on, with `?view=` selecting the tab. `lib/goals.ts` (37 tests), `lib/ideas.ts`
+(17), `lib/retrospectives.ts` (20), `lib/strategy.ts`, `lib/strategy-data.ts` (every write
+classified through `lib/rls-write.ts`), `lib/strategy-guide.ts`, `components/strategy/*`.
+
+**Not built, deliberately:** Lean Canvas and the stakeholder map (see `131` above); a Goal →
+Milestone link, because milestones do not exist yet and a column nothing writes is a claim the
+product cannot keep.
 
 ### Migration `128` - owner decisions live in the product (dev AND prod, 2026-08-30)
 

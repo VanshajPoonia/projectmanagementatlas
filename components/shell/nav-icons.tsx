@@ -27,6 +27,7 @@ import {
   SlidersHorizontal,
   Star,
   Tag,
+  Target,
   Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -42,6 +43,7 @@ const ICONS: Record<string, LucideIcon> = {
   'project-ids': Hash,
   crm: Contact,
   agile: Gauge,
+  strategy: Target,
   megaphone: Megaphone,
   lock: Lock,
   message: MessageSquare,

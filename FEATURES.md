@@ -99,11 +99,20 @@ from, at `/views`. Migrations `118` (board hierarchy) and `119` (saved views).
 - [ ] Timeline / Gantt-lite view (start/due, dependencies optional) - deliberately not built;
       "Explicitly not building" lists Gantt, and `task_relations` (115) has no UI yet
 
-### Phase 3 - Goals → Projects → Tasks hierarchy  ⏳ NOT STARTED
+### Phase 3 - Goals → Projects → Tasks hierarchy  ✅ SHIPPED (dev only, 2026-09-02)
 Gives execs a reason to log in; ties work to outcomes.
-- [ ] `goals` (per company) + link boards/tasks to a goal
-- [ ] Portfolio/roll-up view: progress across boards toward a goal
-- [ ] Goal progress indicators (auto from linked task completion)
+- [x] `goals` (workspace-wide, not per company) + link boards/tasks to a goal - migration `129`
+- [x] Roll-up on every goal: how much of the linked work is finished, across boards
+- [x] ~~Goal progress indicators (auto from linked task completion)~~ - **shipped as TWO
+      indicators, deliberately.** Prompt H's loudest requirement is that execution progress and
+      outcome progress are displayed separately and never implied to be the same, because a
+      project can complete all its tasks and still fail its outcome. There is no single
+      "goal progress" figure anywhere in the product and `lib/goals.ts` has no function that
+      could produce one. Auto-from-task-completion is the *execution* half only; the outcome
+      half is three numbers a person maintains, and the page warns when the two diverge.
+- [x] Also from Prompt H: project purpose (`board_purpose`), an idea pipeline with a permanent
+      history (`130`), SWOT (`131`), and retrospectives with server-enforced anonymity (`132`).
+      All behind one optional `strategy` module at `/strategy`. See CLAUDE.md's Prompt H section.
 
 ### Phase 4 - Marketing wedge deepening  ⏳ NOT STARTED
 Where we out-differentiate everyone.
@@ -347,6 +356,76 @@ Detailed investigation prompts will be added by the owner. When investigating, e
 ---
 
 ## Changelog
+
+### 2026-09-02 - Prompt H: goals, purpose, ideas, SWOT and retrospectives (migrations `129`-`132`, dev only)
+
+Four migrations behind one optional `strategy` module and one route, `/strategy`. All four are
+purely additive - new tables, triggers on new tables only, one `app_modules` row that seeds
+disabled - so all four are `--allow-prod` eligible on the standing rule; **they are on DEV ONLY
+as of this entry** and the app code hard-depends on all four, so they must reach prod before the
+code merges.
+
+**The whole design serves one requirement.** Prompt H: *"Display separately - execution progress
+and outcome progress. Never imply they are the same."* ATLAS_01 10.6 states the cost: a project
+can complete all its tasks and still fail its outcome. So execution is computed from `tasks` at
+read time and never stored, outcome is three numbers a person maintains and is never inferred
+from task completion, `lib/goals.ts` has **no function that returns "goal progress"**, and no
+component renders a blended track. When they diverge by 40 points the page says so in words.
+Null is never zero anywhere: no linked work reads "Nothing linked", no target gives a stated
+reason, and start-equals-target returns nothing rather than 0% or 100%.
+
+(1) **`129`** adds `board_purpose` (eight fields, **no NOT NULL anywhere** - the prompt requires
+that none of it is needed to create a board), `goals`, `goal_links` and `goal_checkins`.
+`goal_links` uses two typed, foreign-keyed columns with an exactly-one CHECK rather than a
+polymorphic pair; **milestones are a third column the day milestones exist**, with no
+placeholder, because a column nothing writes is a claim the product cannot keep. `goal_checkins`
+is trigger-written with SELECT and nothing else for `authenticated` - without a history "did the
+metric improve" has no answer at all. `checkin_note` is a write-only carrier and `104`'s lesson
+is applied in full: no `OF column` clause, and the trigger blanks first and decides second, so
+every path out of it leaves the carrier NULL. A goal's **owner** can record measurements without
+an admin, because routing that through an admin is how a current value stops being current.
+
+(2) **`130`** adds `ideas` + `idea_events` (trigger-written, SELECT-only) + `idea_notes`
+(editable by their author). Two tables for the history because the two things in it have
+opposite trust models. **Rejecting an idea needs a reason and the trigger is the authority**, not
+the dialog - `128`'s rule, and `104`'s. Converting writes a **pointer**: a real task or board is
+created and the idea stays where it is with all its research, so the reasoning behind a piece of
+work survives it becoming a ticket. Anyone signed in may capture one, and the policy is
+deliberately just as wide.
+
+(3) **`131`** adds SWOT and **refuses three of Prompt H's four candidate canvases, on the
+record**. Impact/effort has **no schema at all** - `130` already stores both judgements on every
+idea, so it is a lens rather than a second source of truth. Lean Canvas and the stakeholder map
+are not built, and `131`'s header says why; a *map* means positions, which means the whiteboard
+engine the prompt explicitly forbids. An unscored idea is listed, never placed in a quadrant.
+
+(4) **`132`** adds retrospectives with **anonymity that is a grant which does not exist rather
+than a flag**. The author of an anonymous note lives in `retro_note_authors`, on which
+`authenticated` holds no privilege and which has no policy; `retro_notes.author_id` is NULL,
+written by a trigger. Editing your own note still works, through a definer helper the policy
+calls, and finding your own notes goes through `public.my_retro_note_ids()`. `retro_votes` is
+scoped to the caller's own rows in every direction, so "who voted for this" is unanswerable by
+anybody including a super admin. `is_anonymous` is immutable in both directions. **The residual
+is product copy, not a code comment:** somebody watching the board live can still infer who typed
+what, and the create dialog and the guide both say so.
+
+**Verified:** 1789 unit tests green (95 new) under all four timezones via `pnpm test:timezones`,
+`tsc --noEmit` clean, **`pnpm check:strategy` 89/89** (new, real RLS) and **`pnpm
+check:strategy-ui` 55/55** (new, real browser), plus `check:agile` 75/75 and `check:agile-ui`
+76/76 re-run green after the guide dialog was extracted into `components/shell/guide-dialog.tsx`.
+The RLS harness was **confirmed to fail** rather than trusted: granting `authenticated` SELECT on
+`retro_note_authors` drops it to 87/89 naming both anonymity checks.
+
+**Five defects the harnesses found that review did not**, all fixed and all recorded in
+CLAUDE.md's Prompt H section: an **RLS policy that calls a function checks EXECUTE against the
+CALLER** (correcting a claim CLAUDE.md had made since `102` - measured, `authenticated` has no
+USAGE on `private` yet every policy helper holds EXECUTE); an **AFTER trigger cannot read a
+write-only carrier**, so every rejection reached the history with no reason attached; a
+**rollback script has to be run** - `132`'s dropped functions before the policies depending on
+them; the vote counter collided with the note trigger's own immutability rule and needed
+`123`'s transaction-local permit; and **`tasks` has no `board_id`** while `position` and
+`visibility` are both required, the last of which would have made every converted retrospective
+action visible to its converter alone.
 
 ### 2026-08-27 - pre-Prompt-F cleanup, and the two live bugs it turned up
 

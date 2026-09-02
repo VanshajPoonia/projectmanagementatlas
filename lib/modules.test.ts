@@ -15,9 +15,9 @@ describe('isModuleEnabled', () => {
   // reveal a module nobody has switched on. Pinning the exact set means adding a third
   // off-by-default module, or flipping an existing one, fails here and has to be a conscious
   // decision rather than a silent regression.
-  it('defaults exactly appointments, crm and agile to off', () => {
+  it('defaults exactly appointments, crm, agile and strategy to off', () => {
     const disabled = DEFAULT_MODULES.filter(m => !m.enabled).map(m => m.module_key)
-    expect(disabled.sort()).toEqual(['agile', 'appointments', 'crm'])
+    expect(disabled.sort()).toEqual(['agile', 'appointments', 'crm', 'strategy'])
   })
 
   // The other half of the same guarantee: every remaining module stays available, so a
@@ -68,5 +68,28 @@ describe('isModuleEnabledOnServer', () => {
   it('keeps the fail-closed modules closed when the row is missing', async () => {
     expect(await isModuleEnabledOnServer(client(null), 'crm')).toBe(false)
     expect(await isModuleEnabledOnServer(client(null), 'appointments')).toBe(false)
+  })
+})
+
+describe('a module whose row has not reached this database yet', () => {
+  // ⚠️ The deploy hazard this pins: code can reach a database that predates its own migration,
+  // and `isModuleEnabled` used to answer `true` for any absent key while
+  // `isModuleEnabledOnServer` fell back to DEFAULT_MODULES. The two disagreed about exactly the
+  // modules that seed OFF, so the nav would offer a link the server then refuses.
+  it('stays OFF when it is off by default and its row is missing', () => {
+    for (const key of ['strategy', 'agile', 'crm', 'appointments'] as const) {
+      expect(isModuleEnabled([], key)).toBe(false)
+    }
+  })
+
+  it('stays AVAILABLE when it is on by default, so a failed read hides nothing', () => {
+    for (const key of ['boards', 'chat', 'calendar', 'reports'] as const) {
+      expect(isModuleEnabled([], key)).toBe(true)
+    }
+  })
+
+  it('still trusts the table over the default when a row really exists', () => {
+    expect(isModuleEnabled([{ module_key: 'strategy', enabled: true }], 'strategy')).toBe(true)
+    expect(isModuleEnabled([{ module_key: 'boards', enabled: false }], 'boards')).toBe(false)
   })
 })
