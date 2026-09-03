@@ -342,8 +342,10 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `133`. **Dev is at `128`; prod has 1-124 and 126-128,
-  with `125` deliberately never applied, as of 2026-08-30.** Prod reports
+- Migrations: numbered SQL in `scripts/`, continuing from `133`. **Dev and prod are BOTH at
+  `132` as of 2026-09-03, with `125` deliberately never applied to prod** - verified by running
+  the runner against both, which reported `applied: 131   pending: 0   held: 1   total: 132` on
+  prod and 0 pending on dev. Prod reports
   `pending: 0   held: 1` - see "Holding a migration back" below, and the Prompt G section for
   why this particular one. As always, run
   `pnpm migrate:status` rather than trusting this sentence - it has gone stale three times. Wrap in `BEGIN; … COMMIT;`,
@@ -379,6 +381,29 @@ deliberately left out.
   (`42501`), a constraint violation (`23505`), a `Failed to fetch`, a **`TimeoutError`** (that
   request really did not complete, and the viewer is looking at stale data), or a message that
   merely mentions aborting. **Any new load path that logs its own errors owes the same check.**
+- ⚠️ **A column that stores an ID needs the column that holds its LABEL fetched too, and the
+  failure is a blank cell rather than an error** (fixed 2026-09-03). `/views` rendered every
+  custom field with `String(value)`, and for half the field types the stored value is an id: a
+  `select` stores an option id, `person` and `relation` store uuids, `checkbox` a boolean. So a
+  field an admin had just created showed `option_1`, `true` and raw uuids in the table and list
+  layouts. `formatFieldValue` was written for exactly this and had **no call site anywhere in
+  the product** - the repo's most-repeated defect, found by the unused-export sweep below and
+  not by reading. Three things had to be true and only one was:
+  - `EvalContext` carried `customValues` and **not the definitions**, so a cell held the value
+    and had no way to resolve it. It now carries `customFields`, `peopleNames` and
+    `workItemTitles`, all built once by the host rather than scanned per cell.
+  - `app/views/page.tsx` selected `field_definitions` **without `config`**, which is where a
+    select's option labels live. That is why the first fix rendered a blank cell instead of the
+    label: `definition.config.options` threw. `formatFieldValue` reads `config` defensively now
+    and degrades to the stored id, because a table must not fail over one missing column in a
+    query, and an unresolved id is a more honest thing to show than an empty cell that claims
+    the field has no value.
+  - ⚠️ **The unit tests could not have caught the second half.** They pin `FieldCell` given a
+    populated context, which says nothing about whether the workspace seeds it - and that was
+    the broken half. The gate is a real-browser case in `pnpm check:views-ui` (41, was 38) that
+    creates a select field, sets it on a task, switches the column on and asserts the label is
+    on screen and the option id is not. **When a fix spans a component and its host, the test
+    that matters is the one that exercises the host.**
 - ⚠️ **`next dev` compiles a route on first request, and that will fake a product regression in
   a browser harness.** Editing `help-dialog.tsx` (which the board imports) made the first task
   modal open blow `check-agile-ui`'s 8s field budget, and it reported "agile is on but there is
@@ -1266,14 +1291,28 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
     happen to sort. Query either end, or use a directional relation type in the fixture.
 
 
-### Prompt H - goals, purpose, ideas, strategy and retrospectives (`129`-`132`, DEV ONLY, 2026-09-02)
+### Prompt H - goals, purpose, ideas, strategy and retrospectives (`129`-`132`, dev AND prod, 2026-09-03)
 
 Four migrations behind one optional module (`strategy`), one route (`/strategy`), five tabs.
-**All four are on DEV ONLY as of 2026-09-02.** Every one of them is purely additive - new
+**All four are applied to dev AND prod** (prod on 2026-09-03, one file at a time via
+`--only=NNN --allow-prod`, verified between each). Every one of them is purely additive - new
 tables, triggers **on new tables only**, one `app_modules` row that seeds disabled - so all
-four are `--allow-prod` eligible on this repo's own rule, unlike `113`/`118`/`125`. Applying
-them to prod changes nothing anyone can see until a super admin switches the module on.
+four were `--allow-prod` eligible on this repo's own rule, unlike `113`/`118`/`125`. **No owner
+override was needed:** each is eligible on the standing rule.
 ⚠️ Run `pnpm migrate:status` rather than trusting this paragraph; it has gone stale four times.
+
+**What the prod run produced.** Prod was at `128` with exactly these four pending and reported
+`applied: 131   pending: 0   held: 1   total: 132` after. **Every pre-existing row count was
+identical before and after**: 173 tasks, 11 boards, 46 columns, 10 profiles, 5 statuses, 11
+work item types, 1355 marketing items, and `tasks` still carries exactly its 8 triggers while
+`boards` carries 3. The only row that moved anywhere was `129`'s `app_modules` seed (12 -> 13),
+and it seeds **disabled**, so the deploy changed nothing anyone can see: `/strategy` is not in
+anyone's nav until a super admin switches the module on. Every new table is empty, and the
+anonymity boundary was re-verified on prod directly - `authenticated` holds **NOTHING** on
+`retro_note_authors` and it has 0 policies. Pre-migration backup:
+`~/Code/prod-backup-pre-129to132-20260903-232728.dump` (custom format, `public` schema,
+`pg_restore --list`-verified at 63 tables and 848 TOC entries, chmod 444). Deployed as
+`bb327f4`.
 
 ⚠️ **The app code hard-depends on all four** and `/strategy` is in the nav for every role when
 the module is on, so the migrations must reach prod **before** the code merges. Keep the order:

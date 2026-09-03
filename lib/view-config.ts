@@ -54,6 +54,7 @@ import {
   type StatusCategory,
 } from './task-status'
 import { DEFAULT_DENSITY, type Density } from '@/components/shell/density'
+import type { FieldDefinition } from './custom-fields'
 
 /* ── Vocabulary ────────────────────────────────────────────────────────────────────── */
 
@@ -376,6 +377,20 @@ export interface EvalContext {
   now: Date
   /** Custom field values as `{ [taskId]: { [fieldKey]: value } }`, when custom filters are used. */
   customValues?: Record<string, Record<string, unknown>>
+  /**
+   * The DEFINITIONS behind those values. Filtering only ever compares a stored value, so it
+   * needs none of this - but rendering one does: a `select` stores an option id, a `person`
+   * stores a uuid, and without the definition a cell can only print the id back. Carrying the
+   * values without the definitions is what made every custom column on /views render raw ids.
+   */
+  customFields?: FieldDefinition[]
+  /** `{ [taskId]: title }`, so a `relation` value renders as the work item's name, not a uuid. */
+  workItemTitles?: Record<string, string>
+  /**
+   * `{ [userId]: name }`, so a `person` value renders as a name. Built once by the host rather
+   * than scanned out of `users` per cell: a table draws this for every row of every column.
+   */
+  peopleNames?: Record<string, string>
 }
 
 function resolveValues(values: string[], ctx: EvalContext): string[] {

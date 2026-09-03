@@ -267,7 +267,15 @@ export function coerceInputValue(type: FieldType, raw: string | boolean | string
   return trimmed
 }
 
-/** Render a stored value for display. Never parses a date-only value into an instant. */
+/**
+ * Render a stored value for display. Never parses a date-only value into an instant.
+ *
+ * `config` is read defensively because a caller has to remember to SELECT it, and one did not:
+ * /views fetched its definitions without that column, so every select cell threw instead of
+ * rendering. Degrading to the stored id is honest - the reader sees an unresolved value rather
+ * than a blank cell claiming the field is empty, and a whole table does not fail over one
+ * missing column in a query.
+ */
 export function formatFieldValue(
   definition: FieldDefinition,
   value: unknown,
@@ -279,10 +287,10 @@ export function formatFieldValue(
     case 'checkbox':
       return value ? 'Yes' : 'No'
     case 'select':
-      return (definition.config.options ?? []).find((o) => o.id === value)?.label ?? String(value)
+      return (definition.config?.options ?? []).find((o) => o.id === value)?.label ?? String(value)
     case 'multi_select':
       return (Array.isArray(value) ? value : [])
-        .map((id) => (definition.config.options ?? []).find((o) => o.id === id)?.label ?? String(id))
+        .map((id) => (definition.config?.options ?? []).find((o) => o.id === id)?.label ?? String(id))
         .join(', ')
     case 'person':
       return lookup?.people?.[String(value)] ?? String(value)
@@ -295,23 +303,6 @@ export function formatFieldValue(
     default:
       return String(value)
   }
-}
-
-/**
- * Validate a whole form's worth of values. Returns one message per failing field, keyed by
- * field id, so a save can be refused with every problem named at once rather than one at a
- * time.
- */
-export function validateFieldValues(
-  definitions: FieldDefinition[],
-  values: Record<string, unknown>,
-): Record<string, string> {
-  const errors: Record<string, string> = {}
-  for (const definition of definitions) {
-    const result = validateFieldValue(definition, values[definition.id])
-    if (!result.ok && result.error) errors[definition.id] = result.error
-  }
-  return errors
 }
 
 /** A blank config that satisfies the definition trigger for this type. */

@@ -191,6 +191,20 @@ export default function ViewsWorkspace({
 
   /* ── The pipeline ────────────────────────────────────────────────────────────────── */
 
+  // A custom value on its own cannot be rendered - a select stores an option id, a person a
+  // uuid. These three carry what FieldCell needs to resolve one back into words.
+  const peopleNames = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const u of users ?? []) if (u?.id) out[u.id] = u.full_name || u.email || 'Unknown'
+    return out
+  }, [users])
+
+  const workItemTitles = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const t of inScope) if (t?.id) out[t.id] = t.title || 'Untitled'
+    return out
+  }, [inScope])
+
   const ctx: EvalContext = useMemo(() => ({
     currentUserId: user?.id ?? null,
     statuses,
@@ -198,7 +212,10 @@ export default function ViewsWorkspace({
     boards,
     now: nowDate,
     customValues,
-  }), [user?.id, statuses, users, boards, nowDate, customValues])
+    customFields,
+    peopleNames,
+    workItemTitles,
+  }), [user?.id, statuses, users, boards, nowDate, customValues, customFields, peopleNames, workItemTitles])
 
   const result = useMemo(() => runView(inScope, config, ctx), [inScope, config, ctx])
 

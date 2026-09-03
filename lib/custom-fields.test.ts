@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   validateFieldValue,
-  validateFieldValues,
   validateFieldDefinition,
   coerceInputValue,
   formatFieldValue,
@@ -160,22 +159,6 @@ describe('validateFieldValue - mirrors private.validate_field_value', () => {
       expect(result.ok).toBe(true)
     }
     expect(FIELD_TYPES).toHaveLength(12)
-  })
-})
-
-describe('validateFieldValues', () => {
-  it('names every failing field at once rather than one at a time', () => {
-    const defs = [
-      def({ id: 'a', field_type: 'number', name: 'A', config: { max: 5 } }),
-      def({ id: 'b', field_type: 'email', name: 'B' }),
-      def({ id: 'c', field_type: 'text', name: 'C' }),
-    ]
-    const errors = validateFieldValues(defs, { a: 99, b: 'nope', c: 'fine' })
-    expect(Object.keys(errors).sort()).toEqual(['a', 'b'])
-  })
-
-  it('returns nothing when everything is valid', () => {
-    expect(validateFieldValues([def({ field_type: 'text' })], { f1: 'ok' })).toEqual({})
   })
 })
 

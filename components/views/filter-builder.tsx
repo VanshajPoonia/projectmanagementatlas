@@ -35,6 +35,7 @@ import {
   describeField,
   isFilterComplete,
   operatorTakesValues,
+  operatorValueCount,
   operatorsFor,
   type FieldKind,
   type FilterCondition,
@@ -110,13 +111,13 @@ export function FilterBuilder({ config, onChange, source }: FilterBuilderProps) 
   const changeOperator = (id: string, operator: FilterOperator) => {
     const current = config.filters.find((c) => c.id === id)
     if (!current) return
-    // Going to or from `between` changes how many values the row holds; going to empty /
-    // not empty means it holds none. Keeping stale values would leave them invisible and
-    // still saved.
+    // Changing how many values the row holds means the old ones no longer fit: `between` takes
+    // exactly two, empty / not empty take none. Keeping stale values would leave them invisible
+    // and still saved. Asked as "how many does this operator take" rather than "is it between",
+    // so a second fixed-arity operator cannot silently get this wrong.
     const keepValues =
       operatorTakesValues(operator) &&
-      operatorTakesValues(current.operator) &&
-      (operator === 'between') === (current.operator === 'between')
+      operatorValueCount(operator) === operatorValueCount(current.operator)
     update(id, { operator, values: keepValues ? current.values : [] })
   }
 
@@ -251,7 +252,7 @@ function ConditionValue({
     return <span className="text-muted-foreground px-1 text-sm">(no value needed)</span>
   }
 
-  if (condition.operator === 'between') {
+  if (operatorValueCount(condition.operator) === 2) {
     return (
       <div className="flex items-center gap-1">
         <Input

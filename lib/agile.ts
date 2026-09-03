@@ -37,8 +37,6 @@ export type EnforcementMode = 'warning' | 'enforcement'
 export const ENFORCEMENT_MODES: readonly EnforcementMode[] = ['warning', 'enforcement'] as const
 
 export type SprintState = 'planned' | 'active' | 'completed' | 'cancelled'
-export const SPRINT_STATES: readonly SprintState[] = ['planned', 'active', 'completed', 'cancelled'] as const
-
 export const SPRINT_STATE_LABELS: Record<SprintState, string> = {
   planned: 'Planned',
   active: 'Active',

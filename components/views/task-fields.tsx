@@ -16,6 +16,7 @@ import {
   getTaskStatusCategory,
   getTaskStatusLabel,
 } from '@/lib/task-status'
+import { formatFieldValue } from '@/lib/custom-fields'
 import { parseCustomFilterField, type EvalContext } from '@/lib/view-config'
 import { cn } from '@/lib/utils'
 
@@ -79,9 +80,17 @@ export function FieldCell({ task, field, ctx, className }: FieldCellProps) {
   const custom = parseCustomFilterField(field)
   if (custom) {
     const value = ctx.customValues?.[task?.id]?.[custom]
+    // `String(value)` is wrong for half the field types: a select stores an option id, a person
+    // and a relation store uuids, and a checkbox stores a boolean. formatFieldValue is the one
+    // place that knows how to turn each of those back into something a person reads, and it is
+    // the same function the task modal's summary uses, so a field cannot read two ways.
+    const definition = (ctx.customFields ?? []).find((d) => d.key === custom)
+    const text = definition
+      ? formatFieldValue(definition, value, { people: ctx.peopleNames, workItems: ctx.workItemTitles })
+      : value == null ? '' : String(value)
     return (
-      <span className={cn('truncate text-sm', className)}>
-        {value == null || value === '' ? <Muted /> : String(value)}
+      <span className={cn('truncate text-sm', className)} title={text || undefined}>
+        {text === '' ? <Muted /> : text}
       </span>
     )
   }

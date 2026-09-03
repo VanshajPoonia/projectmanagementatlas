@@ -56,7 +56,7 @@ export default async function ViewsPage() {
       supabase.from('columns').select('id, title, status_key, board_id, position').order('position'),
       supabase
         .from('field_definitions')
-        .select('id, key, name, field_type, is_archived, board_id, position')
+        .select('id, key, name, field_type, config, is_archived, board_id, position')
         .order('position'),
       supabase.from('field_values').select('task_id, field_id, value'),
     ])

@@ -395,11 +395,22 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
     tests under all four timezones; `next build` clean with the dev ref confirmed baked.
   - **Deliberately not built:** time tracking. Prompt G calls it a separate optional module and
     notes Taiga has none natively.
-- ✅ **Prompt H is BUILT and is on DEV ONLY (`129`-`132`), 2026-09-02.** Goals, project purpose,
-  an idea pipeline, SWOT and retrospectives, behind one optional `strategy` module at
-  `/strategy`. All four migrations are purely additive and `--allow-prod` eligible on the
-  standing rule; **the app code hard-depends on all four**, so they have to reach prod before
-  this code merges. Order matters: `132` needs `123`.
+- ✅ **Prompt H is SHIPPED and LIVE on prod (`129`-`132`), applied 2026-09-03, deployed as
+  `bb327f4`.** Goals, project purpose, an idea pipeline, SWOT and retrospectives, behind one
+  optional `strategy` module at `/strategy`. All four migrations are purely additive and were
+  `--allow-prod` eligible on the standing rule, so **no owner override was needed**; each went
+  one at a time with `--only=NNN`, verified between each, after a `pg_restore --list`-verified
+  backup (`~/Code/prod-backup-pre-129to132-20260903-232728.dump`, 63 tables).
+  - **The deploy changed nothing anyone can see.** The module seeds `enabled = false`, so
+    `/strategy` is in nobody's nav until a super admin switches it on in Super Admin -> Modules.
+    Every pre-existing row count was identical before and after (173 tasks, 11 boards, 46
+    columns, 1355 marketing items, 8 triggers on `tasks`, 3 on `boards`); the only row that
+    moved anywhere was `129`'s own module seed. Whether to switch it on for the org is an open
+    owner decision - it is ON in the dev sandbox and OFF on prod.
+  - ⚠️ **Milestones are still deliberately absent from `goal_links`.** Prompt H's link chain
+    reads `Goal -> Project -> Milestone -> Work` and only Project and Work are built, because
+    milestones do not exist until Prompt I and a column nothing writes is a claim the product
+    cannot keep. Add the third typed column the day they do.
   - **The one rule everything follows:** execution progress and outcome progress are shown
     separately and are never combined. `lib/goals.ts` has no function that returns "goal
     progress" and no component renders a blended track, because a project can finish every task
@@ -499,17 +510,13 @@ future session, that's a regression - don't assume it's still pending.
   assertMigrationTarget({allowProd}) = the migration runner: dev always
   allowed, prod ONLY via an explicit --allow-prod flag + loud banner. Only
   additive/non-destructive migrations may ever use --allow-prod.
-- Migrations: numbered SQL in scripts/, **next number is 133**. As of 2026-09-02
-  dev is at 132 and prod is at 128, with 129-132 (Prompt H) NOT yet applied to
-  prod and 125 deliberately HELD there. ⚠️ This paragraph claimed "next number
+- Migrations: numbered SQL in scripts/, **next number is 133**. As of 2026-09-03
+  **dev and prod are BOTH at 132**, with 125 deliberately HELD on prod - it
+  reports `applied: 131  pending: 0  held: 1  total: 132`. ⚠️ This paragraph claimed "next number
   is 104, dev is at 103, production is at 095" until 2026-09-02, which was five
   migrations and three prompts out of date - **it is the single most
   stale-prone line in this file, so run `pnpm migrate:status` against both
-  databases and believe that instead.** 129-132 are all purely additive and
-  `--allow-prod` eligible on the standing rule, and the strategy module seeds
-  `enabled = false`, so applying them changes nothing visible until a super
-  admin turns it on - but the app code hard-depends on all four, so they must
-  land on prod BEFORE the code merges. Always confirm with `pnpm migrate:status` rather
+  databases and believe that instead.** Always confirm with `pnpm migrate:status` rather
   than trusting these numbers.
   New tables need an explicit REVOKE ALL first - Supabase default-grants ALL on
   every new public table to anon and authenticated (see 090).

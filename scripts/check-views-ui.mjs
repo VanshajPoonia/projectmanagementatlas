@@ -77,6 +77,7 @@ async function menuPick(page, triggerId, itemId, tries = 4) {
 }
 
 let browser, userId, parentBoard, childBoard, parentCol, childCol
+let customFieldId = null
 const taskIds = []
 const email = `viewsui-${stamp}@goatlasgo.us`
 const password = `Probe!${stamp}aA`
@@ -158,6 +159,19 @@ try {
   await seed(parentCol, 'Parent low', 'to_do', { priority: 5 })
   await seed(parentDone, 'Parent finished', 'done', { priority: 3 })
   await seed(childCol, 'Child work', 'to_do', { priority: 2 })
+
+  // A `select` custom field, because its stored value is an option ID and its label is
+  // somewhere else entirely. A column that prints the stored value shows `option_1`.
+  const { data: fieldDef, error: fieldErr } = await admin.from('field_definitions').insert({
+    key: `views_ui_stage_${stamp}`, name: `Stage ${stamp}`, field_type: 'select',
+    config: { options: [{ id: 'option_1', label: `Awaiting survey ${stamp}` }] },
+    scope: 'global', position: 0,
+  }).select('id, key').single()
+  if (fieldErr) throw new Error(`custom field fixture: ${fieldErr.message}`)
+  customFieldId = fieldDef.id
+  const { error: valueErr } = await admin.from('field_values')
+    .insert({ task_id: taskIds[0], field_id: fieldDef.id, value: 'option_1' })
+  if (valueErr) throw new Error(`custom field value fixture: ${valueErr.message}`)
 
   browser = await chromium.launch()
   const context = await browser.newContext({ viewport: { width: 1500, height: 1000 } })
@@ -444,6 +458,37 @@ try {
   }
 
   // =======================================================================================
+  section('A custom field column shows what it means, not the id it stores')
+  // =======================================================================================
+  // formatFieldValue existed for this and had no call site, so FieldCell fell back to
+  // String(value): a select rendered `option_1`, a person a raw uuid, a checkbox `true`.
+  // The unit tests pin FieldCell given a populated context; only a real browser proves the
+  // workspace actually SEEDS that context, which is the half that was broken.
+  await page.goto(`${BASE}/views`, { waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('#view-fields', { timeout: 60000 })
+  // Table, because a column is the plainest place to see a formatted value.
+  await page.click('#layout-table')
+  await page.waitForSelector('table thead th', { timeout: 20000 })
+
+  const picked = await menuPick(
+    page, '#view-fields', `[role="menuitem"]:has-text("Stage ${stamp}")`,
+  )
+  check('the fields menu offers the custom field as a column', picked,
+    'a field an admin created was not offerable as a column')
+
+  const labelShown = await until(
+    async () => page.getByText(`Awaiting survey ${stamp}`).count(),
+    (n) => n > 0,
+    20000,
+  )
+  check('a select field renders its option label', labelShown > 0,
+    'the column printed the stored value instead of resolving it')
+  check(
+    'and never the option id it stores',
+    (await page.getByText('option_1', { exact: true }).count()) === 0,
+  )
+
+  // =======================================================================================
   section('No console errors')
   // =======================================================================================
   const realErrors = consoleErrors.filter(
@@ -458,6 +503,10 @@ try {
   for (const board of [childBoard, parentBoard]) {
     if (!board) continue
     await admin.from('saved_views').delete().eq('board_id', board)
+  }
+  if (customFieldId) {
+    await admin.from('field_values').delete().eq('field_id', customFieldId)
+    await admin.from('field_definitions').delete().eq('id', customFieldId)
   }
   if (taskIds.length) await admin.from('tasks').delete().in('id', taskIds)
   for (const board of [childBoard, parentBoard]) {
