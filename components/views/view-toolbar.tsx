@@ -30,8 +30,8 @@ import {
   DESCENDANT_LABELS,
   DESCENDANT_SCOPES,
   FIELD_DESCRIPTORS,
-  LAYOUTS,
   LAYOUT_LABELS,
+  availableLayouts,
   describeField,
   type CompletedMode,
   type DescendantScope,
@@ -90,6 +90,12 @@ interface ViewToolbarProps {
   scopeBoardCount: number
   /** Custom fields (114), so they can be shown as columns like any built-in. */
   extraFields?: Array<{ field: string; label: string }>
+  /**
+   * Which optional layouts this workspace has switched on. The timeline ships with its module
+   * seeded OFF (136), so it must not appear here until a super admin turns it on - and a button
+   * offering a layout the database will refuse to save is worse than no button.
+   */
+  enabledLayouts?: { timeline?: boolean }
 }
 
 export function ViewToolbar({
@@ -100,6 +106,7 @@ export function ViewToolbar({
   descendantsAvailable,
   scopeBoardCount,
   extraFields = [],
+  enabledLayouts = {},
 }: ViewToolbarProps) {
   const allFields = [
     ...FIELD_DESCRIPTORS.map((d) => ({ field: d.field, label: d.label })),
@@ -132,7 +139,7 @@ export function ViewToolbar({
     <div className="flex flex-wrap items-center gap-2">
       {/* Layout */}
       <div className="bg-muted inline-flex rounded-md p-0.5" role="group" aria-label="Layout">
-        {LAYOUTS.map((layout) => (
+        {availableLayouts(enabledLayouts).map((layout) => (
           <Button
             key={layout}
             type="button"

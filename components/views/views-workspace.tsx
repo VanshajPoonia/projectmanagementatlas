@@ -33,7 +33,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useDensity } from '@/components/shell/use-density'
-import { useAppModules } from '@/lib/modules'
+import { isModuleEnabled, useAppModules } from '@/lib/modules'
 import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
 import { useFavorites } from '@/lib/use-favorites'
 import { allows } from '@/lib/capabilities'
@@ -49,7 +49,8 @@ import {
 } from '@/lib/saved-views'
 import {
   CURRENT_USER, DEFAULT_VIEW_CONFIG, UNASSIGNED, activeFilterCount, configsEqual,
-  customFilterField, describeFilter, incompleteFilters, normalizeViewConfig, runView,
+  customFilterField, describeFilter, incompleteFilters, normalizeViewConfig, resolveLayout,
+  runView,
   type EvalContext, type FieldKind, type GroupField, type ViewConfig,
 } from '@/lib/view-config'
 import { FilterBuilder, type FilterOption } from './filter-builder'
@@ -59,7 +60,13 @@ import { ListLayout } from './list-layout'
 import { TableLayout } from './table-layout'
 import { KanbanLayout } from './kanban-layout'
 import { CalendarLayout } from './calendar-layout'
+import { TimelineLayout } from './timeline-layout'
+import { MilestonePanel, type MilestoneDraftState } from '@/components/milestones/milestone-panel'
 import { dueDateForStorage } from '@/lib/calendar-grid'
+import {
+  createMilestone, deleteMilestone as deleteMilestoneRow, setTaskSchedule, updateMilestone,
+} from '@/lib/timeline-data'
+import type { ScheduleEdit } from '@/lib/timeline'
 
 /** Custom field types (114) mapped onto the filter vocabulary's four kinds. */
 function kindForFieldType(fieldType: string): FieldKind {
@@ -82,6 +89,13 @@ interface ViewsWorkspaceProps {
   columns: any[]
   fieldDefinitions: any[]
   fieldValues: any[]
+  /** Prompt I. Empty when the timeline module is off, since the page does not fetch them then. */
+  milestones?: any[]
+  milestoneLinks?: any[]
+  /** `blocks` / `precedes` pairs between the tasks above. Only these two constrain a schedule. */
+  schedulingRelations?: { sourceId: string; targetId: string; kind: 'blocks' | 'precedes' }[]
+  /** The server's calendar day in the business zone, resolved once. */
+  today: string
   shell?: ShellData
   /** The server's instant, so elapsed-time maths does not differ between render passes. */
   now: string
@@ -90,6 +104,8 @@ interface ViewsWorkspaceProps {
 
 export default function ViewsWorkspace({
   user, tasks, boards, users, statuses, tags, columns, fieldDefinitions, fieldValues,
+  milestones: initialMilestones = [], milestoneLinks: initialLinks = [],
+  schedulingRelations = [], today,
   shell, now, loadFailed = false,
 }: ViewsWorkspaceProps) {
   const router = useRouter()
@@ -105,6 +121,8 @@ export default function ViewsWorkspace({
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([])
   const [rows, setRows] = useState(tasks)
+  const [milestones, setMilestones] = useState<any[]>(initialMilestones)
+  const [milestoneLinks, setMilestoneLinks] = useState<any[]>(initialLinks)
 
   const { density, setDensity } = useDensity(user?.id ?? 'anon')
   const modules = useAppModules(shell?.modules)
@@ -115,6 +133,8 @@ export default function ViewsWorkspace({
   const nowDate = useMemo(() => new Date(now), [now])
 
   useEffect(() => { setRows(tasks) }, [tasks])
+  useEffect(() => { setMilestones(initialMilestones) }, [initialMilestones])
+  useEffect(() => { setMilestoneLinks(initialLinks) }, [initialLinks])
 
   /* ── Saved views ─────────────────────────────────────────────────────────────────── */
 
@@ -218,6 +238,63 @@ export default function ViewsWorkspace({
   }), [user?.id, statuses, users, boards, nowDate, customValues, customFields, peopleNames, workItemTitles])
 
   const result = useMemo(() => runView(inScope, config, ctx), [inScope, config, ctx])
+
+  /* ── Prompt I: timeline availability and scope ──────────────────────────────────── */
+
+  const timelineEnabled = isModuleEnabled(modules, 'timeline')
+
+  /**
+   * ⚠️ The layout that actually renders, which is not always the one the config asks for.
+   *
+   * A saved view can carry `layout: 'timeline'` from a day when the module was on. Rendering it
+   * anyway would show a chart the workspace has switched off; rendering nothing would strand the
+   * viewer in a blank pane with no control able to move them, which is the shape of the nav
+   * items that pointed at modules /admin could not reach. `resolveLayout` falls back instead.
+   */
+  const effectiveLayout = resolveLayout(config.layout, { timeline: timelineEnabled })
+
+  /** Milestones on the boards this view is actually looking at. */
+  const scopedMilestones = useMemo(() => {
+    const boardIds = new Set(inScope.map((t: any) => t.board_id).filter(Boolean))
+    for (const id of config.boardIds) boardIds.add(id)
+    return boardIds.size === 0
+      ? milestones
+      : milestones.filter((m: any) => boardIds.has(m.board_id))
+  }, [milestones, inScope, config.boardIds])
+
+  const milestoneTasksById = useMemo(() => {
+    const map = new Map<string, any>()
+    for (const task of rows) map.set(task.id, task)
+    return map
+  }, [rows])
+
+  const boardTitles = useMemo(
+    () => new Map<string, string>(boards.map((b: any) => [b.id, b.title])),
+    [boards],
+  )
+
+  /**
+   * Creating a milestone needs ONE board to put it on. `milestones.board_id` is NOT NULL
+   * deliberately (133), so with a multi-board or unscoped view there is no honest default -
+   * picking the first board would file the commitment against a project nobody chose.
+   */
+  const createBoardId = config.boardIds.length === 1 ? config.boardIds[0] : null
+  const createBlockedReason = createBoardId
+    ? null
+    : config.boardIds.length === 0
+      ? 'Scope this view to one board to add a milestone. A milestone belongs to a project, and there is no honest default when the view spans all of them.'
+      : 'This view covers several boards. Narrow it to one to add a milestone to that project.'
+
+  /**
+   * ⚠️ Dragging a bar writes `tasks`, so this mirrors the tasks UPDATE policy rather than the
+   * milestones one. A guest or client can VIEW a board's work and cannot write it (065), and
+   * lib/capabilities.ts records what happens when a capability is stricter than its policy: an
+   * ability is taken from exactly the people the database was built to serve, and they cannot
+   * tell that refusal from a bug. This is deliberately the wider of the two: anyone who can
+   * edit a task can schedule it.
+   */
+  const canScheduleWork = allows({ userId: user?.id ?? '', platformRole: role }, 'task.edit')
+
 
   const childrenByParent = useMemo(() => {
     const map = new Map<string, any[]>()
@@ -327,6 +404,93 @@ export default function ViewsWorkspace({
     }
     return true
   }, [rows, supabase])
+
+  /* ── Prompt I: the timeline ─────────────────────────────────────────────────────── */
+
+  /**
+   * Write a task's planned start and due dates from a drag or a resize.
+   *
+   * ⚠️ Optimistic, then rolled back on a refusal, exactly like rescheduleTask above. A drag
+   * that visibly moves and then silently does not save is worse than one that refuses: the UI
+   * has already told the person it worked.
+   */
+  const rescheduleSpan = useCallback(async (taskId: string, edit: ScheduleEdit): Promise<boolean> => {
+    const before = rows.find((t: any) => t.id === taskId)
+    patchRow(taskId, {
+      start_date: dueDateForStorage(edit.start),
+      due_date: dueDateForStorage(edit.due),
+    })
+    const { outcome } = await setTaskSchedule(supabase, taskId, edit)
+    if (!didWrite(outcome)) {
+      patchRow(taskId, { start_date: before?.start_date, due_date: before?.due_date })
+      const message = writeFailureMessage(outcome, 'schedule')
+      if (message) toast.error(message.title, { description: message.description })
+      return false
+    }
+    return true
+  }, [rows, supabase])
+
+  const handleCreateMilestone = useCallback(
+    async (draft: MilestoneDraftState, boardId: string): Promise<boolean> => {
+      const { outcome, milestone } = await createMilestone(supabase, {
+        board_id: boardId,
+        title: draft.title,
+        description: draft.description || null,
+        owner_id: draft.owner_id,
+        due_date: draft.due_date,
+      }, user?.id ?? null)
+      if (!didWrite(outcome) || !milestone) {
+        const message = writeFailureMessage(outcome, 'milestone')
+        if (message) toast.error(message.title, { description: message.description })
+        return false
+      }
+      setMilestones((prev) => [...prev, milestone])
+      toast.success('Milestone created')
+      return true
+    },
+    [supabase, user?.id],
+  )
+
+  const handleUpdateMilestone = useCallback(
+    async (id: string, draft: MilestoneDraftState): Promise<boolean> => {
+      // state_note rides in the SAME statement as state: migration 133's trigger blanks the
+      // carrier on every path out, so a second write would find it already cleared (103's
+      // design, 104's bug).
+      const { outcome, milestone } = await updateMilestone(supabase, id, {
+        title: draft.title,
+        description: draft.description || null,
+        owner_id: draft.owner_id,
+        due_date: draft.due_date,
+        state: draft.state,
+        state_note: draft.state_note || null,
+      })
+      if (!didWrite(outcome)) {
+        const message = writeFailureMessage(outcome, 'milestone')
+        if (message) toast.error(message.title, { description: message.description })
+        return false
+      }
+      // ⚠️ On an `invisible` outcome the write LANDED and took the row out of this caller's
+      // reach - handing a milestone to somebody else does exactly that, since 133's owner
+      // policy is `owner_id = auth.uid()`. Dropping it from the list is the honest render;
+      // reporting a failure would send them to redo a change already in the database.
+      if (milestone) setMilestones((prev) => prev.map((m) => (m.id === id ? milestone : m)))
+      else setMilestones((prev) => prev.filter((m) => m.id !== id))
+      return true
+    },
+    [supabase],
+  )
+
+  const handleDeleteMilestone = useCallback(async (id: string): Promise<boolean> => {
+    const { outcome } = await deleteMilestoneRow(supabase, id)
+    if (!didWrite(outcome)) {
+      const message = writeFailureMessage(outcome, 'milestone')
+      if (message) toast.error(message.title, { description: message.description })
+      return false
+    }
+    setMilestones((prev) => prev.filter((m) => m.id !== id))
+    setMilestoneLinks((prev) => prev.filter((l) => l.milestone_id !== id))
+    return true
+  }, [supabase])
 
   const moveTask = useCallback(async (taskId: string, group: GroupField, targetKey: string): Promise<boolean> => {
     const task = rows.find((t: any) => t.id === taskId)
@@ -595,6 +759,7 @@ export default function ViewsWorkspace({
                 descendantsAvailable={config.boardIds.length > 0}
                 scopeBoardCount={spanCount}
                 extraFields={extraFields.map((f) => ({ field: f.field, label: f.label }))}
+                enabledLayouts={{ timeline: timelineEnabled }}
               />
 
               <Button
@@ -699,7 +864,32 @@ export default function ViewsWorkspace({
               </p>
             )}
 
-            {result.tasks.length === 0 ? (
+            {/* Prompt I's milestone panel. Above the chart on the timeline, because the
+                milestones ARE the plan and the bars are how it is being met. Rendered only on
+                the timeline layout: it is the one place the object has context, and putting it
+                on every layout would be a rail four screens do not need. */}
+            {effectiveLayout === 'timeline' && (
+              <MilestonePanel
+                milestones={scopedMilestones}
+                links={milestoneLinks}
+                tasksById={milestoneTasksById}
+                statuses={statuses}
+                users={users}
+                boardTitles={boardTitles}
+                today={today}
+                canManage={isAdmin}
+                createBoardId={createBoardId}
+                createBlockedReason={createBlockedReason}
+                onCreate={handleCreateMilestone}
+                onUpdate={handleUpdateMilestone}
+                onDelete={handleDeleteMilestone}
+              />
+            )}
+
+            {/* ⚠️ The timeline is exempt from the empty state. A board can hold milestones and
+                no matching work, and "No work here yet" over a chart carrying three real dated
+                commitments would be false. The timeline draws its own empty message instead. */}
+            {result.tasks.length === 0 && effectiveLayout !== 'timeline' ? (
               <EmptyState
                 title={filterCount > 0 ? 'Nothing matches these filters' : 'No work here yet'}
                 description={
@@ -708,14 +898,14 @@ export default function ViewsWorkspace({
                     : 'Once there is work on the boards you can see, it shows up here.'
                 }
               />
-            ) : config.layout === 'list' ? (
+            ) : effectiveLayout === 'list' ? (
               <ListLayout
                 groups={result.groups} config={config} ctx={ctx} density={density}
                 childrenByParent={childrenByParent} selectable selectedIds={selectedIds}
                 onToggleSelect={(id) => toggleSelect(id)} onOpenTask={openTask}
                 collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup}
               />
-            ) : config.layout === 'table' ? (
+            ) : effectiveLayout === 'table' ? (
               <TableLayout
                 groups={result.groups} config={config} ctx={ctx}
                 childrenByParent={childrenByParent} selectable selectedIds={selectedIds}
@@ -727,12 +917,25 @@ export default function ViewsWorkspace({
                 extraFieldLabels={Object.fromEntries(extraFields.map((f) => [f.field, f.label]))}
                 collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup}
               />
-            ) : config.layout === 'kanban' ? (
+            ) : effectiveLayout === 'kanban' ? (
               <KanbanLayout
                 groups={result.groups} config={config} ctx={ctx} density={density}
                 parentTitles={parentTitles} selectable selectedIds={selectedIds}
                 onToggleSelect={(id) => toggleSelect(id)} onOpenTask={openTask}
                 onMoveTask={moveTask}
+              />
+            ) : effectiveLayout === 'timeline' ? (
+              <TimelineLayout
+                tasks={result.tasks} config={config} ctx={ctx} density={density}
+                milestones={scopedMilestones} relations={schedulingRelations}
+                childrenByParent={childrenByParent} today={today}
+                onOpenTask={openTask} onReschedule={rescheduleSpan}
+                canReschedule={canScheduleWork}
+                rescheduleBlockedReason={
+                  canScheduleWork
+                    ? null
+                    : 'You can view this schedule but not change it, because you cannot edit work on these boards.'
+                }
               />
             ) : (
               <CalendarLayout

@@ -281,9 +281,20 @@ recurring task spawn (the `is_recurring` columns from `scripts/025_*.sql` are cu
 ## Explicitly not building
 
 Multi-tenant/organization-switching machinery (see the single-org ruling above), docs/wiki +
-collaborative editing, Gantt/timeline, offline support, a generic automation rules engine, and more
+collaborative editing, offline support, a generic automation rules engine, and more
 than two integrations (Google Calendar one-way export, Slack notifications). Each is a product
 rather than a feature, and none serves the goal of reducing time spent *managing* work.
+
+⚠️ **"Gantt/timeline" used to be on that list and is not any more (owner scope decision,
+2026-09-08).** It contradicted `docs/product/master-prompt.md`'s PROMPT 9, its LAYOUTS line and
+`master-product-context.md`'s "the same work item must appear consistently in ... timeline,
+Gantt" - three statements in the spec against two in this file, with nobody having chosen.
+ATLAS_01 1110-1113 had already written the reconciliation and nobody had actioned it: four
+separately-approvable rungs, 13 milestones/dependencies, 14 timeline **only after scope
+approval**, 15 baselines **only if required**, 16 critical path **only if required and
+independently tested**. Rungs 13 and 14 are approved and built (see the Prompt I section);
+**15 and 16 are still refused** and stay refused until somebody asks. What is deliberately
+NOT built is listed there, and the reasons are load-bearing rather than a shrug.
 
 ## People (verified against **production** 2026-08-09 - re-query `profiles` for current truth)
 
@@ -342,13 +353,12 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `133`. **Dev and prod are BOTH at
-  `132` as of 2026-09-03, with `125` deliberately never applied to prod** - verified by running
-  the runner against both, which reported `applied: 131   pending: 0   held: 1   total: 132` on
-  prod and 0 pending on dev. Prod reports
-  `pending: 0   held: 1` - see "Holding a migration back" below, and the Prompt G section for
-  why this particular one. As always, run
-  `pnpm migrate:status` rather than trusting this sentence - it has gone stale three times. Wrap in `BEGIN; … COMMIT;`,
+- Migrations: numbered SQL in `scripts/`, continuing from `137`. **Dev is at `136` and prod at
+  `132` as of 2026-09-08**, with `125` deliberately never applied to prod. The gap is Prompt I's
+  `133`-`136`: all four are `--allow-prod` eligible, so that gap is "not applied yet", not "held",
+  and the shipped code hard-depends on them. Prod separately reports `held: 1` - see "Holding a
+  migration back" below, and the Prompt G section for why that particular one. As always, run
+  `pnpm migrate:status` rather than trusting this sentence - it has gone stale four times. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
   `pnpm migrate:status` rather than trusting a number written down anywhere, including here.**
@@ -1290,6 +1300,137 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
     normalises the pair by uuid order, so the check passes or fails by how two random uuids
     happen to sort. Query either end, or use a directional relation type in the fixture.
 
+
+### Prompt I - milestones and the timeline (`133`-`136`, DEV ONLY as of 2026-09-08)
+
+Four migrations behind one optional module (`timeline`), rendered as a **fifth layout** in the
+existing `/views` engine rather than a sixth route. **All four are on DEV ONLY.** Every one is
+purely additive or provably widening, so all four are `--allow-prod` eligible on this repo's own
+rule and **no owner override is needed** - but they have not been applied to prod yet, and the
+app code hard-depends on all of them, so they must land **before** the code merges.
+⚠️ Run `pnpm migrate:status` rather than trusting this paragraph; it has gone stale five times.
+
+**Prompt I opens with a mandatory STOP**, and it was honoured: find the conflicting statements,
+show them, explain the cost, ask for scope approval. The conflict was real and is recorded under
+"Explicitly not building" above. **The approved scope is ATLAS_01's rungs 13 and 14, manual
+scheduling only.** Baselines (15) and critical path (16) were refused and stay refused.
+
+| file | what | prod eligible? |
+|---|---|---|
+| `133_milestones.sql` | `milestones`, `milestone_tasks`, two triggers on those NEW tables | ✅ purely additive |
+| `134_goal_milestone_links.sql` | `goal_links.milestone_id` + the widened CHECK 129 anticipated | ✅ provably widening |
+| `135_task_start_date.sql` | `tasks.start_date` + a CHECK that only its own new column can violate | ✅ additive-equivalent |
+| `136_timeline_module.sql` | the `timeline` module row (seeds OFF) + 119's layout list widened by one | ✅ strictly widening |
+
+⚠️ **The code degrades safely on a database that predates these migrations, and that was
+measured rather than reasoned about**: the `app_modules.timeline` row was DELETED from the dev
+sandbox and `/views` still returned 200 with the other four layouts intact and zero console
+errors, because `DEFAULT_MODULES` carries `timeline: false` and the server component's three new
+queries sit inside that gate. The one residual is that the `start_date` FILTER field is not
+module-gated, so without `135` a "Start date before X" condition matches nothing silently. Apply
+the migrations rather than gating the filter.
+
+Gates: `pnpm check:milestones` (61, real RLS) and `pnpm check:timeline-ui` (40, real browser,
+needs `pnpm dev` on :3000 - confirmed stable across three consecutive runs). Counts were read
+off a run. ⚠️ The RLS harness was **confirmed to fail** rather than trusted: widening the
+milestones write policy to `auth.uid() IS NOT NULL` drops it from 61/61 to **36/61**.
+
+#### THE ONE RULE EVERYTHING ELSE FOLLOWS
+
+**Scheduling is MANUAL. Nothing moves a date it was not asked to move.** Prompt I separates
+manual scheduling (the user owns dates) from automatic (dates constrained by relationships), and
+asks that "if Atlas moves or refuses to move a date, explain why". In manual mode the only way to
+honour that is to notice and say so: `scheduleViolations` reports a successor starting before its
+predecessor finishes, naming the item and the number of days, and moves nothing. The browser
+harness asserts the dates are **byte-identical** after the warning renders.
+
+Automatic scheduling was scoped out for a reason worth keeping: it is a trigger on `tasks`, so it
+runs on every task move on every board, which is exactly the eligibility line 125 sits on the
+wrong side of and 127 sits on the right side of. It would also be the first thing in this product
+that silently rewrites data a person did not touch.
+
+#### The other decisions worth arguing with
+
+- **There is NO `milestones.progress` column, and `lib/milestones.ts` has no function that
+  returns a blended figure.** Prompt I lists "progress" as a milestone field; 129 already settled
+  how this repo stores one. Execution progress is computed from linked work at read time and
+  never stored, because a stored copy of a derived fact is a copy that can be set to disagree
+  with it. `milestoneProgress` is a **three-line adapter over `executionProgress`** rather than a
+  second implementation - the repo's most expensive recurring shape is two copies of one truth
+  drifting apart. Null when nothing is linked, never 0%.
+- **`state` is a decision; being late is a fact.** `open|reached|missed|cancelled` are declared
+  by a person. Whether an OPEN milestone is overdue is derived from `due_date` and today, so the
+  two can never disagree, and **nothing marks a milestone missed because its date passed**.
+  That is 130's rejected-versus-parked distinction: the reason a thing ended is the half you need
+  six months later, and a status the system applied on its own has no reason attached to it.
+- **Missing or cancelling one needs a written reason, enforced by the trigger AND mirrored in the
+  dialog**, which disables Save and says why rather than sending a write the database refuses.
+  Both halves are pinned against each other by `lib/milestones.cases.mjs`.
+- ⚠️ **`milestone_tasks` is a column in disguise, deliberately, and 127 is the reason.**
+  `UNIQUE (task_id)` gives it exactly `tasks.milestone_id` semantics. It is a table so that the
+  rule that matters - a task's milestone must be on the task's own board - can be a trigger on a
+  table this migration CREATES rather than on `tasks`. Same enforcement, one file, no override.
+- ⚠️ **`tasks.start_date` is TIMESTAMPTZ, against 123's praised precedent, and the reason is
+  narrow:** `due_date` is TIMESTAMPTZ and cannot be changed without rewriting every live row, and
+  a row whose two ends are different types is worse than either consistent choice. Every write
+  goes through `dueDateForStorage`, every read through `dueCalendarDate`, and `lib/timeline.ts`
+  normalises both ends to a `YYYY-MM-DD` calendar day at the boundary so no layout arithmetic
+  ever touches an instant. `milestones.due_date` IS a real DATE, because that table is new and
+  has no sibling to match.
+- **A phase is an ordinary work item with children, not a new row type.** Prompt I: "Do not
+  duplicate records to create the high-level plan." `rollUp` gives a parent with no dates of its
+  own the envelope of its children, marks the span `derived`, and the UI offers **no drag handle**
+  on it - moving a derived bar would have to move all its children, which is automatic scheduling
+  by another name. The harness asserts the phase created no extra row.
+- **Undated work goes to a tray, never onto the chart.** A bar drawn from today to a due date is
+  a duration nobody entered. Same rule as 124's `unestimated_count`.
+
+#### ⚠️ Five defects the gates found that review did not
+
+Every one was caught by running something, not by reading it.
+
+1. ⚠️ **`btrim(x) = ''` IS NOT "is this blank", and it silently defeated the whole reason
+   requirement.** Postgres's one-argument `btrim` strips SPACES and nothing else, so a reason of
+   `E'\t\n'` sailed through the trigger while JavaScript's `.trim()` rejected the same string.
+   The parity harness caught it on its **very first run**, in the direction where the database
+   was the looser of the two - a milestone could be recorded as missed with a reason made of a
+   tab. Fixed with `private.is_blank()`, one helper rather than three inline copies (109's
+   lesson). **Any SQL check for "did they actually type something" needs the whitespace class,
+   not `btrim`.**
+2. ⚠️ **`applyHierarchy` strips every child, so a roll-up computed from the filtered rows saw
+   none.** Both `parents_only` and `nested` filter children out, so every parent looked undated
+   and went to the unscheduled tray - a filter silently deleting the entire macro view. The fix
+   is the prop `ListLayout` and `TableLayout` already take: `childrenByParent`, built from the
+   PRE-hierarchy set. **A layout that reasons about hierarchy cannot derive it from the rows it
+   was given.**
+3. ⚠️ **A query asked for columns that do not exist and the error was discarded.**
+   `task_relations_expanded` has `task_id` / `related_task_id`, not `source_task_id` /
+   `target_task_id`, and `const { data } = await ...` swallowed the PostgREST error - so the
+   timeline reported **no dependency conflicts at all, forever**, which is exactly what a healthy
+   schedule looks like. Only the browser harness could catch it. **Keep the error.**
+4. **A rollback script has to be RUN.** `134`'s dropped `goal_links.milestone_id` before dropping
+   the two policies that name it, so Postgres refused and aborted the whole transaction. Same
+   shape as 132's revert, one migration family later. All four reverts are now proven by running
+   them, then re-applying forward.
+5. **A `Record<Density, number>` with an `as any` cast was hiding a key that is not a density**
+   (`cozy`), so the `expanded` setting silently rendered at the default height. The cast is gone.
+
+⚠️ **One harness trap worth naming: the chart opens centred on TODAY, so a fixture dated months
+away sits at a NEGATIVE x inside its own scroll container.** Measured at `x: -1837`, so every
+mouse-driven drag assertion failed while landing on empty page. `scrollIntoViewIfNeeded()` before
+`boundingBox()`. Same family as the Radix reopen and hydration traps already recorded.
+
+**Where things are:** `lib/milestones.ts` (30 tests) + `lib/milestones.cases.mjs` +
+`lib/milestones.parity.test.ts` (15), `lib/timeline.ts` (49 tests), `lib/timeline-data.ts`
+(every write classified through `lib/rls-write.ts`), `components/views/timeline-layout.tsx`,
+`components/milestones/milestone-panel.tsx`. The layout is `availableLayouts()` / `resolveLayout()`
+in `lib/view-config.ts` - the second is what stops a saved view stranding its owner on a layout
+the workspace has since switched off.
+
+**Not built, deliberately:** baselines and critical path (ATLAS_01 rungs 15/16, and ATLAS_01 4.3
+notes OpenProject does not ship critical path either, so there is no reference to copy);
+FS/SS/FF/SF relation types and lag, which critical path would need and which would turn
+`task_relations` from a semantic vocabulary into a scheduling graph; automatic rescheduling.
 
 ### Prompt H - goals, purpose, ideas, strategy and retrospectives (`129`-`132`, dev AND prod, 2026-09-03)
 

@@ -23,6 +23,7 @@ export type ModuleKey =
   | 'crm'
   | 'agile'
   | 'strategy'
+  | 'timeline'
 
 export interface AppModule {
   module_key: ModuleKey
@@ -58,6 +59,12 @@ export const DEFAULT_MODULES: AppModule[] = [
   // the fallback must not reveal a module a super admin has never switched on, and this one
   // adds a whole page to the sidebar rather than a widget in a corner.
   { module_key: 'strategy', enabled: false },
+  // Prompt I's optional timeline (migration 136 seeds it disabled). Same rule again, and here
+  // the fallback matters in a way the others did not: the timeline is a LAYOUT rather than a
+  // page, so revealing it would put a fifth button in the view switcher that saves a config
+  // 119's trigger refuses on any database that predates 136. A dead nav item is a bad day; a
+  // save that fails with a check violation is a worse one.
+  { module_key: 'timeline', enabled: false },
 ]
 
 /**

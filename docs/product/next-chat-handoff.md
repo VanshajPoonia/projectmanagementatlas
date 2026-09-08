@@ -395,6 +395,33 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
     tests under all four timezones; `next build` clean with the dev ref confirmed baked.
   - **Deliberately not built:** time tracking. Prompt G calls it a separate optional module and
     notes Taiga has none natively.
+- 🟡 **Prompt I is BUILT AND VERIFIED ON DEV, NOT YET ON PROD (`133`-`136`), 2026-09-08.**
+  Milestones plus a timeline layout, behind one optional `timeline` module. **All four
+  migrations are `--allow-prod` eligible on the standing rule** - two new tables with triggers
+  only on those new tables, one provably-widening CHECK, one new column, one widened layout
+  list - so **no owner override is needed**. They are simply not applied yet.
+  - ⚠️ **The code is safe to deploy ahead of them, and that is designed rather than lucky.**
+    `DEFAULT_MODULES` carries `timeline: false`, so on a database with no `app_modules.timeline`
+    row the fallback hides the layout, the `/views` server component skips all three new queries,
+    and `tasks.start_date` is never selected by name. **Measured, not reasoned**: the module row
+    was DELETED from the dev sandbox and `/views` returned 200 with the other four layouts intact
+    and zero console errors.
+    ⚠️ **One residual, stated rather than glossed:** the `start_date` FILTER field is not
+    module-gated, so on a database without `135` a "Start date before X" condition silently
+    matches nothing - the hidden-versus-does-not-exist shape in miniature. It cannot mislead
+    anyone once the migrations are applied, which is why they go first rather than why the
+    filter needs a gate.
+  - **Prompt I's mandatory STOP was honoured.** The conflict (three spec statements specifying
+    Gantt against two repo statements refusing it) was surfaced and the owner chose ATLAS_01's
+    rungs 13 and 14, MANUAL scheduling only. Recorded in Super Admin -> Decisions.
+  - **Refused on the record:** baselines, critical path, and automatic scheduling. The first two
+    are ATLAS_01 rungs 15/16 and FEATURES.md already deferred them; the third is refused for a
+    different reason worth keeping - it is a trigger on `tasks`, the same eligibility class as
+    125, and would be the first thing in the product that rewrites dates nobody touched.
+  - **The one rule:** a dependency conflict is EXPLAINED, never auto-corrected. The browser
+    harness asserts the dates are byte-identical after the warning renders.
+  - Gates: `pnpm check:milestones` (61, real RLS, confirmed to drop to 36 when the write policy
+    is widened) and `pnpm check:timeline-ui` (40, real browser, stable across three runs).
 - ✅ **Prompt H is SHIPPED and LIVE on prod (`129`-`132`), applied 2026-09-03, deployed as
   `bb327f4`.** Goals, project purpose, an idea pipeline, SWOT and retrospectives, behind one
   optional `strategy` module at `/strategy`. All four migrations are purely additive and were
@@ -407,10 +434,10 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
     columns, 1355 marketing items, 8 triggers on `tasks`, 3 on `boards`); the only row that
     moved anywhere was `129`'s own module seed. Whether to switch it on for the org is an open
     owner decision - it is ON in the dev sandbox and OFF on prod.
-  - ⚠️ **Milestones are still deliberately absent from `goal_links`.** Prompt H's link chain
-    reads `Goal -> Project -> Milestone -> Work` and only Project and Work are built, because
-    milestones do not exist until Prompt I and a column nothing writes is a claim the product
-    cannot keep. Add the third typed column the day they do.
+  - ✅ **Milestones were deliberately absent from `goal_links` and now are not.** Prompt H's
+    link chain reads `Goal -> Project -> Milestone -> Work`; only Project and Work were built,
+    because milestones did not exist and a column nothing writes is a claim the product cannot
+    keep. Migration `134` added the third typed column the day they did. Prompt I is that day.
   - **The one rule everything follows:** execution progress and outcome progress are shown
     separately and are never combined. `lib/goals.ts` has no function that returns "goal
     progress" and no component renders a blended track, because a project can finish every task
@@ -510,9 +537,10 @@ future session, that's a regression - don't assume it's still pending.
   assertMigrationTarget({allowProd}) = the migration runner: dev always
   allowed, prod ONLY via an explicit --allow-prod flag + loud banner. Only
   additive/non-destructive migrations may ever use --allow-prod.
-- Migrations: numbered SQL in scripts/, **next number is 133**. As of 2026-09-03
-  **dev and prod are BOTH at 132**, with 125 deliberately HELD on prod - it
-  reports `applied: 131  pending: 0  held: 1  total: 132`. ⚠️ This paragraph claimed "next number
+- Migrations: numbered SQL in scripts/, **next number is 137**. As of 2026-09-08
+  **dev is at 136 and prod at 132**, with 125 deliberately HELD on prod. The gap is Prompt I's
+  `133`-`136`, which are dev-only and all four `--allow-prod` ELIGIBLE - so that gap is
+  "not applied yet", not "held", and it is the first thing to settle. ⚠️ This paragraph claimed "next number
   is 104, dev is at 103, production is at 095" until 2026-09-02, which was five
   migrations and three prompts out of date - **it is the single most
   stale-prone line in this file, so run `pnpm migrate:status` against both

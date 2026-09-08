@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import ViewsWorkspace from '@/components/views/views-workspace'
 import { loadShellData } from '@/lib/shell-data'
+import { isModuleEnabledOnServer } from '@/lib/module-registry'
+import { loadMilestones, loadMilestoneTasks, loadSchedulingRelations } from '@/lib/timeline-data'
+import { businessDate } from '@/lib/crm'
 
 /**
  * Views - Prompt E's shared query/configuration surface.
@@ -71,6 +74,24 @@ export default async function ViewsPage() {
 
   const shell = await loadShellData(supabase)
 
+  /**
+   * ⚠️ Prompt I's data is fetched ONLY when the module is on, and the check is on the SERVER.
+   *
+   * A module toggle that hides a button is not a toggle (the ai_assistant lesson, migration 104's
+   * "UI-deep" defect). Fetching milestones and relations regardless would be three queries every
+   * visit for a feature nobody has switched on, and it would read a table that does not exist on
+   * a database predating 133 - so the check gates the QUERIES, not just the rendering.
+   */
+  const timelineEnabled = await isModuleEnabledOnServer(supabase, 'timeline')
+
+  const milestones = timelineEnabled ? await loadMilestones(supabase) : []
+  const [milestoneLinks, schedulingRelations] = timelineEnabled
+    ? await Promise.all([
+        loadMilestoneTasks(supabase, milestones.map((m) => m.id)),
+        loadSchedulingRelations(supabase, tasks.map((t: any) => t.id)),
+      ])
+    : [[], []]
+
   return (
     <ViewsWorkspace
       user={profile}
@@ -82,6 +103,13 @@ export default async function ViewsPage() {
       columns={columnsResult.data ?? []}
       fieldDefinitions={fieldsResult.data ?? []}
       fieldValues={valuesResult.data ?? []}
+      milestones={milestones}
+      milestoneLinks={milestoneLinks}
+      schedulingRelations={schedulingRelations}
+      // ⚠️ The calendar day, resolved ONCE here in the business zone. Letting each browser
+      // answer "what is today" from its own clock is the family of bug this repo has shipped
+      // five-plus times, and a timeline's today marker is exactly where it would show.
+      today={businessDate(new Date())}
       shell={shell}
       // The server's instant, so anything date-derived renders identically on both passes.
       // Calling new Date() during render is a hydration error, not a cosmetic one.

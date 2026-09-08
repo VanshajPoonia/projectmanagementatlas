@@ -96,8 +96,14 @@ from, at `/views`. Migrations `118` (board hierarchy) and `119` (saved views).
       (month/week/day + an unscheduled tray + drag to reschedule) over the same config
 - [x] **Dynamic descendant scope** - `boards.parent_board_id` plus none/direct/all, so a new
       child board is in its ancestors' roll-ups with no view to update (ATLAS_01 4.6)
-- [ ] Timeline / Gantt-lite view (start/due, dependencies optional) - deliberately not built;
-      "Explicitly not building" lists Gantt, and `task_relations` (115) has no UI yet
+- [x] **Timeline layout** (start/due, hierarchy roll-up, milestones, today marker, zoom,
+      collapse, drag to reschedule, resize to change duration) - Prompt I, migrations `133`-`136`.
+      Behind an optional `timeline` module that seeds OFF, so it is a fifth layout over the same
+      view config rather than a sixth route. ⚠️ Two claims in the line this replaces were wrong
+      by the time anyone read them: "Explicitly not building" no longer lists Gantt (an owner
+      scope decision, 2026-09-08), and `task_relations` (115) **has had a UI since Prompt C** -
+      `TaskRelationsPanel` is wired into the task modal. Scheduling is MANUAL: a dependency
+      conflict is explained, never auto-corrected.
 
 ### Phase 3 - Goals → Projects → Tasks hierarchy  ✅ SHIPPED (dev only, 2026-09-02)
 Gives execs a reason to log in; ties work to outcomes.
@@ -302,7 +308,13 @@ genuine gaps on screen rather than approximating them (`UNANSWERED_QUESTIONS` in
 `lib/my-work.ts`), and `lib/my-work.test.ts` asserts the two closed ones do not come back.
 
 ### Explicitly deferred (not now)
-Time tracking, budgets/cost reporting, critical-path/baselines, SAFe, DocuSign/contract workflows - enterprise territory (OpenProject-shaped), pulls away from our wedge.
+Time tracking, budgets/cost reporting, **critical-path/baselines**, SAFe, DocuSign/contract
+workflows - enterprise territory (OpenProject-shaped), pulls away from our wedge. Critical path
+and baselines survived the Prompt I scope decision unchanged (rungs 15 and 16 of ATLAS_01's
+ladder, both refused); rungs 13 and 14, milestones and the timeline, were approved and shipped.
+**Automatic scheduling** joins this list for a different reason: it is not enterprise bloat, it
+is a trigger on `tasks` that would rewrite dates nobody touched, which is a separate eligibility
+class (125 versus 127) and a separate decision.
 
 ---
 

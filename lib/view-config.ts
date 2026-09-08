@@ -58,15 +58,43 @@ import type { FieldDefinition } from './custom-fields'
 
 /* ── Vocabulary ────────────────────────────────────────────────────────────────────── */
 
-/** The four layouts Prompt E names. Mirrored by 119's config validation trigger. */
-export type Layout = 'list' | 'table' | 'kanban' | 'calendar'
-export const LAYOUTS: readonly Layout[] = ['list', 'table', 'kanban', 'calendar'] as const
+/**
+ * The layouts. Prompt E named four; Prompt I added the fifth. Mirrored by 119's config
+ * validation trigger, widened by 136 - if the two ever disagree, a view saves in the browser
+ * and is refused by the database with a check violation.
+ */
+export type Layout = 'list' | 'table' | 'kanban' | 'calendar' | 'timeline'
+export const LAYOUTS: readonly Layout[] = ['list', 'table', 'kanban', 'calendar', 'timeline'] as const
 
 export const LAYOUT_LABELS: Record<Layout, string> = {
   list: 'List',
   table: 'Table',
   kanban: 'Board',
   calendar: 'Calendar',
+  timeline: 'Timeline',
+}
+
+/**
+ * Layouts behind an optional module. The timeline ships with `app_modules.timeline` seeded OFF
+ * (136), so it must not appear in the switcher until a super admin turns it on.
+ *
+ * ⚠️ `availableLayouts` is the ONE place that decides, and `resolveLayout` is what stops a
+ * saved view from stranding somebody on a layout the workspace has since switched off. Without
+ * the second half, turning the module off would leave anyone holding a timeline view looking at
+ * a blank pane with no control able to move them - the same shape as the nav items that pointed
+ * at modules /admin could not reach.
+ */
+// Deliberately not a `Record<ModuleKey, Layout[]>` registry. There is exactly one gated
+// layout, and a map with one entry is the speculative generality `teams` was pared back from
+// ("add a role column later if a real need shows up - don't build it speculatively"). A second
+// gated layout is the day this becomes a map.
+export function availableLayouts(enabled: { timeline?: boolean } = {}): Layout[] {
+  return LAYOUTS.filter((layout) => layout !== 'timeline' || enabled.timeline === true)
+}
+
+/** The layout to actually render: the requested one, or the default when it is unavailable. */
+export function resolveLayout(requested: Layout, enabled: { timeline?: boolean } = {}): Layout {
+  return availableLayouts(enabled).includes(requested) ? requested : DEFAULT_VIEW_CONFIG.layout
 }
 
 /** How far below the scoped board(s) a view reaches. Never a stored id list - see note 3. */
@@ -127,6 +155,7 @@ export type FilterField =
   | 'tag'
   | 'type'
   | 'due_date'
+  | 'start_date'
   | 'created_at'
 
 /** Custom fields (114) filter as `custom:<field_key>`. */
@@ -163,6 +192,8 @@ export const FIELD_DESCRIPTORS: readonly FieldDescriptor[] = [
   { field: 'tag',             label: 'Tag',          kind: 'select', operators: SELECT_OPERATORS },
   { field: 'type',            label: 'Work type',    kind: 'select', operators: SELECT_OPERATORS },
   { field: 'due_date',        label: 'Due date',     kind: 'date',   operators: DATE_OPERATORS },
+  { field: 'start_date',      label: 'Start date',   kind: 'date',   operators: DATE_OPERATORS },
+  { field: 'milestone',       label: 'Milestone',    kind: 'select', operators: SELECT_OPERATORS },
   { field: 'created_at',      label: 'Created',      kind: 'date',   operators: DATE_OPERATORS },
 ] as const
 
@@ -470,6 +501,16 @@ export function fieldValues(task: any, field: string, ctx: EvalContext): string[
       const d = dueCalendarDate(task?.due_date)
       return d ? [d] : []
     }
+    // ⚠️ start_date is TIMESTAMPTZ storing UTC midnight, exactly like due_date, so it reads
+    // through dueCalendarDate (the STORED day) and never through calendarDateOf (a true
+    // instant). Getting this wrong is the one-day-early bug this repo has shipped five-plus
+    // times, and the fix that shipped it into Prompt E was to resolve a stored day through the
+    // business timezone. `created_at` below is a genuine instant and correctly uses the other.
+    case 'start_date': {
+      const d = dueCalendarDate(task?.start_date)
+      return d ? [d] : []
+    }
+    case 'milestone': return task?.milestone_id ? [String(task.milestone_id)] : []
     case 'created_at': {
       const d = calendarDateOf(task?.created_at, ctx)
       return d ? [d] : []

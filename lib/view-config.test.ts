@@ -20,6 +20,10 @@ import {
   describeView,
   customFilterField,
   parseCustomFilterField,
+  fieldValues,
+  availableLayouts,
+  resolveLayout,
+  LAYOUTS,
   DEFAULT_VIEW_CONFIG,
   CURRENT_USER,
   UNASSIGNED,
@@ -721,5 +725,76 @@ describe('due dates use the SHAPE the column really has', () => {
     const c = task({ id: 'c', due_date: '2026-08-26T00:00:00+00:00' })
     const sorted = applySort([a, b, c], cfg({ sort: [{ field: 'due_date', direction: 'asc' }] }), ctx())
     expect(sorted[0].id).toBe('c')
+  })
+})
+
+/* ── Prompt I: the timeline layout and its module gate ─────────────────────────────── */
+
+describe('the timeline layout is gated on its module', () => {
+  it('is absent from the switcher when the module is off, which is how it ships', () => {
+    expect(availableLayouts({})).toEqual(['list', 'table', 'kanban', 'calendar'])
+    expect(availableLayouts({ timeline: false })).not.toContain('timeline')
+  })
+
+  it('appears once a super admin switches the module on', () => {
+    expect(availableLayouts({ timeline: true })).toContain('timeline')
+  })
+
+  it('never drops a layout that is not gated', () => {
+    for (const layout of ['list', 'table', 'kanban', 'calendar'] as const) {
+      expect(availableLayouts({})).toContain(layout)
+      expect(availableLayouts({ timeline: true })).toContain(layout)
+    }
+  })
+
+  it('strands nobody on a saved view whose layout has since been switched off', () => {
+    // Without this, turning the module off leaves anyone holding a timeline view looking at a
+    // pane no control can move them out of.
+    expect(resolveLayout('timeline', { timeline: false })).toBe('kanban')
+    expect(resolveLayout('timeline', {})).toBe('kanban')
+  })
+
+  it('renders the requested layout when it is available', () => {
+    expect(resolveLayout('timeline', { timeline: true })).toBe('timeline')
+    expect(resolveLayout('table', {})).toBe('table')
+  })
+
+  it('agrees with 136 about exactly which layouts the database will store', () => {
+    // The list here and the IN clause in private.validate_saved_view_config must match, or a
+    // view saves in the browser and is refused with a check violation. 119's own probe keeps
+    // 'gantt' invalid on purpose, so it must NOT appear here.
+    expect([...LAYOUTS]).toEqual(['list', 'table', 'kanban', 'calendar', 'timeline'])
+    expect(LAYOUTS).not.toContain('gantt')
+  })
+})
+
+describe('start_date filters like the stored calendar day it is', () => {
+  const evalCtx = ctx()
+
+  it('reads the UTC date part of the stored midnight, not the local instant', () => {
+    expect(fieldValues({ start_date: '2026-08-27T00:00:00+00:00' }, 'start_date', evalCtx))
+      .toEqual(['2026-08-27'])
+    expect(fieldValues({ start_date: '2026-08-27T05:00:00+00:00' }, 'start_date', evalCtx))
+      .toEqual(['2026-08-27'])
+  })
+
+  it('reports an unscheduled task as having no start date at all', () => {
+    expect(fieldValues({ start_date: null }, 'start_date', evalCtx)).toEqual([])
+    expect(fieldValues({}, 'start_date', evalCtx)).toEqual([])
+  })
+
+  it('is offered with date operators, not text ones', () => {
+    const descriptor = describeField('start_date')
+    expect(descriptor?.kind).toBe('date')
+    expect(descriptor?.operators).toContain('before')
+    expect(descriptor?.operators).not.toContain('contains')
+  })
+
+  it('filters `before` against the stored day', () => {
+    const early = { id: 'a', start_date: '2026-03-01T00:00:00+00:00' }
+    const late = { id: 'b', start_date: '2026-03-20T00:00:00+00:00' }
+    const condition = { id: 'f', field: 'start_date', operator: 'before' as const, values: ['2026-03-10'] }
+    expect(evaluateCondition(early, condition, evalCtx)).toBe(true)
+    expect(evaluateCondition(late, condition, evalCtx)).toBe(false)
   })
 })
