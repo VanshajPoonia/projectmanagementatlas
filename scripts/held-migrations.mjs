@@ -33,6 +33,15 @@ export const HELD_MIGRATIONS = [
       'off), so applying it buys nothing today and costs a rule. Unlike 113 and 118 - the two ' +
       'prior owner overrides - no shipped code depends on it: the WIP badge and settings dialog ' +
       'read wip_enforcement_installed() (126) and honestly say "warning only" where it is absent.',
+    // The reason above says why not today. This says what would make it a yes, because a hold
+    // with no release condition is just a decision nobody can revisit: every later reader
+    // re-derives the same "no" from the same facts and it silently becomes permanent.
+    releaseWhen:
+      'When somebody sets a WIP limit on a real board, reads "warning only - nothing is ' +
+      'refused" in the settings dialog, and says that is a problem. That sentence is the ' +
+      'trigger and the product already shows it. Until a person is asking to be refused there ' +
+      'is nothing here to enforce - as of 2026-09-08, prod has 0 boards opted into agile, 0 ' +
+      'columns carrying a limit and 0 boards in enforcement mode, so the trigger cannot fire.',
     releaseNeeds:
       'An owner decision, a verified backup, and --only=125 --allow-prod --release-hold=125. ' +
       'Read scripts/125_wip_enforcement.sql\'s header first: it states the risk in full.',

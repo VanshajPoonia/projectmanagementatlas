@@ -150,6 +150,7 @@ if (ONLY && mode === '--apply') {
     for (const h of blocked) {
       console.error(`--only names a HELD migration: ${h.file}`)
       console.error(`  why it is held: ${h.reason}`)
+      if (h.releaseWhen) console.error(`  when to revisit: ${h.releaseWhen}`)
       console.error(`  to release it:  ${h.releaseNeeds}`)
     }
     process.exit(1)
@@ -167,7 +168,10 @@ function reportHolds() {
         : 'held back here'
     console.log(`held: ${h.file}  (${state}, since ${h.since})`)
     console.log(`  why: ${h.reason}`)
-    if (!applied.has(h.file)) console.log(`  to release: ${h.releaseNeeds}`)
+    if (!applied.has(h.file)) {
+      if (h.releaseWhen) console.log(`  when to revisit: ${h.releaseWhen}`)
+      console.log(`  to release: ${h.releaseNeeds}`)
+    }
   }
 }
 

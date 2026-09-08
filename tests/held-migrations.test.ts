@@ -10,7 +10,13 @@ import { resolve } from 'node:path'
 // Plain .mjs, deliberately framework-free like the runner it backs.
 import { HELD_MIGRATIONS, isHeld, heldByNumber, splitHeld } from '../scripts/held-migrations.mjs'
 
-type Held = { file: string; since: string; reason: string; releaseNeeds: string }
+type Held = {
+  file: string
+  since: string
+  reason: string
+  releaseWhen: string
+  releaseNeeds: string
+}
 const holds = HELD_MIGRATIONS as Held[]
 const scriptsDir = resolve(__dirname, '..', 'scripts')
 
@@ -27,6 +33,17 @@ describe('the held-migrations manifest', () => {
       expect(h.reason.length, `${h.file} has no reason`).toBeGreaterThan(40)
       expect(h.releaseNeeds.length, `${h.file} has no release path`).toBeGreaterThan(20)
       expect(h.since).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    }
+  })
+
+  it('records what would make each hold a YES, not only why it is a no', () => {
+    // The failure this pins is slow and silent. Every field above documents the refusal, so
+    // each later reader re-derives the same "no" from the same facts and the hold quietly
+    // becomes permanent - not because anyone decided that, but because nothing ever stated
+    // the condition under which it should be looked at again. 125 was re-examined twice on
+    // exactly the same reasoning before this field existed.
+    for (const h of holds) {
+      expect(h.releaseWhen?.length, `${h.file} does not say when to revisit it`).toBeGreaterThan(40)
     }
   })
 
