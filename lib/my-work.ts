@@ -25,6 +25,12 @@ import { getWorkNext, type WorkNextItem, type WorkSignals } from './work-next'
 import { daysBetween, taskDueDate } from './calendar-grid'
 import { businessDate } from './crm'
 import type { ExpandedRelation } from './task-relations'
+import {
+  milestonePressureList,
+  type MilestoneRow,
+  type MilestoneStatus,
+  type MilestoneTaskRow,
+} from './milestones'
 
 export interface MyWorkSection {
   id: string
@@ -42,9 +48,37 @@ export interface MyWorkSection {
  * number on the page.
  */
 export const UNANSWERED_QUESTIONS: ReadonlyArray<{ question: string; blockedBy: string }> = [
-  { question: 'Which of my work is at risk because a milestone is slipping?', blockedBy: 'milestones' },
   { question: 'What is a client waiting on me for?', blockedBy: 'the client portal' },
 ]
+
+/**
+ * The gaps to show THIS viewer, which is not always the static list above.
+ *
+ * ⚠️ The milestone question moved out of the constant and into here rather than simply being
+ * deleted, and the distinction is the honest one. Migration `133` shipped `milestones` to both
+ * databases, so "needs milestones" stopped being true the day it landed - but the section that
+ * answers it only has data when the `timeline` module is switched on, and with the module OFF
+ * the question is still genuinely unanswerable. Deleting the entry outright would have made the
+ * page go quiet about a question it still cannot answer; leaving it as `blockedBy: 'milestones'`
+ * was already a claim the schema no longer supported.
+ *
+ * This is the third correction to this list. `115` closed "what am I blocking?", `121` closed
+ * "what needs my approval?", and both notes outlived the migrations that closed them - which is
+ * why the reason is now computed from the same context the section is built from, rather than
+ * written down beside it and left to rot.
+ */
+export function unansweredQuestions(
+  context: Pick<MyWorkContext, 'milestonesAvailable'> = {},
+): ReadonlyArray<{ question: string; blockedBy: string }> {
+  const gaps = [...UNANSWERED_QUESTIONS]
+  if (!context.milestonesAvailable) {
+    gaps.unshift({
+      question: 'Which of my work is at risk because a milestone is slipping?',
+      blockedBy: 'the timeline module, which is switched off for this workspace',
+    })
+  }
+  return gaps
+}
 
 /**
  * Whole days from today until `due`. Negative = overdue. Null when there's no date.
@@ -85,6 +119,18 @@ export interface MyWorkContext {
   approvalStatusKeys?: ReadonlySet<string>
   /** The viewer's own `personal_tasks` rows, when the module is on. */
   personalTasks?: readonly any[]
+  /** Milestones on boards this viewer can see (133), when the `timeline` module is on. */
+  milestones?: readonly MilestoneRow[]
+  /** `milestone_tasks` rows joining those milestones to work. */
+  milestoneLinks?: readonly MilestoneTaskRow[]
+  /**
+   * ⚠️ Whether milestones could be READ AT ALL, which is not the same as whether any came back.
+   * An empty array means "no milestones under pressure"; `false` here means "this workspace has
+   * the timeline module off, so nobody has been asked the question yet". The page must be able
+   * to tell those apart or it reports a switched-off feature as a clean bill of health, which
+   * is this repo's most-repeated defect wearing a different hat.
+   */
+  milestonesAvailable?: boolean
 }
 
 /**
@@ -142,6 +188,32 @@ export function relationSignals(
  * of these questions matters most is a personal thing and one person's preference must not
  * change anyone else's screen.
  */
+/**
+ * The sentence under "At risk from a milestone", naming the dates actually driving it.
+ *
+ * ⚠️ Built FROM the milestones that selected the tasks, so it cannot describe a different set
+ * than the one on screen. `lib/work-next.ts` shipped a reason line computed from a different
+ * expression than its score, and `lib/sprint-metrics.ts` renders its whole panel from the value
+ * object for the same reason: a footnote written beside a number drifts from it.
+ *
+ * Names up to two milestones and then counts the rest, because a description that lists nine
+ * dates is one nobody reads.
+ */
+export function describeMilestoneRisk(
+  pressured: ReadonlyArray<{ milestone: MilestoneRow; status: MilestoneStatus }>,
+): string {
+  if (pressured.length === 0) return 'Linked to a milestone that is late or nearly here.'
+
+  const named = pressured
+    .slice(0, 2)
+    .map((entry) => `${entry.milestone.title} (${entry.status.label.toLowerCase()})`)
+    .join(', ')
+
+  const rest = pressured.length - 2
+  const tail = rest > 0 ? `, and ${rest} more` : ''
+  return `Work of yours is riding on ${named}${tail}. The date moves unless these do.`
+}
+
 export function buildMyWork(
   mine: any[],
   all: any[],
@@ -174,6 +246,35 @@ export function buildMyWork(
   const blocked = open.filter((task) => (signals.get(task?.id)?.blockedBy.length ?? 0) > 0)
   const blocking = open.filter((task) => (signals.get(task?.id)?.blocking.length ?? 0) > 0)
   const awaitingApproval = open.filter(awaitsApproval)
+
+  // ⚠️ Which of MY WORK is at risk, so this lists TASKS and not milestones. That is the literal
+  // question the page used to name as unanswerable, and answering it with a list of dates would
+  // leave the reader to work out which of their own items each one implicates.
+  //
+  // Pressure is derived, never stored: `milestoneStatus` works it out from `due_date` and today
+  // every time it is asked, and nothing anywhere marks a milestone missed because its date
+  // passed (133's rule). So a milestone somebody has already declared missed or cancelled drops
+  // out of here, correctly - the decision has been made and the work is no longer "at risk".
+  const pressuredMilestones = milestonePressureList(
+    [...(context.milestones ?? [])],
+    businessDate(now),
+  )
+  const pressuredIds = new Set(pressuredMilestones.map((entry) => entry.milestone.id))
+  const atRiskTaskIds = new Set(
+    (context.milestoneLinks ?? [])
+      .filter((link) => pressuredIds.has(link.milestone_id))
+      .map((link) => link.task_id),
+  )
+  const milestoneRisk = open.filter((task) => atRiskTaskIds.has(task?.id))
+
+  // Only the milestones that actually selected something above get named in the description,
+  // so it never cites a date whose work is not on screen.
+  const drivingMilestones = pressuredMilestones.filter((entry) =>
+    (context.milestoneLinks ?? []).some(
+      (link) => link.milestone_id === entry.milestone.id && atRiskTaskIds.has(link.task_id)
+        && milestoneRisk.some((task) => task?.id === link.task_id),
+    ),
+  )
 
   // The honest version of "waiting on someone else" that needs no relations: work I created
   // and handed off.
@@ -218,6 +319,12 @@ export function buildMyWork(
       description:
         'Someone else’s work is waiting on these. A day’s delay here costs more than a day.',
       tasks: byDueDate(blocking),
+    },
+    {
+      id: 'milestone-risk',
+      title: 'At risk from a milestone',
+      description: describeMilestoneRisk(drivingMilestones),
+      tasks: byDueDate(milestoneRisk),
     },
     {
       id: 'in-progress',

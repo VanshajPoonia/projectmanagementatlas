@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   UNANSWERED_QUESTIONS,
   buildMyWork,
+  unansweredQuestions,
   byDueDate,
   daysUntil,
   isOpen,
@@ -440,5 +441,203 @@ describe('the real shape the due_date column sends', () => {
     const result = buildMyWork([mine], [mine], ME, NOON_CHICAGO)
     expect(section(result, 'today')?.tasks.map((t: any) => t.id)).toEqual(['mine'])
     expect(section(result, 'overdue')).toBeUndefined()
+  })
+})
+
+/* ── Prompt I: "which of my work is at risk because a milestone is slipping?" ───────── */
+
+// This question sat in UNANSWERED_QUESTIONS from the day the file was written until migration
+// 133 shipped `milestones`. The section below is the answer, and it lists TASKS rather than
+// milestones because that is literally what was asked: a list of dates would leave the reader
+// to work out which of their own items each one implicates.
+describe('at risk from a milestone', () => {
+  const milestone = (over: Record<string, unknown> = {}) => ({
+    id: Math.random().toString(36).slice(2),
+    board_id: 'b1',
+    title: 'Permit issued',
+    due_date: at(3),
+    state: 'open' as const,
+    ...over,
+  })
+
+  const link = (milestone_id: string, task_id: string) => ({ milestone_id, task_id })
+
+  it('lists my open work linked to a milestone that is nearly here', () => {
+    const mine = task({ id: 't1' })
+    const ms = milestone({ id: 'm1', due_date: at(3) })
+    const result = buildMyWork([mine], [mine], ME, NOW, {
+      milestones: [ms],
+      milestoneLinks: [link('m1', 't1')],
+      milestonesAvailable: true,
+    })
+    expect(section(result, 'milestone-risk')?.tasks.map((t: any) => t.id)).toEqual(['t1'])
+  })
+
+  it('lists work linked to a milestone that is already overdue', () => {
+    const mine = task({ id: 't1' })
+    const ms = milestone({ id: 'm1', due_date: at(-5) })
+    const result = buildMyWork([mine], [mine], ME, NOW, {
+      milestones: [ms], milestoneLinks: [link('m1', 't1')], milestonesAvailable: true,
+    })
+    expect(section(result, 'milestone-risk')?.tasks).toHaveLength(1)
+  })
+
+  it('says nothing about a milestone comfortably in the future', () => {
+    const mine = task({ id: 't1' })
+    const ms = milestone({ id: 'm1', due_date: at(60) })
+    const result = buildMyWork([mine], [mine], ME, NOW, {
+      milestones: [ms], milestoneLinks: [link('m1', 't1')], milestonesAvailable: true,
+    })
+    expect(section(result, 'milestone-risk')).toBeUndefined()
+  })
+
+  // ⚠️ The decision has been made, so the work is no longer AT RISK. This is 133's
+  // state-is-a-decision rule reaching the page: a missed milestone is a recorded outcome with a
+  // reason attached, not an open threat, and continuing to nag about it would make the section
+  // permanent noise on every project that ever slipped.
+  it('drops out once somebody has declared the milestone missed, reached or cancelled', () => {
+    for (const state of ['missed', 'reached', 'cancelled'] as const) {
+      const mine = task({ id: 't1' })
+      const ms = milestone({ id: 'm1', due_date: at(-5), state, state_note: 'permit expired' })
+      const result = buildMyWork([mine], [mine], ME, NOW, {
+        milestones: [ms], milestoneLinks: [link('m1', 't1')], milestonesAvailable: true,
+      })
+      expect(section(result, 'milestone-risk'), `state ${state}`).toBeUndefined()
+    }
+  })
+
+  it('never lists somebody else’s work, however badly the milestone is slipping', () => {
+    const mine = task({ id: 't1' })
+    const theirs = task({ id: 't2', created_by: 'someone-else' })
+    const ms = milestone({ id: 'm1', due_date: at(-5) })
+    const result = buildMyWork([mine], [mine, theirs], ME, NOW, {
+      milestones: [ms],
+      milestoneLinks: [link('m1', 't1'), link('m1', 't2')],
+      milestonesAvailable: true,
+    })
+    expect(section(result, 'milestone-risk')?.tasks.map((t: any) => t.id)).toEqual(['t1'])
+  })
+
+  it('never lists work that is already finished', () => {
+    const done = task({ id: 't1', status: 'done' })
+    const ms = milestone({ id: 'm1', due_date: at(-5) })
+    const result = buildMyWork([done], [done], ME, NOW, {
+      milestones: [ms], milestoneLinks: [link('m1', 't1')], milestonesAvailable: true,
+    })
+    expect(section(result, 'milestone-risk')).toBeUndefined()
+  })
+
+  it('is absent entirely when the timeline module is off, rather than empty', () => {
+    const mine = task({ id: 't1' })
+    const result = buildMyWork([mine], [mine], ME, NOW, {})
+    expect(section(result, 'milestone-risk')).toBeUndefined()
+  })
+
+  // ⚠️ `milestones.due_date` is a real DATE (133), so the shape PostgREST really sends is a bare
+  // YYYY-MM-DD - unlike `tasks.due_date`, which is TIMESTAMPTZ. Both are asserted here: the bare
+  // one because it is what production produces, and the timestamp one because `placeMilestones`
+  // and `milestoneStatus` read the same column and must agree about it. Writing this test is
+  // what found that they did not.
+  it('reads the stored calendar day in the shape the DATE column really sends', () => {
+    const mine = task({ id: 't1' })
+    const near = milestone({ id: 'm1', due_date: at(7) })
+    const far = milestone({ id: 'm2', due_date: at(8) })
+    const nearResult = buildMyWork([mine], [mine], ME, NOW, {
+      milestones: [near], milestoneLinks: [link('m1', 't1')], milestonesAvailable: true,
+    })
+    const farResult = buildMyWork([mine], [mine], ME, NOW, {
+      milestones: [far], milestoneLinks: [link('m2', 't1')], milestonesAvailable: true,
+    })
+    expect(section(nearResult, 'milestone-risk')).toBeDefined()
+    expect(section(farResult, 'milestone-risk')).toBeUndefined()
+  })
+
+  it('does not shift by a day if it is ever handed a timestamp instead', () => {
+    const mine = task({ id: 't1' })
+    const near = milestone({ id: 'm1', due_date: `${at(7)}T00:00:00+00:00` })
+    const far = milestone({ id: 'm2', due_date: `${at(8)}T05:00:00+00:00` })
+    const nearResult = buildMyWork([mine], [mine], ME, NOW, {
+      milestones: [near], milestoneLinks: [link('m1', 't1')], milestonesAvailable: true,
+    })
+    const farResult = buildMyWork([mine], [mine], ME, NOW, {
+      milestones: [far], milestoneLinks: [link('m2', 't1')], milestonesAvailable: true,
+    })
+    expect(section(nearResult, 'milestone-risk')).toBeDefined()
+    expect(section(farResult, 'milestone-risk')).toBeUndefined()
+  })
+})
+
+describe('the at-risk description names the dates actually driving it', () => {
+  const ms = (id: string, title: string, due: string) => ({
+    id, board_id: 'b1', title, due_date: due, state: 'open' as const,
+  })
+
+  it('names the milestone and how late it is', () => {
+    const mine = task({ id: 't1' })
+    const result = buildMyWork([mine], [mine], ME, NOW, {
+      milestones: [ms('m1', 'Permit issued', at(-5))],
+      milestoneLinks: [{ milestone_id: 'm1', task_id: 't1' }],
+      milestonesAvailable: true,
+    })
+    const text = section(result, 'milestone-risk')!.description
+    expect(text).toContain('Permit issued')
+    expect(text).toContain('5 days overdue')
+  })
+
+  // The defect this pins is the one lib/work-next.ts already shipped once: a reason line
+  // computed from a different expression than the thing it explains.
+  it('never names a milestone whose work is not in the list', () => {
+    const mine = task({ id: 't1' })
+    const theirs = task({ id: 't2', created_by: 'someone-else' })
+    const result = buildMyWork([mine], [mine, theirs], ME, NOW, {
+      milestones: [ms('m1', 'Mine slipping', at(-2)), ms('m2', 'Theirs slipping', at(-9))],
+      milestoneLinks: [
+        { milestone_id: 'm1', task_id: 't1' },
+        { milestone_id: 'm2', task_id: 't2' },
+      ],
+      milestonesAvailable: true,
+    })
+    const text = section(result, 'milestone-risk')!.description
+    expect(text).toContain('Mine slipping')
+    expect(text).not.toContain('Theirs slipping')
+  })
+
+  it('counts the rest rather than listing nine dates', () => {
+    const mine = [task({ id: 't1' }), task({ id: 't2' }), task({ id: 't3' }), task({ id: 't4' })]
+    const result = buildMyWork(mine, mine, ME, NOW, {
+      milestones: [
+        ms('m1', 'Alpha', at(-4)), ms('m2', 'Beta', at(-3)),
+        ms('m3', 'Gamma', at(-2)), ms('m4', 'Delta', at(-1)),
+      ],
+      milestoneLinks: [
+        { milestone_id: 'm1', task_id: 't1' }, { milestone_id: 'm2', task_id: 't2' },
+        { milestone_id: 'm3', task_id: 't3' }, { milestone_id: 'm4', task_id: 't4' },
+      ],
+      milestonesAvailable: true,
+    })
+    expect(section(result, 'milestone-risk')!.description).toContain('and 2 more')
+  })
+})
+
+describe('the gap list tells the truth about milestones in both worlds', () => {
+  it('still names the question when the timeline module is off', () => {
+    const gaps = unansweredQuestions({ milestonesAvailable: false })
+    const text = gaps.map((g) => `${g.question} ${g.blockedBy}`).join(' ').toLowerCase()
+    expect(text).toContain('milestone')
+    // And it says what is ACTUALLY blocking it now, not "needs milestones" - the table exists.
+    expect(text).toContain('timeline module')
+    expect(text).not.toContain('needs milestones')
+  })
+
+  it('stops claiming it is unanswerable once the module is on', () => {
+    const gaps = unansweredQuestions({ milestonesAvailable: true })
+    expect(gaps.map((g) => g.question).join(' ').toLowerCase()).not.toContain('milestone')
+  })
+
+  it('keeps the client portal gap in both worlds, because nothing closed it', () => {
+    for (const available of [true, false]) {
+      const gaps = unansweredQuestions({ milestonesAvailable: available })
+      expect(gaps.some((g) => /client/i.test(g.question))).toBe(true)
+    }
   })
 })

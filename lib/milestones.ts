@@ -25,7 +25,7 @@ import {
   type GoalTaskRow,
 } from './goals'
 import type { StatusCatalog } from './task-status'
-import { daysBetween } from './calendar-grid'
+import { daysBetween, dueCalendarDate } from './calendar-grid'
 
 /* ── Vocabulary ────────────────────────────────────────────────────────────────────── */
 
@@ -166,7 +166,14 @@ export function milestoneStatus(milestone: MilestoneRow, today: string): Milesto
     }
   }
 
-  const remaining = daysBetween(today, milestone.due_date)
+  // ⚠️ Normalised, even though `milestones.due_date` is a real DATE and PostgREST therefore
+  // sends a bare YYYY-MM-DD. `placeMilestones` in lib/timeline.ts already reads this same column
+  // through `dueCalendarDate`, and two readers of one column that normalise differently is the
+  // shape this repo pays for over and over - the difference only shows up the day something
+  // hands this function a timestamp, and then it is a silent one-day error rather than a crash.
+  // `dueCalendarDate` passes a bare date through untouched, so this costs nothing today.
+  const due = dueCalendarDate(milestone.due_date) ?? milestone.due_date
+  const remaining = daysBetween(today, due)
 
   if (remaining < 0) {
     const late = Math.abs(remaining)

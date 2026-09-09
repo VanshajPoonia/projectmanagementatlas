@@ -257,7 +257,7 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       plus Recently viewed, and section order/visibility is now a per-user preference.
       `WorkNext` was **extended, not replaced** - blocked, blocking and approval signals, each
       with a visible reason. Gates: `pnpm check:inbox` (49), `pnpm check:inbox-ui` (32),
-      `pnpm check:my-work` (33).
+      `pnpm check:my-work` (44).
 - [x] **9. Optional agile mode** (Prompt G, `123`/`124`/`126`/`127` on dev AND prod, `125` dev only, 2026-08-29) - `/agile`,
       opt-in at three levels: the `agile` module seeds disabled (**switched on for this org
       2026-08-30; no board has opted in, so nothing about any board changed**), every board's
@@ -301,14 +301,18 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       confirmed to drop a check when the policy is widened to `is_admin_user`), 13 unit tests.
 
 **Blocked on schema, deliberately not faked:** the remaining one is client requests.
-⚠️ **Milestone pressure is no longer blocked on schema and is NOT yet wired** - `133` shipped
-`milestones` to both databases on 2026-09-09, and `milestonePressureList` in `lib/milestones.ts`
-is written and tested with **no product call site**. So `/my-work` still says the question is
-unanswerable while the thing it named as the blocker exists. That is the same shape this very
-paragraph was corrected for once already (`115` and `121` closed two of its claims and it went
-on asserting them), and it is open work rather than a decision: either wire the section or
-delete the function, but do not leave a `blockedBy: 'milestones'` on screen next to a shipped
-`milestones` table. ⚠️ This paragraph used to name "what am I blocking?" and "what needs my
+⚠️ **Milestone pressure is CLOSED (2026-09-09).** `133` shipped `milestones`, and "At risk from
+a milestone" now lists the viewer's own open work linked to a milestone that is overdue or
+inside seven days, with a description naming the dates driving it. It lists **tasks, not
+milestones**, because that is literally the question: a list of dates would leave the reader to
+work out which of their own items each one implicates. Gated on the `timeline` module, and the
+gap note is honest in BOTH worlds - with the module off the question is genuinely unanswerable,
+so `unansweredQuestions()` still names it and says the module is the blocker rather than
+"milestones", which would be a claim the schema no longer supports. That distinction is the
+third correction to this list (`115` and `121` closed two of its claims and it went on asserting
+them for two migrations), which is why the reason is now computed from the same context the
+section is built from rather than written down beside it. Gate: 11 new checks in
+`pnpm check:my-work` (44, was 33), confirmed to fail when the gap list is made static again. ⚠️ This paragraph used to name "what am I blocking?" and "what needs my
 approval?" as the blocked pair - `115` shipped relations and `121` added
 `task_statuses.is_approval`, and both now have real sections. `/my-work` still names its
 genuine gaps on screen rather than approximating them (`UNANSWERED_QUESTIONS` in

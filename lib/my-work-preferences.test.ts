@@ -141,3 +141,41 @@ describe('resetMyWorkPreferences', () => {
     expect(resetMyWorkPreferences()).toEqual(DEFAULT_PREFERENCES)
   })
 })
+
+/* ── Prompt I: a section added after people already saved an order ─────────────────── */
+
+describe('the at-risk section reaches people who saved an order before it existed', () => {
+  it('is in the catalog, so buildMyWork and the reorder panel agree it exists', () => {
+    expect(MY_WORK_SECTION_IDS).toContain('milestone-risk')
+  })
+
+  // ⚠️ THE ACTUAL RISK OF SHIPPING A NEW SECTION. Anyone who has ever opened the reorder panel
+  // has a stored `order` written by an older build, and that array does not mention this id. If
+  // repair appended it at the END, it would land under "Assigned to me" - the section that
+  // repeats everything above it - where nobody would ever see it. Worse, if repair DROPPED it,
+  // the feature would be invisible to every existing user and perfectly visible to a new one,
+  // which is the hardest kind of bug to be told about.
+  it('is inserted at its catalog position, not appended to the bottom', () => {
+    const beforeThisSectionExisted = JSON.stringify({
+      order: [
+        'recommended-next', 'overdue', 'today', 'blocked', 'awaiting-approval', 'blocking',
+        'in-progress', 'this-week', 'delegated', 'personal', 'recent', 'assigned',
+      ],
+      hidden: [],
+    })
+    const repaired = parseMyWorkPreferences(beforeThisSectionExisted)
+
+    expect(repaired.order).toContain('milestone-risk')
+    expect(repaired.order).toHaveLength(MY_WORK_SECTION_IDS.length)
+    expect(repaired.order.indexOf('milestone-risk')).toBeLessThan(repaired.order.indexOf('assigned'))
+    // And it lands where the catalog puts it: after "Blocking others".
+    expect(repaired.order.indexOf('milestone-risk')).toBe(repaired.order.indexOf('blocking') + 1)
+  })
+
+  it('respects somebody who has deliberately hidden it', () => {
+    const stored = JSON.stringify({ order: [...MY_WORK_SECTION_IDS], hidden: ['milestone-risk'] })
+    const repaired = parseMyWorkPreferences(stored)
+    expect(isSectionVisible(repaired, 'milestone-risk')).toBe(false)
+    expect(isSectionVisible(repaired, 'overdue')).toBe(true)
+  })
+})

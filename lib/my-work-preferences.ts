@@ -27,6 +27,11 @@ export const MY_WORK_SECTIONS: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'blocked', label: 'Blocked by others' },
   { id: 'awaiting-approval', label: 'Waiting on approval' },
   { id: 'blocking', label: 'Blocking others' },
+  // Added 2026-09-09 with Prompt I's milestones. Anyone who had already saved an order gets it
+  // inserted HERE rather than appended at the bottom, because `parseMyWorkPreferences` repairs
+  // a stored list against this one - which is the whole reason that repair exists. Shipping a
+  // section is not the same as shipping it invisible to everyone who ever opened the panel.
+  { id: 'milestone-risk', label: 'At risk from a milestone' },
   { id: 'in-progress', label: 'In progress' },
   { id: 'this-week', label: 'Upcoming' },
   { id: 'delegated', label: 'Waiting on someone else' },

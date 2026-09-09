@@ -80,7 +80,7 @@ const TODAY = businessToday()
 const YESTERDAY = shift(TODAY, -1)
 const TOMORROW = shift(TODAY, 1)
 
-let browser, userId, colleagueId, boardId, approvalKey
+let browser, userId, colleagueId, boardId, approvalKey, milestoneId
 const email = `myworkui-${stamp}@goatlasgo.us`
 const password = `Probe!${stamp}aA`
 const consoleErrors = []
@@ -211,6 +211,39 @@ try {
     throw new Error('the lifecycle trigger moved the approval fixture; the assertions below would test the wrong row')
   }
   await admin.from('task_assignees').insert({ task_id: approvalTask.id, user_id: userId })
+
+  // ── Prompt I: a milestone that is already slipping, with work of mine riding on it ──
+  // The module is switched ON here and restored in the finally block, because /my-work gates
+  // the QUERIES on it and not just the rendering - with it off the page never reads milestones
+  // at all, so this section could not appear however good the fixture was.
+  {
+    const { data: row } = await admin.from('app_modules')
+      .select('enabled').eq('module_key', 'timeline').maybeSingle()
+    moduleWasEnabled.timeline = row?.enabled ?? false
+    await admin.from('app_modules').update({ enabled: true }).eq('module_key', 'timeline')
+  }
+
+  const riskTask = await seed('MILESTONERISK', null)
+
+  const { data: slipping, error: msErr } = await admin.from('milestones').insert({
+    board_id: boardId,
+    title: `SLIPPING-${stamp}`,
+    // ⚠️ A bare YYYY-MM-DD, because `milestones.due_date` is a real DATE (133) and that is the
+    // shape PostgREST really sends - unlike `tasks.due_date`, which is TIMESTAMPTZ. A fixture
+    // in a shape the column never produces is a second bug hiding the first.
+    due_date: shift(TODAY, -5),
+    created_by: userId,
+  }).select('id, due_date, state').single()
+  if (msErr) throw new Error(`seed(milestone): ${msErr.message}`)
+  milestoneId = slipping.id
+
+  check('PRECONDITION: the milestone fixture really is open and already overdue',
+    slipping.state === 'open' && String(slipping.due_date) < TODAY,
+    `state ${slipping.state}, due ${slipping.due_date}, today ${TODAY}`)
+
+  const { error: linkErr } = await admin.from('milestone_tasks')
+    .insert({ milestone_id: milestoneId, task_id: riskTask.id })
+  if (linkErr) throw new Error(`seed(milestone_tasks): ${linkErr.message}`)
 
   check('the due date is stored as midnight on the intended day',
     String(todayTask.due_date).startsWith(TODAY),
@@ -366,6 +399,80 @@ try {
     `shortlist reasons: ${rankedText.slice(0, 400)}`)
 
   // =======================================================================================
+  section('Prompt I: which of my work is at risk because a milestone is slipping')
+  // =======================================================================================
+  // This question sat in UNANSWERED_QUESTIONS from the day my-work.ts was written until 133
+  // shipped `milestones`, and then went on sitting there while the table existed - the same
+  // shape as the two Prompt F gaps above, which outlived the migrations that closed them.
+  const riskRows = await until(() => sectionTasks('milestone-risk'), (r) => r.length > 0)
+  check('work linked to a slipping milestone is filed under "At risk from a milestone"',
+    riskRows.some((r) => r.includes('MILESTONERISK')), `rows: ${JSON.stringify(riskRows)}`)
+
+  // ⚠️ It lists TASKS, not milestones. A list of dates would leave the reader to work out
+  // which of their own items each one implicates, which is not the question they asked.
+  //
+  // ⚠️ Read from the <li> rows, NOT via sectionTasks. That helper splits the whole card's
+  // innerText, which includes the CardDescription - and this section's description correctly
+  // names the milestone, so the obvious assertion fails against correct code. It only works
+  // for every other section because no other description contains the fixture stamp. Asserting
+  // on a blob of text that happens to include the thing you are asserting is absent is how a
+  // check ends up testing its own wording.
+  const riskItems = await page.locator('[data-section="milestone-risk"] li').allInnerTexts()
+  check('and it lists the WORK, not the milestone itself',
+    riskItems.length > 0
+      && riskItems.some((r) => r.includes('MILESTONERISK'))
+      && !riskItems.some((r) => r.includes('SLIPPING-')),
+    `rows: ${JSON.stringify(riskItems)}`)
+
+  const riskCardText = await page.locator('[data-section="milestone-risk"]').first().innerText()
+  check('the section names the milestone driving it, and how late it is',
+    riskCardText.includes(`SLIPPING-${stamp}`) && /overdue/i.test(riskCardText),
+    `section text: ${riskCardText.replace(/\n/g, ' ').slice(0, 240)}`)
+
+  // The gap list must stop claiming this is unanswerable now that it is answered.
+  const gapsAfterMilestones = await page.locator('#my-work-gaps').locator('..').innerText().catch(() => '')
+  check('the page no longer lists the milestone question as a gap',
+    !/milestone/i.test(gapsAfterMilestones),
+    `gap note reads: ${gapsAfterMilestones.replace(/\n/g, ' ').slice(0, 200)}`)
+  check('CONTROL: it still admits the client-portal gap, which nothing closed',
+    /client/i.test(gapsAfterMilestones),
+    `gap note reads: ${gapsAfterMilestones.replace(/\n/g, ' ').slice(0, 200)}`)
+
+  // ⚠️ THE HALF THAT MATTERS MOST. With the module off the page cannot answer this, and the
+  // honest behaviour is to say so rather than to render an empty section or go quiet. A
+  // switched-off feature reported as a clean bill of health is this repo's most-repeated
+  // defect wearing a different hat.
+  await admin.from('app_modules').update({ enabled: false }).eq('module_key', 'timeline')
+  await page.goto(`${BASE}/my-work`, { waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('[data-section]', { timeout: 30000 })
+
+  const riskGone = await until(
+    () => page.locator('[data-section="milestone-risk"]').count(),
+    (n) => n === 0,
+  )
+  check('switching the timeline module OFF removes the section entirely', riskGone === 0,
+    `the section was still rendered ${riskGone} time(s) with the module disabled`)
+
+  const gapsModuleOff = await page.locator('#my-work-gaps').locator('..').innerText().catch(() => '')
+  check('and the page ADMITS it cannot answer the question, rather than going quiet',
+    /milestone/i.test(gapsModuleOff),
+    `gap note reads: ${gapsModuleOff.replace(/\n/g, ' ').slice(0, 240)}`)
+  check('naming the timeline module as the blocker, not "milestones" - the table exists now',
+    /timeline module/i.test(gapsModuleOff) && !/needs milestones\b/i.test(gapsModuleOff),
+    `gap note reads: ${gapsModuleOff.replace(/\n/g, ' ').slice(0, 240)}`)
+
+  // CONTROL: the rest of the page is untouched by that toggle.
+  const stillThere = await sectionTasks('overdue')
+  check('CONTROL: switching it off leaves every other section alone', stillThere.length > 0,
+    `Overdue had ${stillThere.length} rows with the timeline module off`)
+
+  await admin.from('app_modules').update({ enabled: true }).eq('module_key', 'timeline')
+  await page.goto(`${BASE}/my-work`, { waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('[data-section]', { timeout: 30000 })
+  const riskBack = await until(() => sectionTasks('milestone-risk'), (r) => r.length > 0)
+  check('switching it back ON restores the section', riskBack.length > 0)
+
+  // =======================================================================================
   section('Section order and visibility are a personal preference')
   // =======================================================================================
   // ⚠️ Assert the section is ON SCREEN before hiding it. Without this the "unticking removes
@@ -482,10 +589,15 @@ try {
         // leaving a relation pointing at a task this teardown could not remove.
         await admin.from('task_relations').delete().in('source_task_id', taskIds)
         await admin.from('task_relations').delete().in('target_task_id', taskIds)
+        // milestone_tasks cascades from tasks and milestones cascades from the board, so this
+        // is belt and braces for the same reason the two lines above are: a run that failed
+        // part-way must not leave a link pointing at a row this teardown could not remove.
+        await admin.from('milestone_tasks').delete().in('task_id', taskIds)
       }
       await admin.from('tasks').delete().in('column_id', colIds)
       await admin.from('columns').delete().in('id', colIds)
     }
+    if (milestoneId) await admin.from('milestones').delete().eq('id', milestoneId)
     await admin.from('boards').delete().eq('id', boardId)
   }
   if (approvalKey) await admin.from('task_statuses').delete().eq('key', approvalKey)

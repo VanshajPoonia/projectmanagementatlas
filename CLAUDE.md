@@ -1055,7 +1055,7 @@ deliberately left out.
       non-zero with a stack rather than a summary. Reading its log before it finishes shows a
       clean prefix - which is exactly how it was briefly misreported as green here. Wait for the
       final "N of 48" line.
-  - Gate: `pnpm check:my-work` (20, real browser). ⚠️ Its context is pinned to
+  - Gate: `pnpm check:my-work` (44 as of 2026-09-09, real browser). ⚠️ Its context is pinned to
       `timezoneId: 'America/Chicago'` deliberately - **the bug is invisible in UTC and in any
       positive offset**, so a harness running in the machine's own zone (this Mac is
       `Asia/Calcutta`) passes against broken code. It is also what found the column's real type,
@@ -1465,6 +1465,48 @@ Every one was caught by running something, not by reading it.
     waiting for `#milestone-title` to be `detached` is what proves it. **The thing you can
     observe soonest is not the thing you need to wait for.** Fixed and then confirmed across
     three consecutive 40/40 runs, because a harness that has been flaky once has to earn it.
+
+#### "Which of my work is at risk because a milestone is slipping?" (2026-09-09)
+
+That question sat in `UNANSWERED_QUESTIONS` from the day `lib/my-work.ts` was written, and went
+on sitting there **after** `133` shipped the table it named as the blocker. `/my-work` now has an
+**At risk from a milestone** section listing the viewer's own open work linked to a milestone
+that is overdue or inside seven days.
+
+- **It lists TASKS, not milestones**, because that is literally what was asked. A list of dates
+  leaves the reader to work out which of their own items each one implicates.
+- **A milestone somebody has declared missed, reached or cancelled drops out**, which is 133's
+  state-is-a-decision rule reaching the page: the decision is made and the work is no longer at
+  risk. Continuing to nag would make the section permanent noise on every project that ever
+  slipped.
+- ⚠️ **The gap note is honest in BOTH worlds, and this is the part worth copying.** Deleting the
+  entry outright would have made the page go quiet about a question it still cannot answer when
+  the `timeline` module is off; leaving it as `blockedBy: 'milestones'` was already a claim the
+  schema no longer supported. So `unansweredQuestions(context)` computes it from the same context
+  the section is built from, and names **the module** as the blocker. This is the THIRD correction
+  to that list - `115` and `121` closed two of its claims and it asserted them for two more
+  migrations - which is why the reason is now derived rather than written down beside it.
+- **The section is registered in `MY_WORK_SECTIONS` at its display position**, so
+  `parseMyWorkPreferences` inserts it there for everyone who already saved an order. Appending it
+  would have put it under "Assigned to me", the section that repeats everything above it, where
+  nobody would ever see it.
+- ⚠️ **Writing the test found that two readers of `milestones.due_date` disagreed.**
+  `placeMilestones` normalised through `dueCalendarDate`; `milestoneStatus` passed the value
+  straight to `daysBetween`. Harmless today (the column is a real DATE, so PostgREST sends a bare
+  `YYYY-MM-DD`) and a silent one-day error the moment anything hands it a timestamp. Both
+  normalise now.
+
+Gate: 11 new checks in `pnpm check:my-work` (**44**, was 33), including the control that switches
+the module OFF and asserts the page ADMITS it cannot answer rather than rendering an empty
+section. Confirmed to fail when the gap list is made static again, and stable across three
+consecutive runs.
+
+⚠️ **One harness trap, and it is a good one: `sectionTasks` splits the whole card's innerText,
+which includes the CardDescription.** This section's description correctly names the milestone,
+so "the rows must not mention the milestone" failed against correct code. It only works for every
+other section because no other description contains the fixture stamp. Read the `<li>` rows.
+**Asserting on a blob of text that happens to include the thing you are asserting is absent is
+how a check ends up testing its own wording.**
 
 **Where things are:** `lib/milestones.ts` (30 tests) + `lib/milestones.cases.mjs` +
 `lib/milestones.parity.test.ts` (15), `lib/timeline.ts` (49 tests), `lib/timeline-data.ts`

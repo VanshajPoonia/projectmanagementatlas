@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import MyWorkView from '@/components/my-work/my-work-view'
 import { loadShellData } from '@/lib/shell-data'
+import { isModuleEnabledOnServer } from '@/lib/module-registry'
+import { loadMilestones, loadMilestoneTasks } from '@/lib/timeline-data'
 
 /**
  * My Work - the personal cockpit the shell has advertised as "soon" since the nav model
@@ -58,6 +60,21 @@ export default async function MyWorkPage() {
     supabase.from('personal_tasks').select('*').eq('user_id', user.id).eq('is_done', false),
   ])
 
+  /**
+   * Prompt I's milestones, and ONLY when the module is on.
+   *
+   * ⚠️ The check gates the QUERIES, not just the rendering, exactly as /views does. Fetching
+   * regardless would be two reads on every visit to the screen people open first, for a feature
+   * nobody has switched on - and it would read a table that does not exist on any database
+   * predating `133`. `milestonesAvailable` is passed separately so the page can tell "no
+   * milestone is slipping" from "nobody has been asked", which are different answers.
+   */
+  const timelineEnabled = await isModuleEnabledOnServer(supabase, 'timeline')
+  const milestones = timelineEnabled ? await loadMilestones(supabase) : []
+  const milestoneLinks = timelineEnabled
+    ? await loadMilestoneTasks(supabase, milestones.map((m) => m.id))
+    : []
+
   // The server's instant, so "today" means the same thing on both renders. Without it the page
   // reads the wall clock during render and hydration disagrees across a day boundary.
   return (
@@ -67,6 +84,9 @@ export default async function MyWorkPage() {
       relations={relationsResult.data ?? []}
       approvalStatusKeys={(approvalStatusResult.data ?? []).map((row: any) => row.key)}
       personalTasks={personalResult.data ?? []}
+      milestones={milestones}
+      milestoneLinks={milestoneLinks}
+      milestonesAvailable={timelineEnabled}
       shell={shell}
       loadFailed={Boolean(tasksError)}
       now={new Date().toISOString()}

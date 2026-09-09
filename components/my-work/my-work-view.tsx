@@ -35,7 +35,7 @@ import { useMarketingCalendars } from '@/lib/use-marketing-calendars'
 import { useFavorites } from '@/lib/use-favorites'
 import { isTaskOwnedBy } from '@/lib/assignees'
 import { getTaskStatusLabel } from '@/lib/task-status'
-import { UNANSWERED_QUESTIONS, buildMyWork, daysUntil, myWorkSummary } from '@/lib/my-work'
+import { buildMyWork, daysUntil, myWorkSummary, unansweredQuestions } from '@/lib/my-work'
 import { MY_WORK_SECTIONS, applyPreferences, isSectionVisible } from '@/lib/my-work-preferences'
 import type { ExpandedRelation } from '@/lib/task-relations'
 import { calendarDateLabel, taskDueDate } from '@/lib/calendar-grid'
@@ -52,6 +52,15 @@ interface MyWorkViewProps {
   approvalStatusKeys?: string[]
   /** This person's own open personal tasks (030). Nobody else can see them. */
   personalTasks?: any[]
+  /** Milestones on boards this person can see (133), empty when the timeline module is off. */
+  milestones?: any[]
+  /** `milestone_tasks` rows joining those milestones to work. */
+  milestoneLinks?: any[]
+  /**
+   * Whether milestones could be read at all. Distinct from an empty `milestones` array, which
+   * means "nothing is slipping" rather than "nobody has switched the feature on".
+   */
+  milestonesAvailable?: boolean
   shell?: ShellData
   /**
    * True when the task query itself failed. Without this an empty `tasks` array is
@@ -115,6 +124,9 @@ export default function MyWorkView({
   relations = [],
   approvalStatusKeys = [],
   personalTasks = [],
+  milestones = [],
+  milestoneLinks = [],
+  milestonesAvailable = false,
   shell,
   loadFailed = false,
   now: serverNow,
@@ -136,6 +148,8 @@ export default function MyWorkView({
 
   const mine = useMemo(() => tasks.filter((task) => isTaskOwnedBy(task, user?.id)), [tasks, user?.id])
 
+  const timelineOn = isModuleEnabled(modules, 'timeline')
+
   const context = useMemo(
     () => ({
       relations,
@@ -143,8 +157,14 @@ export default function MyWorkView({
       // Gated on the module, not just on whether rows came back: a section fed by a switched-
       // off module is a section nobody can act on.
       personalTasks: isModuleEnabled(modules, 'personal_tasks') ? personalTasks : [],
+      // Same rule, and gated twice on purpose: the server already refused to run the query
+      // when the module is off, and this refuses to build a section from a stale prop if a
+      // super admin switches the module off while somebody has the page open.
+      milestones: timelineOn ? milestones : [],
+      milestoneLinks: timelineOn ? milestoneLinks : [],
+      milestonesAvailable: timelineOn && milestonesAvailable,
     }),
-    [relations, approvalStatusKeys, personalTasks, modules],
+    [relations, approvalStatusKeys, personalTasks, modules, milestones, milestoneLinks, milestonesAvailable, timelineOn],
   )
 
   const { sections, next } = useMemo(
@@ -467,7 +487,7 @@ export default function MyWorkView({
             Not answered here yet
           </h2>
           <ul className="mt-2 space-y-1">
-            {UNANSWERED_QUESTIONS.map((entry) => (
+            {unansweredQuestions({ milestonesAvailable: timelineOn && milestonesAvailable }).map((entry) => (
               <li key={entry.question}>
                 {entry.question} - needs {entry.blockedBy}.
               </li>
