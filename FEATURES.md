@@ -300,8 +300,15 @@ Build priority from ATLAS_01 §13. Numbering is the doc's, not FEATURES' Phase n
       the log cannot be made to say somebody else made a call. Gates: `pnpm check:decisions` (21,
       confirmed to drop a check when the policy is widened to `is_admin_user`), 13 unit tests.
 
-**Blocked on schema, deliberately not faked:** the remaining two are milestone pressure and
-client requests. ⚠️ This paragraph used to name "what am I blocking?" and "what needs my
+**Blocked on schema, deliberately not faked:** the remaining one is client requests.
+⚠️ **Milestone pressure is no longer blocked on schema and is NOT yet wired** - `133` shipped
+`milestones` to both databases on 2026-09-09, and `milestonePressureList` in `lib/milestones.ts`
+is written and tested with **no product call site**. So `/my-work` still says the question is
+unanswerable while the thing it named as the blocker exists. That is the same shape this very
+paragraph was corrected for once already (`115` and `121` closed two of its claims and it went
+on asserting them), and it is open work rather than a decision: either wire the section or
+delete the function, but do not leave a `blockedBy: 'milestones'` on screen next to a shipped
+`milestones` table. ⚠️ This paragraph used to name "what am I blocking?" and "what needs my
 approval?" as the blocked pair - `115` shipped relations and `121` added
 `task_statuses.is_approval`, and both now have real sections. `/my-work` still names its
 genuine gaps on screen rather than approximating them (`UNANSWERED_QUESTIONS` in

@@ -353,11 +353,12 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `137`. **Dev is at `136` and prod at
-  `132` as of 2026-09-08**, with `125` deliberately never applied to prod. The gap is Prompt I's
-  `133`-`136`: all four are `--allow-prod` eligible, so that gap is "not applied yet", not "held",
-  and the shipped code hard-depends on them. Prod separately reports `held: 1` - see "Holding a
-  migration back" below, and the Prompt G section for why that particular one. As always, run
+- Migrations: numbered SQL in `scripts/`, continuing from `137`. **Dev and prod are BOTH fully
+  applied as of 2026-09-09** - dev reports `applied: 136   pending: 0`, prod reports
+  `applied: 135   pending: 0   held: 1   total: 136`. The one-file difference is `125`, which is
+  applied on dev and deliberately **held** on prod; that is a hold, not a gap, and the runner
+  refuses to sweep it up. See "Holding a migration back" below, and the Prompt G section for why
+  that particular one. As always, run
   `pnpm migrate:status` rather than trusting this sentence - it has gone stale four times. Wrap in `BEGIN; … COMMIT;`,
   use `IF NOT EXISTS`, and write the intent as a comment header - match the style of
   `047`, `049`, `056`. **Migration state drifts between dev and prod - always run
@@ -1301,14 +1302,48 @@ browser, needs `pnpm dev` up). Both counts were read off a run, not estimated.
     happen to sort. Query either end, or use a directional relation type in the fixture.
 
 
-### Prompt I - milestones and the timeline (`133`-`136`, DEV ONLY as of 2026-09-08)
+### Prompt I - milestones and the timeline (`133`-`136`, dev AND prod, 2026-09-09)
 
 Four migrations behind one optional module (`timeline`), rendered as a **fifth layout** in the
-existing `/views` engine rather than a sixth route. **All four are on DEV ONLY.** Every one is
-purely additive or provably widening, so all four are `--allow-prod` eligible on this repo's own
-rule and **no owner override is needed** - but they have not been applied to prod yet, and the
-app code hard-depends on all of them, so they must land **before** the code merges.
+existing `/views` engine rather than a sixth route. **All four are applied to dev AND prod**
+(prod on 2026-09-09, one file at a time via `--only=NNN --allow-prod`, verified between each).
+Every one is purely additive or provably widening, so all four were `--allow-prod` eligible on
+this repo's own rule and **no owner override was needed**, unlike `113`/`118`/`125`.
 ⚠️ Run `pnpm migrate:status` rather than trusting this paragraph; it has gone stale five times.
+
+**What the prod run produced.** Prod was at `131` with exactly these four pending and reported
+`applied: 135   pending: 0   held: 1   total: 136` after. **Every pre-existing row count was
+identical before and after**: 174 tasks, 11 boards, 46 columns, 8 profiles, 5 statuses, 0 goals,
+0 goal_links, 0 saved_views, 1357 marketing items, and `tasks` still carries exactly its 8
+triggers while `boards` carries 3. The only row that moved anywhere was `136`'s `app_modules`
+seed (13 -> 14), and it seeds **disabled**, so the deploy changed nothing anyone can see: there
+is no Timeline button in the `/views` switcher until a super admin switches the module on. Both
+new tables are empty, all 174 tasks have a NULL `start_date`, and `anon` holds zero grants on
+either new table. Pre-migration backup:
+`~/Code/prod-backup-pre-133to136-20260909-125729.dump` (custom format, `public` schema,
+`pg_restore --list`-verified at 1163 TOC entries and 77 tables, chmod 444). Deployed as
+`2686e57`; the live site was re-checked afterwards (`/` 200, `/login` 200, `/views` 307 to
+`/login` for a signed-out visitor).
+
+⚠️ **The row counts in the paragraph above are NOT the ones the older sections of this file
+quote, and that is the point of re-measuring rather than copying.** Prod drifted between Prompt
+H and Prompt I: 174 tasks (not 173), **8 profiles (not 10** - the two stray test accounts were
+deleted on 2026-09-03), and 1357 marketing items (not 1355).
+
+⚠️ **`134`'s boundary probes SKIPPED on prod and said so out loud**, because prod has zero
+goals - the strategy module is on but nobody has created one yet. The constraint widening still
+revalidated against every existing row (0 of them), and the migration printed
+"no goal or no board on this database, so the boundary probes were skipped" rather than
+reporting a verification it had not performed. The dev run, where a goal exists, is what
+actually exercised them. **A post-condition that cannot run must say so, not pass quietly.**
+
+⚠️ **`pg_dump` 16.13 against a 17.6 server writes a ZERO-BYTE FILE and the pipeline hides it.**
+The local Homebrew `postgresql@16` client aborts with "server version mismatch" while leaving
+the output file behind at 0 bytes, and piping it through `tail` makes `$?` report **tail's**
+status, so a naive check says the backup succeeded. Use
+`/opt/homebrew/Cellar/libpq/18.4/bin/pg_dump`, capture the real exit code before any pipe, and
+verify with `pg_restore --list` rather than trusting the file exists. A backup nobody has read
+back is not a backup, and this one would have been trusted immediately before a prod write.
 
 **Prompt I opens with a mandatory STOP**, and it was honoured: find the conflicting statements,
 show them, explain the cost, ask for scope approval. The conflict was real and is recorded under
@@ -1326,9 +1361,10 @@ scheduling only.** Baselines (15) and critical path (16) were refused and stay r
 measured rather than reasoned about**: the `app_modules.timeline` row was DELETED from the dev
 sandbox and `/views` still returned 200 with the other four layouts intact and zero console
 errors, because `DEFAULT_MODULES` carries `timeline: false` and the server component's three new
-queries sit inside that gate. The one residual is that the `start_date` FILTER field is not
-module-gated, so without `135` a "Start date before X" condition matches nothing silently. Apply
-the migrations rather than gating the filter.
+queries sit inside that gate. The one residual was that the `start_date` FILTER field is not
+module-gated, so without `135` a "Start date before X" condition matches nothing silently. That
+is moot now that both databases carry `135`, and the property is recorded because it is what
+makes the module safe to switch off again, not because it was a to-do.
 
 Gates: `pnpm check:milestones` (61, real RLS) and `pnpm check:timeline-ui` (40, real browser,
 needs `pnpm dev` on :3000 - confirmed stable across three consecutive runs). Counts were read
