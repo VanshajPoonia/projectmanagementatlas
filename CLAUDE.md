@@ -1316,10 +1316,11 @@ this repo's own rule and **no owner override was needed**, unlike `113`/`118`/`1
 identical before and after**: 174 tasks, 11 boards, 46 columns, 8 profiles, 5 statuses, 0 goals,
 0 goal_links, 0 saved_views, 1357 marketing items, and `tasks` still carries exactly its 8
 triggers while `boards` carries 3. The only row that moved anywhere was `136`'s `app_modules`
-seed (13 -> 14), and it seeds **disabled**, so the deploy changed nothing anyone can see: there
-is no Timeline button in the `/views` switcher until a super admin switches the module on. Both
-new tables are empty, all 174 tasks have a NULL `start_date`, and `anon` holds zero grants on
-either new table. Pre-migration backup:
+seed (13 -> 14), and it seeds **disabled**, so the deploy itself changed nothing anyone can see.
+⚠️ **The switch was then flipped ON for production on 2026-09-09** (see "Every module is on"
+below), so the Timeline button IS in the `/views` switcher now. Both new tables are empty, all
+174 tasks have a NULL `start_date`, and `anon` holds zero grants on either new table.
+Pre-migration backup:
 `~/Code/prod-backup-pre-133to136-20260909-125729.dump` (custom format, `public` schema,
 `pg_restore --list`-verified at 1163 TOC entries and 77 tables, chmod 444). Deployed as
 `2686e57`; the live site was re-checked afterwards (`/` 200, `/login` 200, `/views` 307 to
@@ -1520,6 +1521,48 @@ notes OpenProject does not ship critical path either, so there is no reference t
 FS/SS/FF/SF relation types and lag, which critical path would need and which would turn
 `task_relations` from a semantic vocabulary into a scheduling graph; automatic rescheduling.
 
+### Every module is on (production, 2026-09-09)
+
+`strategy` and `timeline` were the last two switched off. Both were flipped to `enabled = true`
+on production on 2026-09-09, on the owner's explicit instruction, with a one-row `app_modules`
+update - **the same write the Modules tab makes, not a migration.** Every seed is unchanged, so
+a fresh database still gets them off. **All 14 modules are now on**, and `pnpm migrate:status`
+is not the thing to check for this - query `app_modules`.
+
+Verified before flipping, because the owner asked for the RLS to be checked first:
+- **Cross-cutting, on dev with real sessions:** access-matrix, board-roles, deprovision,
+  deactivation and grants all pass.
+- **Feature RLS:** strategy 89/89, milestones 61/61, agile 75/75, views 65/65, work-items 94/94,
+  recurrence 84/84, inbox 49/49, board-attachments 23/23, decisions 21/21, plus crm, teams,
+  task-move, task-lifecycle, column-delete, project-ids, favorites, board-columns, appointments,
+  appointment-booking, chat-attachments, task-attachments, marketing-attachments,
+  marketing-calendars, marketing-channels and marketing-recurrence. **Every harness passed;
+  none was skipped.**
+- **Read-only audit against PRODUCTION:** 79 tables, **0 without RLS enabled**, **0 table grants
+  held by `anon`**, 218 policies.
+
+⚠️ **Three tables are RLS-on-with-ZERO-policies, which is deny-all, and that was measured rather
+than reasoned about.** `retro_note_authors` (132's anonymity boundary) and
+`appointment_booking_attempts` hold no grants at all; `applied_migrations` grants `authenticated`
+full DML that RLS then neutralises. Signed in as a real `authenticated` user and probed all
+three: reads return 0 rows, writes are refused with `42501`. **The `applied_migrations` grant is
+inert but latent** - the day anybody adds a permissive policy to that table it goes live. Worth
+tidying; not urgent, and not a hole today.
+
+⚠️ **Production has NO guests and NO clients.** 8 profiles (2 super_admin, 3 admin, 3 user) and
+all 8 `board_members` rows are role `member`. So the read-only boundary that `check:board-roles`
+and `check:access-matrix` exist to defend is currently exercised by nobody in production. That
+does not make it less worth keeping - it makes the harnesses the only place it is tested.
+
+⚠️ **`check:task-attachments` and `check:marketing-attachments` take MINUTES, and killing them
+early looks exactly like a hang.** They are the only two harnesses that build and upload a
+**50 MB** file (testing the Supabase Free per-file ceiling), and on this connection that upload
+runs well past a 2-minute budget - one was killed at 13:38 before anyone worked out why. Give
+them no time limit: **both pass when allowed to finish** ("large uploads are admin-only, reads
+are not", and "another signed-in user cannot download the file"). The sibling
+attachment harnesses (chat, board) upload much smaller files and finish quickly, which is what
+made the pattern look like a defect rather than a file size.
+
 ### Prompt H - goals, purpose, ideas, strategy and retrospectives (`129`-`132`, dev AND prod, 2026-09-03)
 
 Four migrations behind one optional module (`strategy`), one route (`/strategy`), five tabs.
@@ -1560,8 +1603,10 @@ fail** rather than trusted: granting `authenticated` SELECT on `retro_note_autho
 87/89, naming both anonymity checks.
 
 **The module ships OFF and was then switched on for this org**, exactly as agile was: `129`
-seeds `enabled = false`, and dev was flipped to `true` afterwards with a one-row `app_modules`
+seeds `enabled = false`, and the switch is flipped afterwards with a one-row `app_modules`
 update (the same write the Modules tab makes, not a migration). The seed is unchanged.
+⚠️ **Switched on for PRODUCTION on 2026-09-09**, on the owner's instruction, at the same time as
+`timeline` - see "Every module is on" below.
 
 #### THE ONE RULE EVERYTHING ELSE FOLLOWS
 
