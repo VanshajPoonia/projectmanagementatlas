@@ -1415,10 +1415,20 @@ Every one was caught by running something, not by reading it.
 5. **A `Record<Density, number>` with an `as any` cast was hiding a key that is not a density**
    (`cozy`), so the `expanded` setting silently rendered at the default height. The cast is gone.
 
-⚠️ **One harness trap worth naming: the chart opens centred on TODAY, so a fixture dated months
-away sits at a NEGATIVE x inside its own scroll container.** Measured at `x: -1837`, so every
-mouse-driven drag assertion failed while landing on empty page. `scrollIntoViewIfNeeded()` before
-`boundingBox()`. Same family as the Radix reopen and hydration traps already recorded.
+⚠️ **Two harness traps worth naming.**
+  - **The chart opens centred on TODAY, so a fixture dated months away sits at a NEGATIVE x
+    inside its own scroll container.** Measured at `x: -1837`, so every mouse-driven drag
+    assertion failed while landing on empty page. `scrollIntoViewIfNeeded()` before
+    `boundingBox()`. Same family as the Radix reopen and hydration traps already recorded.
+  - ⚠️ **The create-milestone check polled the DATABASE and not the DIALOG, and that is the
+    "poll on the final condition" lesson landing a third time** (found 2026-09-09, re-running
+    the gates after an interrupted session). The row appears a beat BEFORE React unmounts the
+    dialog, so the check passed and moved on while the Radix overlay was still up - the next
+    section's click was then swallowed by it, 56 retries, and the run aborted at **31/32** with
+    a timeout that reads exactly like a broken product. It was not: the dialog closes fine, and
+    waiting for `#milestone-title` to be `detached` is what proves it. **The thing you can
+    observe soonest is not the thing you need to wait for.** Fixed and then confirmed across
+    three consecutive 40/40 runs, because a harness that has been flaky once has to earn it.
 
 **Where things are:** `lib/milestones.ts` (30 tests) + `lib/milestones.cases.mjs` +
 `lib/milestones.parity.test.ts` (15), `lib/timeline.ts` (49 tests), `lib/timeline-data.ts`

@@ -406,6 +406,15 @@ try {
     )
     check('an admin can create a milestone from the screen', createdMs.length > 1, `${createdMs.length} on the board`)
     for (const row of createdMs) if (!milestoneIds.includes(row.id)) milestoneIds.push(row.id)
+
+    // ⚠️ POLL ON THE FINAL CONDITION, NOT A WEAKER ONE. The database write above lands a beat
+    // BEFORE React unmounts the dialog, so a check that stops at "the row exists" continues
+    // while the Radix overlay is still up - and the next section's click is then swallowed by
+    // it ("<div data-slot=dialog-overlay> intercepts pointer events", 56 retries, then a
+    // timeout that reads like a broken product). Same lesson as the sprint-reorder poll in
+    // check-agile-ui and the Radix reopen trap: waiting for the thing you can observe soonest
+    // is not the same as waiting for the thing you need.
+    await page.waitForSelector('#milestone-title', { state: 'detached', timeout: 15000 })
   } else {
     check('an admin can create a milestone from the screen', false, 'the button never enabled')
   }
