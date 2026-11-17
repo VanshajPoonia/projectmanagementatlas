@@ -25,6 +25,7 @@ export type ModuleKey =
   | 'strategy'
   | 'timeline'
   | 'time_tracking'
+  | 'social_media'
 
 export interface AppModule {
   module_key: ModuleKey
@@ -68,6 +69,8 @@ export const DEFAULT_MODULES: AppModule[] = [
   { module_key: 'timeline', enabled: false },
   // The topbar timer (137 seeds it disabled). Same rule: off until a super admin says so.
   { module_key: 'time_tracking', enabled: false },
+  // Social post approvals (138). Off in the fallback like every module added since 080.
+  { module_key: 'social_media', enabled: false },
 ]
 
 /**

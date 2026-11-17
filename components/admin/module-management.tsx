@@ -47,6 +47,7 @@ const MODULE_COPY: Record<string, { label: string; description: string }> = {
   project_ids: { label: 'Project IDs', description: 'The claim-a-number ledger for project references.' },
   agile: { label: 'Agile mode', description: 'Sprints/cycles, a backlog, WIP limits and sprint metrics - and only on the boards that opt in.' },
   strategy: { label: 'Strategy', description: 'Goals with outcome and execution kept separate, an idea pipeline, project purpose, SWOT, and retrospectives.' },
+  social_media: { label: 'Social media', description: 'Facebook and TikTok posts waiting for approval. Approve, reject or ask for changes.' },
   time_tracking: { label: 'Time tracking', description: 'A start/stop timer in the top bar. Each person sees only their own hours.' },
   crm: { label: 'CRM', description: 'Clients, contacts, orders, and the order status history the cycle-time reports are built on.' },
 }
