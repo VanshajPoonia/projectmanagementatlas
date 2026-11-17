@@ -19,6 +19,7 @@ import { ThemeControls } from '@/components/theme/theme-controls'
 import { Breadcrumbs, type Crumb } from './breadcrumbs'
 import { HelpDialog } from './help-dialog'
 import { InboxBell } from '@/components/notifications/inbox-bell'
+import { useModKey } from './use-mod-key'
 import { TimeTracker } from '@/components/time/time-tracker'
 
 interface AppTopbarProps {
@@ -40,6 +41,7 @@ function initials(name?: string | null, email?: string | null): string {
 
 export function AppTopbar({ user, breadcrumbs, onOpenCommand, actions }: AppTopbarProps) {
   const router = useRouter()
+  const modKey = useModKey()
 
   const signOut = async () => {
     await createClient().auth.signOut()
@@ -64,9 +66,15 @@ export function AppTopbar({ user, breadcrumbs, onOpenCommand, actions }: AppTopb
       >
         <Search className="size-4" />
         <span className="hidden sm:inline">Search</span>
-        <kbd className="bg-muted text-muted-foreground pointer-events-none hidden rounded border px-1.5 font-mono text-[10px] sm:inline">
-          ⌘K
-        </kbd>
+        {/* Two keycaps in the UI font: the ⌘ glyph turned to a smudge at 10px monospace. */}
+        <span className="pointer-events-none hidden items-center gap-0.5 sm:inline-flex" aria-hidden="true">
+          <kbd className="bg-muted text-muted-foreground inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 font-sans text-[11px] leading-none font-medium">
+            {modKey}
+          </kbd>
+          <kbd className="bg-muted text-muted-foreground inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 font-sans text-[11px] leading-none font-medium">
+            K
+          </kbd>
+        </span>
       </Button>
 
       {/* Outside the `actions` fallback on purpose: every host replaces `actions` with its
