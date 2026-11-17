@@ -383,6 +383,9 @@ deliberately left out.
   lives. This block has been wrong twice before (it said prod was at `095` when it was at
   `101`, then at `101` when it was at `104`), which is why the rule above is to run
   `pnpm migrate:status` rather than read this sentence.
+- ⚠️ **PostgREST returns at most 1000 rows per request and does not say it cut anything**
+  (2026-11-18). The marketing calendar passed 1000 events and its date-ordered load lost this
+  week and every week after. Any read that can grow past 1000 goes through `lib/fetch-all-rows.ts`.
 - ⚠️ **An aborted request is not a failure, and logging it as one is not merely untidy**
   (`lib/request-aborted.ts`, 2026-08-30). supabase-js aborts its in-flight fetches when a
   component unmounts or the page navigates, and PostgREST surfaces that as an ordinary error
