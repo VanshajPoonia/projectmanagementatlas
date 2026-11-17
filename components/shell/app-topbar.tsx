@@ -19,6 +19,7 @@ import { ThemeControls } from '@/components/theme/theme-controls'
 import { Breadcrumbs, type Crumb } from './breadcrumbs'
 import { HelpDialog } from './help-dialog'
 import { InboxBell } from '@/components/notifications/inbox-bell'
+import { TimeTracker } from '@/components/time/time-tracker'
 
 interface AppTopbarProps {
   /** `id` feeds the Inbox bell's unread count; the rest is the account menu. */
@@ -72,6 +73,9 @@ export function AppTopbar({ user, breadcrumbs, onOpenCommand, actions }: AppTopb
           own cluster, so a bell rendered in there would exist on no screen at all - the
           "working control nobody can reach" defect this repo keeps rediscovering. */}
       <InboxBell userId={user.id} />
+
+      {/* Outside `actions` for the same reason as the bell. */}
+      <TimeTracker userId={user.id} />
 
       <HelpDialog />
 
