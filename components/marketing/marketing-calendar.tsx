@@ -1852,10 +1852,12 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     }
 
     if (editItem.recurrence_group_id && editScope === 'series') {
-      const { data: seriesItems, error: seriesError } = await supabase
+      const { data: seriesItems, error: seriesError } = await fetchAllRows((from, to) => supabase
         .from('marketing_calendar_items')
         .select('id,date,channel')
         .eq('recurrence_group_id', editItem.recurrence_group_id)
+        .order('id', { ascending: true })
+        .range(from, to))
 
       if (seriesError || !seriesItems?.length) {
         setSavingEdit(false)
