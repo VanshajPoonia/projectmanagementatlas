@@ -77,14 +77,21 @@ function makeFilterableQuery(rows: Array<Record<string, unknown>>) {
     query[method] = vi.fn(() => query)
   }
   query.eq = vi.fn((column: string, value: unknown) => { filters.push([column, value]); return query })
+  let range: [number, number] | null = null
+  query.range = vi.fn((from: number, to: number) => { range = [from, to]; return query })
   query.then = (
     resolve: (value: { data: unknown; error: unknown }) => unknown,
     reject?: (reason: unknown) => unknown,
   ) => Promise.resolve({
-    data: rows.filter(row => filters.every(([column, value]) => row[column] === value)),
+    data: capLikePostgrest(rows.filter(row => filters.every(([column, value]) => row[column] === value)), range),
     error: null,
   }).then(resolve, reject)
   return query
+}
+
+// PostgREST answers at most 1000 rows per request, so the mocks do too.
+function capLikePostgrest<T>(rows: T[], range: [number, number] | null) {
+  return range ? rows.slice(range[0], range[1] + 1) : rows.slice(0, 1000)
 }
 
 function makeQuery(result: { data: unknown; error: unknown }) {
@@ -92,10 +99,14 @@ function makeQuery(result: { data: unknown; error: unknown }) {
   for (const method of ['select', 'eq', 'order', 'delete']) {
     query[method] = vi.fn(() => query)
   }
+  let range: [number, number] | null = null
+  query.range = vi.fn((from: number, to: number) => { range = [from, to]; return query })
   query.then = (
     resolve: (value: typeof result) => unknown,
     reject?: (reason: unknown) => unknown,
-  ) => Promise.resolve(result).then(resolve, reject)
+  ) => Promise.resolve(
+    Array.isArray(result.data) ? { ...result, data: capLikePostgrest(result.data, range) } : result,
+  ).then(resolve, reject)
   return query
 }
 
@@ -109,6 +120,8 @@ describe('MarketingCalendar controls', () => {
   // Appended to the shared item fixture. Empty by default so the tests written
   // against the original four rows keep seeing exactly those.
   let extraItems: Array<Record<string, unknown>>
+  // Rows that sort before today's, standing in for a long posting history.
+  let pastItems: Array<Record<string, unknown>>
   // One channel by default, for the same reason: the channel-grid view renders a
   // column per channel, so adding a second unconditionally would shift every
   // existing grid assertion.
@@ -118,6 +131,7 @@ describe('MarketingCalendar controls', () => {
     attachmentLoadError = null
     checkRows = []
     extraItems = []
+    pastItems = []
     channelRows = [{ id: 'ch-social', channel: 'social', label: 'Social', is_archived: false, position: 0 }]
     rpcMock.mockResolvedValue({ data: 0, error: null })
     const now = new Date()
@@ -129,6 +143,7 @@ describe('MarketingCalendar controls', () => {
       if (table === 'marketing_calendar_items') {
         return makeQuery({
           data: [
+            ...pastItems,
             {
               id: 'srg-post',
               date: today,
@@ -293,6 +308,31 @@ describe('MarketingCalendar controls', () => {
       expect(screen.getAllByLabelText('Mark as not posted').length).toBeGreaterThan(0)
     })
     expect(screen.queryByText('never went out')).not.toBeInTheDocument()
+  })
+
+  // A calendar with a long history passed 1000 rows, and the unpaged load cut off this
+  // week and everything after it.
+  it('still shows this week when the calendar holds more than 1000 rows', async () => {
+    pastItems = Array.from({ length: 1200 }, (_, i) => ({
+      id: `old-${i}`,
+      date: '2025-01-06',
+      day_label: 'MON',
+      channel: 'social',
+      content: `Old post ${i}`,
+      is_highlighted: false,
+      position: i,
+      source_sheet: null,
+      recurrence_group_id: null,
+      marketing_calendar_item_companies: [],
+    }))
+
+    render(<MarketingCalendar userId="user-1" userName="Kayla" calendars={defaultCalendars} refetchCalendars={noopRefetchCalendars} />)
+
+    await screen.findByText("Kayla's Posting Board")
+    await waitFor(() => {
+      expect(screen.queryAllByText('SRG post').length).toBeGreaterThan(0)
+      expect(screen.queryAllByText('Weekend campaign').length).toBeGreaterThan(0)
+    })
   })
 
   it('keeps events visible when optional attachment metadata is unavailable', async () => {

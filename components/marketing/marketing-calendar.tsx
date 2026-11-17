@@ -37,6 +37,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
+import { fetchAllRows } from '@/lib/fetch-all-rows'
 import { cn } from '@/lib/utils'
 import { autoTextColor as autoText, compositeOver, readableInk, withAlpha } from '@/lib/color'
 import { useSurface } from '@/lib/use-surface'
@@ -784,20 +785,27 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       { data: checkRows, error: checksError },
       { data: attachmentRows, error: attachmentsError },
     ] = await Promise.all([
-      supabase.from('marketing_calendar_items')
+      // Paged: a busy calendar passes 1000 rows and the cut lands on this week and later.
+      fetchAllRows((from, to) => supabase.from('marketing_calendar_items')
         .select('id,date,time,day_label,channel,content,is_highlighted,position,source_sheet,recurrence_group_id,marketing_calendar_item_companies(company:companies(id,code,name,color))')
         .eq('calendar_id', selectedCalendarId)
         .order('date', { ascending: true })
-        .order('position', { ascending: true }),
+        .order('position', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to)),
       // Not filtered to userId: a mark belongs to the shared item, not to whoever is
       // looking. RLS still decides which rows come back (see resolveCheck above).
-      supabase.from('marketing_calendar_checks')
-        .select('id,item_id,user_id,checked_at,status,note'),
+      fetchAllRows((from, to) => supabase.from('marketing_calendar_checks')
+        .select('id,item_id,user_id,checked_at,status,note')
+        .order('id', { ascending: true })
+        .range(from, to)),
       // Attachment metadata is optional. Loading it separately prevents a
       // missing migration or stale PostgREST relationship cache from failing
       // the core item query and making a populated calendar appear empty.
-      supabase.from('marketing_calendar_attachments')
-        .select('id,item_id,storage_path,file_name,mime_type,file_size,created_at'),
+      fetchAllRows((from, to) => supabase.from('marketing_calendar_attachments')
+        .select('id,item_id,storage_path,file_name,mime_type,file_size,created_at')
+        .order('id', { ascending: true })
+        .range(from, to)),
     ])
 
     setLoading(false)
