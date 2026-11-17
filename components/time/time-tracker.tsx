@@ -181,14 +181,14 @@ export function TimeTracker({ userId }: { userId?: string | null }) {
     <Popover>
       <PopoverTrigger asChild>
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
           aria-label={label}
           title={label}
           data-testid="time-tracker"
           data-running={running ? 'true' : 'false'}
           className={cn(
-            'text-muted-foreground hover:text-foreground h-9 shrink-0 gap-1.5 px-2',
+            'text-muted-foreground hover:text-foreground h-8 shrink-0 gap-1.5 px-2 sm:px-2.5',
             running && 'text-foreground',
           )}
         >
@@ -201,11 +201,10 @@ export function TimeTracker({ userId }: { userId?: string | null }) {
               />
             )}
           </span>
-          {running && (
-            <span className="hidden font-mono text-xs tabular-nums sm:inline" aria-hidden="true">
-              {formatClock(elapsed)}
-            </span>
-          )}
+          {/* A bare stopwatch read as a logo, so it says what it is from sm up. */}
+          <span className={cn('hidden text-xs sm:inline', running && 'font-mono tabular-nums')} aria-hidden="true">
+            {running ? formatClock(elapsed) : 'Timer'}
+          </span>
         </Button>
       </PopoverTrigger>
 
