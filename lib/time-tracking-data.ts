@@ -75,3 +75,18 @@ export async function restoreEntry(supabase: Client, userId: string, entry: Time
     .select('id')
   return classifyWrite(result)
 }
+
+export async function addEntry(
+  supabase: Client,
+  userId: string,
+  range: { started_at: string; ended_at: string },
+  note: string | null,
+): Promise<{ kind: 'ok'; entry: TimeEntry } | { kind: 'error'; message: string }> {
+  const { data, error } = await supabase
+    .from('time_entries')
+    .insert({ user_id: userId, ...range, note })
+    .select(COLUMNS)
+  if (error) return { kind: 'error', message: error.message }
+  if (!data?.length) return { kind: 'error', message: 'The entry was not saved. Reload and try again.' }
+  return { kind: 'ok', entry: data[0] as TimeEntry }
+}

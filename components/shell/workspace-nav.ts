@@ -144,6 +144,10 @@ export function buildWorkspaceNav({
   if (on('strategy')) {
     items.push({ id: 'strategy', label: 'Strategy', icon: 'strategy', href: '/strategy', status: 'live' })
   }
+  // Each person's own hours, from the topbar timer (migration 137).
+  if (on('time_tracking')) {
+    items.push({ id: 'time', label: 'Time log', icon: 'clock', href: '/time', status: 'live' })
+  }
   if (on('project_ids')) {
     items.push({ id: 'project-ids', label: 'Project IDs', icon: 'project-ids', href: tab('project-ids'), status: 'live' })
   }

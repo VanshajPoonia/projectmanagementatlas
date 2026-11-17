@@ -104,3 +104,52 @@ export function toCsv(entries: TimeEntry[], now: Date): string {
     )
   return ['started_at,ended_at,hours,note', ...rows].join('\n')
 }
+
+/** YYYY-MM-DD for the viewer's local calendar day. */
+export function localDayKey(date: Date): string {
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${m}-${d}`
+}
+
+export interface DayGroup {
+  day: string
+  totalMs: number
+  entries: TimeEntry[]
+}
+
+/** Entries grouped by the local day they started, newest day first. */
+export function groupByDay(entries: TimeEntry[], now: Date): DayGroup[] {
+  const groups = new Map<string, DayGroup>()
+  for (const entry of entries) {
+    const day = localDayKey(new Date(entry.started_at))
+    const group = groups.get(day) ?? { day, totalMs: 0, entries: [] }
+    group.entries.push(entry)
+    group.totalMs += entryDurationMs(entry, now)
+    groups.set(day, group)
+  }
+  for (const group of groups.values()) {
+    group.entries.sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))
+  }
+  return [...groups.values()].sort((a, b) => (a.day < b.day ? 1 : -1))
+}
+
+/**
+ * A manual entry from a local date, a start time and a length in hours.
+ * Returns null when the input is not a real day or the session would end in the future.
+ */
+export function manualEntryRange(
+  day: string,
+  startTime: string,
+  hours: number,
+  now: Date,
+): { started_at: string; ended_at: string } | null {
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)
+  const tm = /^(\d{2}):(\d{2})$/.exec(startTime)
+  if (!dm || !tm || !(hours > 0) || hours > 24) return null
+  const start = new Date(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), Number(tm[1]), Number(tm[2]))
+  if (localDayKey(start) !== day) return null
+  const end = new Date(start.getTime() + Math.round(hours * 60) * 60_000)
+  if (end.getTime() > now.getTime()) return null
+  return { started_at: start.toISOString(), ended_at: end.toISOString() }
+}

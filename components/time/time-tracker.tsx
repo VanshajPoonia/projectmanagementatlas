@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Download, Play, Square, Timer, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -292,14 +293,17 @@ export function TimeTracker({ userId }: { userId?: string | null }) {
           )}
         </div>
 
-        {entries.length > 0 && (
-          <div className="border-t p-2">
-            <Button variant="ghost" size="sm" onClick={exportCsv} className="w-full">
+        <div className="flex gap-1 border-t p-2">
+          <Button variant="ghost" size="sm" asChild className="flex-1">
+            <Link href="/time">Open time log</Link>
+          </Button>
+          {entries.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={exportCsv} className="flex-1">
               <Download className="size-4" aria-hidden="true" />
-              Export all hours (CSV)
+              CSV
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   )

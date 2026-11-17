@@ -3,6 +3,8 @@ import {
   entryDurationMs,
   formatClock,
   formatDuration,
+  groupByDay,
+  manualEntryRange,
   rangeStarts,
   runningEntry,
   spokenDuration,
@@ -118,5 +120,39 @@ describe('toCsv', () => {
   it('leaves the end blank for a running entry', () => {
     const csv = toCsv([entry('a', local(18, 11), null)], local(18, 12)).split('\n')
     expect(csv[1]).toMatch(/^[^,]+,,1\.00,$/)
+  })
+})
+
+describe('groupByDay', () => {
+  it('groups by the local start day, newest first, with daily totals', () => {
+    const now = local(18, 20)
+    const groups = groupByDay(
+      [entry('a', local(17, 9), local(17, 11)), entry('b', local(18, 9), local(18, 10)), entry('c', local(18, 13), local(18, 15))],
+      now,
+    )
+    expect(groups.map((g) => g.day)).toEqual(['2026-11-18', '2026-11-17'])
+    expect(groups[0].totalMs).toBe(3 * HOUR)
+    expect(groups[0].entries.map((e) => e.id)).toEqual(['c', 'b'])
+    expect(groups[1].totalMs).toBe(2 * HOUR)
+  })
+})
+
+describe('manualEntryRange', () => {
+  it('builds a past session from a local day, start time and hours', () => {
+    const range = manualEntryRange('2026-11-17', '09:00', 6, local(18, 12))
+    expect(range).toEqual({ started_at: local(17, 9).toISOString(), ended_at: local(17, 15).toISOString() })
+  })
+
+  it('handles fractional hours to the minute', () => {
+    const range = manualEntryRange('2026-11-17', '09:00', 1.25, local(18, 12))
+    expect(range?.ended_at).toBe(local(17, 10, 15).toISOString())
+  })
+
+  it('refuses sessions that end in the future, bad dates and silly lengths', () => {
+    expect(manualEntryRange('2026-11-18', '09:00', 6, local(18, 12))).toBeNull()
+    expect(manualEntryRange('2026-02-31', '09:00', 1, local(18, 12))).toBeNull()
+    expect(manualEntryRange('2026-11-17', '9am', 1, local(18, 12))).toBeNull()
+    expect(manualEntryRange('2026-11-17', '09:00', 0, local(18, 12))).toBeNull()
+    expect(manualEntryRange('2026-11-17', '09:00', 25, local(18, 12))).toBeNull()
   })
 })
