@@ -144,6 +144,10 @@ export function buildWorkspaceNav({
   if (on('strategy')) {
     items.push({ id: 'strategy', label: 'Strategy', icon: 'strategy', href: '/strategy', status: 'live' })
   }
+  // Posts waiting on approval. Same audience as the marketing calendar.
+  if (canUseMarketingCalendar && on('social_media')) {
+    items.push({ id: 'social', label: 'Social media', icon: 'social', href: '/social', status: 'live' })
+  }
   // Each person's own hours, from the topbar timer (migration 137).
   if (on('time_tracking')) {
     items.push({ id: 'time', label: 'Time log', icon: 'clock', href: '/time', status: 'live' })

@@ -23,6 +23,7 @@ import {
   Plus,
   Search,
   Settings,
+  Share2,
   Shield,
   SlidersHorizontal,
   Star,
@@ -67,6 +68,7 @@ const ICONS: Record<string, LucideIcon> = {
   settings: Settings,
   tag: Tag,
   users: Users,
+  social: Share2,
 }
 
 export function navIcon(key: string): LucideIcon {
