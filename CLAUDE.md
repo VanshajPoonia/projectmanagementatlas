@@ -353,7 +353,10 @@ deliberately left out.
 
 ## Conventions
 
-- Migrations: numbered SQL in `scripts/`, continuing from `137`. **Dev and prod are BOTH fully
+- ⚠️ **2026-11-17: the dev sandbox (`pxzpewaerhjwnwsbaklc`) no longer resolves**, over REST or the
+  pooler, most likely paused after two idle months. Restore it in the Supabase dashboard before
+  running `pnpm migrate:status` or any `check:*` harness.
+- Migrations: numbered SQL in `scripts/`, continuing from `138`. **Dev and prod are BOTH fully
   applied as of 2026-09-09** - dev reports `applied: 136   pending: 0`, prod reports
   `applied: 135   pending: 0   held: 1   total: 136`. The one-file difference is `125`, which is
   applied on dev and deliberately **held** on prod; that is a hold, not a gap, and the runner
@@ -2060,9 +2063,9 @@ refused". A warning that turns out to be untrue is how people learn to ignore th
 the alternative - offering an enforcement mode enforced only by a dialog - is the
 `crm_statuses.requires_reason` defect (104) all over again.
 
-**Not built, deliberately:** time tracking. Prompt G says Atlas time tracking, "if later needed,
-is an independent optional module", and notes that Taiga does not provide it natively either.
-There is no `time_entries` table and nothing pretends there is.
+**Time tracking is now built as its own optional module** (`137`, 2026-11-17), as Prompt G
+suggested: a start/stop timer in the topbar, `time_entries` private to its owner with no admin
+exemption, and the `time_tracking` module seeded OFF.
 
 ### Prompt F - My Work, WorkNext, Inbox and notification control (`120`-`122`, dev AND prod, 2026-08-28)
 
