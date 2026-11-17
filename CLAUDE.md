@@ -356,7 +356,7 @@ deliberately left out.
 - ⚠️ **2026-11-17: the dev sandbox (`pxzpewaerhjwnwsbaklc`) no longer resolves**, over REST or the
   pooler, most likely paused after two idle months. Restore it in the Supabase dashboard before
   running `pnpm migrate:status` or any `check:*` harness.
-- Migrations: numbered SQL in `scripts/`, continuing from `138`. **Dev and prod are BOTH fully
+- Migrations: numbered SQL in `scripts/`, continuing from `139`. **Dev and prod are BOTH fully
   applied as of 2026-09-09** - dev reports `applied: 136   pending: 0`, prod reports
   `applied: 135   pending: 0   held: 1   total: 136`. The one-file difference is `125`, which is
   applied on dev and deliberately **held** on prod; that is a hold, not a gap, and the runner
@@ -2065,7 +2065,15 @@ the alternative - offering an enforcement mode enforced only by a dialog - is th
 
 **Time tracking is now built as its own optional module** (`137`, 2026-11-17), as Prompt G
 suggested: a start/stop timer in the topbar, `time_entries` private to its owner with no admin
-exemption, and the `time_tracking` module seeded OFF.
+exemption, and the `time_tracking` module seeded OFF. `/time` is the full log, with manual
+entries for hours worked off the clock.
+
+**Social post approvals** (`138`, 2026-11-17): `/social` shows Facebook and TikTok posts as they
+will look, and the marketing team (`private.can_manage_marketing_channels()`) approves, asks
+for changes, rejects or comments. `social_post_reviews` is append-only and a trigger copies the
+latest decision onto `social_posts.status`; anything but an approval needs a non-blank note.
+⚠️ The `social_media` module seeds ON, by owner request, unlike every module since `080`. Posts
+are uploaded from `~/Code/Shanks Social/scripts/upload_portal.mjs`.
 
 ### Prompt F - My Work, WorkNext, Inbox and notification control (`120`-`122`, dev AND prod, 2026-08-28)
 
