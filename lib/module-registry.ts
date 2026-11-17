@@ -24,6 +24,7 @@ export type ModuleKey =
   | 'agile'
   | 'strategy'
   | 'timeline'
+  | 'time_tracking'
 
 export interface AppModule {
   module_key: ModuleKey
@@ -65,6 +66,8 @@ export const DEFAULT_MODULES: AppModule[] = [
   // 119's trigger refuses on any database that predates 136. A dead nav item is a bad day; a
   // save that fails with a check violation is a worse one.
   { module_key: 'timeline', enabled: false },
+  // The topbar timer (137 seeds it disabled). Same rule: off until a super admin says so.
+  { module_key: 'time_tracking', enabled: false },
 ]
 
 /**
