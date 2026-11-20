@@ -20,6 +20,8 @@ export interface SocialPost {
   scheduled_for: string | null
   media: SocialMedia[]
   status: SocialStatus
+  created_at: string
+  updated_at: string
 }
 
 export interface SocialReview {
@@ -63,6 +65,19 @@ export function countByStatus(posts: SocialPost[]): Record<SocialStatus, number>
   const out: Record<SocialStatus, number> = { pending: 0, approved: 0, changes_requested: 0, rejected: 0, posted: 0 }
   for (const p of posts) out[p.status] += 1
   return out
+}
+
+/**
+ * True when the post changed after its latest decision, or after it was first uploaded if nobody
+ * has decided yet. Deciding sets updated_at to the review's own time (138's trigger), so a fresh
+ * approval clears it. Comments are not decisions and leave it alone.
+ */
+export function isUpdatedForReview(post: Pick<SocialPost, 'id' | 'created_at' | 'updated_at'>, reviews: SocialReview[]): boolean {
+  let since = post.created_at
+  for (const r of reviews) {
+    if (r.post_id === post.id && r.decision !== 'comment' && Date.parse(r.created_at) > Date.parse(since)) since = r.created_at
+  }
+  return Date.parse(post.updated_at) > Date.parse(since)
 }
 
 /** Soonest first; unscheduled posts go last. */
