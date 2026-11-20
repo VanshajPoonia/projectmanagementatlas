@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { Check, ChevronLeft, ChevronRight, MessageSquare, PencilLine, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, MessageSquare, PencilLine, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { AppShell } from '@/components/shell/app-shell'
@@ -23,6 +23,7 @@ import {
   STATUS_LABEL,
   canSubmitReview,
   countByStatus,
+  isUpdatedForReview,
   sortForReview,
   type ReviewDecision,
   type SocialPost,
@@ -79,7 +80,10 @@ export default function SocialView({ user, initialPosts, initialReviews, people,
   const [posts, setPosts] = useState(initialPosts)
   const [reviews, setReviews] = useState(initialReviews)
   const [urls, setUrls] = useState<Record<string, string>>({})
-  const [filter, setFilter] = useState<'all' | SocialStatus>('all')
+  // Land on the posts that changed since Bobby last decided, when there are any.
+  const [filter, setFilter] = useState<'all' | 'updated' | SocialStatus>(() =>
+    initialPosts.some((p) => isUpdatedForReview(p, initialReviews)) ? 'updated' : 'all',
+  )
   const [platform, setPlatform] = useState<'all' | SocialPost['platform']>('all')
   const [brand, setBrand] = useState('all')
 
@@ -111,8 +115,12 @@ export default function SocialView({ user, initialPosts, initialReviews, people,
 
   const brands = useMemo(() => [...new Set(posts.map((p) => p.brand))].sort(), [posts])
   const counts = countByStatus(posts)
+  const updatedIds = useMemo(() => new Set(posts.filter((p) => isUpdatedForReview(p, reviews)).map((p) => p.id)), [posts, reviews])
   const visible = sortForReview(posts).filter(
-    (p) => (filter === 'all' || p.status === filter) && (platform === 'all' || p.platform === platform) && (brand === 'all' || p.brand === brand),
+    (p) =>
+      (filter === 'all' || (filter === 'updated' ? updatedIds.has(p.id) : p.status === filter)) &&
+      (platform === 'all' || p.platform === platform) &&
+      (brand === 'all' || p.brand === brand),
   )
 
   const submit = async (post: SocialPost, decision: ReviewDecision, note: string): Promise<boolean> => {
@@ -148,6 +156,19 @@ export default function SocialView({ user, initialPosts, initialReviews, people,
         </header>
 
         <div className="flex flex-wrap items-center gap-2">
+          {(updatedIds.size > 0 || filter === 'updated') && (
+            <Button
+              size="sm"
+              variant={filter === 'updated' ? 'default' : 'outline'}
+              onClick={() => setFilter('updated')}
+              aria-pressed={filter === 'updated'}
+              className={cn(filter !== 'updated' && 'border-amber-400 text-amber-900 dark:text-amber-100')}
+            >
+              <Sparkles className="size-4" aria-hidden="true" />
+              Updated for you
+              <span className="tabular-nums opacity-70">{updatedIds.size}</span>
+            </Button>
+          )}
           {FILTERS.map((f) => (
             <Button
               key={f.key}
@@ -188,7 +209,11 @@ export default function SocialView({ user, initialPosts, initialReviews, people,
 
         {visible.length === 0 ? (
           <p className="text-muted-foreground py-16 text-center text-sm">
-            {posts.length === 0 ? 'No posts have been uploaded for review yet.' : 'Nothing matches these filters.'}
+            {posts.length === 0
+              ? 'No posts have been uploaded for review yet.'
+              : filter === 'updated' && updatedIds.size === 0
+                ? 'All caught up. Every updated post has been reviewed.'
+                : 'Nothing matches these filters.'}
           </p>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -198,6 +223,7 @@ export default function SocialView({ user, initialPosts, initialReviews, people,
                 post={post}
                 urls={urls}
                 reviews={reviews.filter((r) => r.post_id === post.id)}
+                updated={updatedIds.has(post.id)}
                 people={people}
                 onReview={submit}
               />
@@ -257,12 +283,14 @@ function PostCard({
   post,
   urls,
   reviews,
+  updated,
   people,
   onReview,
 }: {
   post: SocialPost
   urls: Record<string, string>
   reviews: SocialReview[]
+  updated: boolean
   people: Record<string, string>
   onReview: (post: SocialPost, decision: ReviewDecision, note: string) => Promise<boolean>
 }) {
@@ -285,7 +313,10 @@ function PostCard({
   }
 
   return (
-    <article className="bg-card flex flex-col overflow-hidden rounded-xl border" data-testid="social-post">
+    <article
+      className={cn('bg-card flex flex-col overflow-hidden rounded-xl border', updated && 'border-amber-400 ring-2 ring-amber-400')}
+      data-testid="social-post"
+    >
       <div className="flex items-start justify-between gap-2 border-b px-4 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{post.title}</p>
@@ -298,6 +329,13 @@ function PostCard({
           {STATUS_LABEL[post.status]}
         </span>
       </div>
+
+      {updated && (
+        <p className="flex items-center gap-1.5 border-b bg-amber-50 px-4 py-2 text-xs font-medium text-amber-900 dark:bg-amber-900/30 dark:text-amber-100">
+          <Sparkles className="size-3.5" aria-hidden="true" />
+          Updated. Ready for your review.
+        </p>
+      )}
 
       <MediaViewer post={post} urls={urls} />
 

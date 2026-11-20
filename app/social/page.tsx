@@ -18,7 +18,7 @@ export default async function SocialPage() {
 
   const [{ data: profile }, postsResult, reviewsResult, { data: profiles }, shell] = await Promise.all([
     supabase.from('profiles').select('id, role, full_name, email').eq('id', user.id).single(),
-    supabase.from('social_posts').select('id, brand, platform, format, title, caption, hashtags, scheduled_for, media, status'),
+    supabase.from('social_posts').select('id, brand, platform, format, title, caption, hashtags, scheduled_for, media, status, created_at, updated_at'),
     supabase.from('social_post_reviews').select('id, post_id, reviewer_id, decision, note, created_at').order('created_at'),
     supabase.from('profiles').select('id, full_name, email'),
     loadShellData(supabase),
