@@ -1,8 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { useEffect, useMemo, useState } from 'react'
-import { Check, ChevronLeft, ChevronRight, MessageSquare, PencilLine, Sparkles, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Check, ChevronLeft, ChevronRight, ImagePlus, MessageSquare, PencilLine, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { AppShell } from '@/components/shell/app-shell'
@@ -20,10 +20,16 @@ import { cn } from '@/lib/utils'
 import {
   CAPTION_FOLD,
   DECISION_LABEL,
+  REVIEW_IMAGE_DIR,
+  REVIEW_IMAGE_TYPES,
   STATUS_LABEL,
   canSubmitReview,
   countByStatus,
+  groupReviewImages,
+  isBlank,
   isUpdatedForReview,
+  reviewImagePath,
+  reviewImageProblem,
   sortForReview,
   type ReviewDecision,
   type SocialPost,
@@ -80,6 +86,7 @@ export default function SocialView({ user, initialPosts, initialReviews, people,
   const [posts, setPosts] = useState(initialPosts)
   const [reviews, setReviews] = useState(initialReviews)
   const [urls, setUrls] = useState<Record<string, string>>({})
+  const [reviewImages, setReviewImages] = useState<Record<string, string[]>>({})
   // Land on the posts that changed since Bobby last decided, when there are any.
   const [filter, setFilter] = useState<'all' | 'updated' | SocialStatus>(() =>
     initialPosts.some((p) => isUpdatedForReview(p, initialReviews)) ? 'updated' : 'all',
@@ -92,26 +99,48 @@ export default function SocialView({ user, initialPosts, initialReviews, people,
     [role, modules, isAdmin, calendars.length],
   )
 
-  // One batch of signed URLs for every file on the page; the bucket is private.
-  useEffect(() => {
-    const paths = [...new Set(initialPosts.flatMap((p) => p.media.flatMap((m) => [m.path, m.poster].filter(Boolean) as string[])))]
+  // The bucket is private, so every file on the page is shown through a signed URL.
+  const signPaths = useCallback(async (paths: string[]) => {
     if (!paths.length) return
+    const { data, error } = await createClient().storage.from(BUCKET).createSignedUrls(paths, SIGNED_URL_SECONDS)
+    if (error) {
+      toast.error('Could not load the post images', { description: error.message })
+      return
+    }
+    const signed = (data ?? []).filter((d: { path: string | null }) => d.path) as Array<{ path: string; signedUrl: string }>
+    setUrls((prev) => ({ ...prev, ...Object.fromEntries(signed.map((d) => [d.path, d.signedUrl])) }))
+  }, [])
+
+  useEffect(() => {
+    void signPaths([...new Set(initialPosts.flatMap((p) => p.media.flatMap((m) => [m.path, m.poster].filter(Boolean) as string[])))])
+  }, [initialPosts, signPaths])
+
+  // Images reviewers attached. Listed in pages because Storage caps a listing at 1000 names.
+  useEffect(() => {
     let active = true
-    createClient()
-      .storage.from(BUCKET)
-      .createSignedUrls(paths, SIGNED_URL_SECONDS)
-      .then(({ data, error }: { data: Array<{ path: string | null; signedUrl: string }> | null; error: { message: string } | null }) => {
-        if (!active) return
+    const load = async () => {
+      const storage = createClient().storage.from(BUCKET)
+      const names: string[] = []
+      for (let offset = 0; ; offset += 1000) {
+        const { data, error } = await storage.list(REVIEW_IMAGE_DIR, { limit: 1000, offset, sortBy: { column: 'name', order: 'asc' } })
         if (error) {
-          toast.error('Could not load the post images', { description: error.message })
+          toast.error('Could not load the images attached to reviews', { description: error.message })
           return
         }
-        setUrls(Object.fromEntries((data ?? []).filter((d) => d.path).map((d) => [d.path as string, d.signedUrl])))
-      })
+        names.push(...(data ?? []).map((f: { name: string }) => f.name))
+        if ((data ?? []).length < 1000) break
+      }
+      if (!active) return
+      const known = new Set(initialReviews.map((r) => r.id))
+      const grouped = Object.fromEntries(Object.entries(groupReviewImages(names)).filter(([id]) => known.has(id)))
+      setReviewImages((prev) => ({ ...grouped, ...prev }))
+      await signPaths(Object.values(grouped).flat())
+    }
+    void load()
     return () => {
       active = false
     }
-  }, [initialPosts])
+  }, [initialReviews, signPaths])
 
   const brands = useMemo(() => [...new Set(posts.map((p) => p.brand))].sort(), [posts])
   const counts = countByStatus(posts)
@@ -123,14 +152,35 @@ export default function SocialView({ user, initialPosts, initialReviews, people,
       (brand === 'all' || p.brand === brand),
   )
 
-  const submit = async (post: SocialPost, decision: ReviewDecision, note: string): Promise<boolean> => {
-    const { data, error } = await createClient()
+  const submit = async (post: SocialPost, decision: ReviewDecision, note: string, images: File[]): Promise<boolean> => {
+    const supabase = createClient()
+    const storage = supabase.storage.from(BUCKET)
+    // The id is chosen here so the images can be named after the review before it exists.
+    const id = crypto.randomUUID()
+    const paths: string[] = []
+    for (const [i, file] of images.entries()) {
+      const path = reviewImagePath(id, i + 1, file.type)
+      const { error } = await storage.upload(path, file, { contentType: file.type, upsert: false })
+      if (error) {
+        if (paths.length) await storage.remove(paths)
+        toast.error('The image did not upload', { description: error.message })
+        return false
+      }
+      paths.push(path)
+    }
+    const { data, error } = await supabase
       .from('social_post_reviews')
-      .insert({ post_id: post.id, reviewer_id: user.id, decision, note: note.trim() || null })
+      .insert({ id, post_id: post.id, reviewer_id: user.id, decision, note: note.trim() || null })
       .select('*')
     if (error || !data?.length) {
+      // Images with no review pointing at them would only use up the storage budget.
+      if (paths.length) await storage.remove(paths)
       toast.error('That was not saved', { description: error?.message ?? 'Reload the page and try again.' })
       return false
+    }
+    if (paths.length) {
+      setReviewImages((prev) => ({ ...prev, [id]: paths }))
+      void signPaths(paths)
     }
     setReviews((prev) => [...prev, data[0] as SocialReview])
     if (decision !== 'comment') setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, status: decision } : p)))
@@ -151,7 +201,7 @@ export default function SocialView({ user, initialPosts, initialReviews, people,
           <h1 className="text-2xl font-semibold">Social media</h1>
           <p className="text-muted-foreground text-sm">
             Facebook and TikTok posts before they go out. Approve them, ask for changes or reject them. Videos play and carousels
-            click through like the apps.
+            click through like the apps. Want a different photo? Use Upload image on the post and attach the one you want.
           </p>
         </header>
 
@@ -223,6 +273,7 @@ export default function SocialView({ user, initialPosts, initialReviews, people,
                 post={post}
                 urls={urls}
                 reviews={reviews.filter((r) => r.post_id === post.id)}
+                reviewImages={reviewImages}
                 updated={updatedIds.has(post.id)}
                 people={people}
                 onReview={submit}
@@ -283,6 +334,7 @@ function PostCard({
   post,
   urls,
   reviews,
+  reviewImages,
   updated,
   people,
   onReview,
@@ -290,26 +342,54 @@ function PostCard({
   post: SocialPost
   urls: Record<string, string>
   reviews: SocialReview[]
+  reviewImages: Record<string, string[]>
   updated: boolean
   people: Record<string, string>
-  onReview: (post: SocialPost, decision: ReviewDecision, note: string) => Promise<boolean>
+  onReview: (post: SocialPost, decision: ReviewDecision, note: string, images: File[]) => Promise<boolean>
 }) {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<ReviewDecision | null>(null)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [images, setImages] = useState<File[]>([])
+  const [previews, setPreviews] = useState<string[]>([])
+  const fileInput = useRef<HTMLInputElement>(null)
   const fold = CAPTION_FOLD[post.platform]
   const cut = post.caption.length > fold
   const tags = post.hashtags.map((h) => `#${h}`).join(' ')
 
+  useEffect(() => {
+    const next = images.map((f) => URL.createObjectURL(f))
+    setPreviews(next)
+    return () => next.forEach((u) => URL.revokeObjectURL(u))
+  }, [images])
+
+  const pickImages = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = [...(e.target.files ?? [])]
+    e.target.value = ''
+    const ok = picked.filter((f) => {
+      const problem = reviewImageProblem(f)
+      if (problem) toast.error(`${f.name} was not added`, { description: problem })
+      return !problem
+    })
+    if (!ok.length) return
+    setImages((prev) => [...prev, ...ok])
+    // Attaching a photo is a change request unless they already chose to comment.
+    if (mode !== 'comment') setMode('changes_requested')
+    if (isBlank(note)) setNote(ok.length + images.length > 1 ? 'Use these images instead.' : 'Use this image instead.')
+  }
+
+  const reset = () => {
+    setMode(null)
+    setNote('')
+    setImages([])
+  }
+
   const send = async (decision: ReviewDecision) => {
     setBusy(true)
-    const ok = await onReview(post, decision, note)
+    const ok = await onReview(post, decision, note, images)
     setBusy(false)
-    if (ok) {
-      setMode(null)
-      setNote('')
-    }
+    if (ok) reset()
   }
 
   return (
@@ -362,12 +442,42 @@ function PostCard({
                 {new Date(r.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
               </span>
               {r.note && <p className="mt-0.5 whitespace-pre-wrap">{r.note}</p>}
+              {(reviewImages[r.id] ?? []).length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {reviewImages[r.id].map((path, i) =>
+                    urls[path] ? (
+                      <a
+                        key={path}
+                        href={urls[path]}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block size-20 overflow-hidden rounded-md border"
+                        aria-label={`Open attached image ${i + 1} full size`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={urls[path]} alt="" className="size-full object-cover" />
+                      </a>
+                    ) : (
+                      <span key={path} className="bg-muted block size-20 rounded-md" />
+                    ),
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>
       )}
 
       <div className="mt-auto space-y-2 border-t px-4 py-3">
+        <input
+          ref={fileInput}
+          type="file"
+          accept={Object.keys(REVIEW_IMAGE_TYPES).join(',')}
+          multiple
+          className="hidden"
+          onChange={pickImages}
+          data-testid="review-image-input"
+        />
         {mode && (
           <div className="space-y-2">
             <Textarea
@@ -385,11 +495,42 @@ function PostCard({
               }
               aria-label="Note"
             />
-            <div className="flex gap-2">
+            {previews.length > 0 && (
+              <ul className="flex flex-wrap gap-2" aria-label="Images to attach">
+                {previews.map((src, i) => (
+                  <li key={src} className="relative size-20 overflow-hidden rounded-md border">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt="" className="size-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setImages((prev) => prev.filter((_, n) => n !== i))}
+                      disabled={busy}
+                      className="absolute top-1 right-1 rounded-full bg-black/70 p-0.5 text-white hover:bg-black"
+                      aria-label={`Remove image ${i + 1}`}
+                    >
+                      <X className="size-3.5" aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex flex-wrap gap-2">
               <Button size="sm" disabled={busy || !canSubmitReview(mode, note)} onClick={() => void send(mode)}>
-                {mode === 'changes_requested' ? 'Send changes' : mode === 'rejected' ? 'Reject post' : 'Add comment'}
+                {busy && images.length > 0
+                  ? 'Uploading...'
+                  : mode === 'changes_requested'
+                    ? 'Send changes'
+                    : mode === 'rejected'
+                      ? 'Reject post'
+                      : 'Add comment'}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setMode(null)}>
+              {mode !== 'rejected' && (
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => fileInput.current?.click()}>
+                  <ImagePlus className="size-4" aria-hidden="true" />
+                  {images.length ? 'Add another' : 'Attach image'}
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" disabled={busy} onClick={reset}>
                 Cancel
               </Button>
             </div>
@@ -412,6 +553,10 @@ function PostCard({
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => setMode('comment')}>
               <MessageSquare className="size-4" aria-hidden="true" />
               Comment
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => fileInput.current?.click()}>
+              <ImagePlus className="size-4" aria-hidden="true" />
+              Upload image
             </Button>
           </div>
         )}

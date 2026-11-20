@@ -2077,6 +2077,9 @@ for changes, rejects or comments. `social_post_reviews` is append-only and a tri
 latest decision onto `social_posts.status`; anything but an approval needs a non-blank note.
 ⚠️ The `social_media` module seeds ON, by owner request, unlike every module since `080`. Posts
 are uploaded from `~/Code/Shanks Social/scripts/upload_portal.mjs`.
+Reviewers can attach JPG or PNG images to a change request or comment (2026-11-20, Bobby's
+ask: the photo he wants used). They sit in the same bucket as `reviews/<review id>_<n>.<ext>`
+with no schema change, and the page lists that folder. The upload portal never reads them.
 
 ### Prompt F - My Work, WorkNext, Inbox and notification control (`120`-`122`, dev AND prod, 2026-08-28)
 
