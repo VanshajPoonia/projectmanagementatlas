@@ -3,8 +3,11 @@ import {
   canSubmitReview,
   captionWithTags,
   countByStatus,
+  groupReviewImages,
   isBlank,
   isUpdatedForReview,
+  reviewImagePath,
+  reviewImageProblem,
   reviewNeedsNote,
   sortForReview,
   type SocialPost,
@@ -102,5 +105,30 @@ describe('isUpdatedForReview', () => {
     const p = post('a', { updated_at: '2026-11-20T09:00:00Z' })
     const reviews = [review('a', 'comment', '2026-11-20T10:00:00Z'), review('b', 'approved', '2026-11-20T11:00:00Z')]
     expect(isUpdatedForReview(p, reviews)).toBe(true)
+  })
+})
+
+describe('review images', () => {
+  const id = '3f1c2a9e-8b7d-4c6a-9f10-2b3c4d5e6f70'
+
+  it('takes JPG and PNG up to the bucket limit and nothing else', () => {
+    expect(reviewImageProblem({ type: 'image/jpeg', size: 1000 })).toBeNull()
+    expect(reviewImageProblem({ type: 'image/png', size: 52428800 })).toBeNull()
+    expect(reviewImageProblem({ type: 'image/png', size: 52428801 })).toBe('That image is over 50 MB.')
+    expect(reviewImageProblem({ type: 'image/heic', size: 1000 })).toBe('Use a JPG or PNG image.')
+    expect(reviewImageProblem({ type: 'image/webp', size: 1000 })).toBe('Use a JPG or PNG image.')
+  })
+
+  it('names the file after the review so the two stay tied', () => {
+    expect(reviewImagePath(id, 1, 'image/jpeg')).toBe(`reviews/${id}_1.jpg`)
+    expect(reviewImagePath(id, 2, 'image/png')).toBe(`reviews/${id}_2.png`)
+  })
+
+  it('groups listed files by review in upload order and skips anything else', () => {
+    const other = '00000000-0000-0000-0000-000000000001'
+    expect(groupReviewImages([`${id}_10.jpg`, `${id}_2.png`, `${other}_1.jpg`, '.emptyFolderPlaceholder', 'stray.jpg'])).toEqual({
+      [id]: [`reviews/${id}_2.png`, `reviews/${id}_10.jpg`],
+      [other]: [`reviews/${other}_1.jpg`],
+    })
   })
 })

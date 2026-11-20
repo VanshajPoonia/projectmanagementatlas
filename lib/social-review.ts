@@ -89,6 +89,36 @@ export function sortForReview(posts: SocialPost[]): SocialPost[] {
   })
 }
 
+/**
+ * Images a reviewer attaches, e.g. the photo Bobby wants used instead. They live in the
+ * social-media bucket as reviews/<review id>_<n>.<ext>, so the review id ties them to the note
+ * without a schema change. The bucket accepts only these types, up to 50 MB (138).
+ */
+export const REVIEW_IMAGE_DIR = 'reviews'
+export const REVIEW_IMAGE_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png' }
+export const REVIEW_IMAGE_MAX_BYTES = 52428800
+
+export function reviewImageProblem(file: { type: string; size: number }): string | null {
+  if (!REVIEW_IMAGE_TYPES[file.type]) return 'Use a JPG or PNG image.'
+  if (file.size > REVIEW_IMAGE_MAX_BYTES) return 'That image is over 50 MB.'
+  return null
+}
+
+export function reviewImagePath(reviewId: string, index: number, type: string): string {
+  return `${REVIEW_IMAGE_DIR}/${reviewId}_${index}.${REVIEW_IMAGE_TYPES[type]}`
+}
+
+/** File names listed from reviews/, grouped by review id and kept in upload order. */
+export function groupReviewImages(names: string[]): Record<string, string[]> {
+  const out: Record<string, Array<{ n: number; path: string }>> = {}
+  for (const name of names) {
+    const m = /^([0-9a-f-]{36})_(\d+)\.(jpg|png)$/.exec(name)
+    if (!m) continue
+    ;(out[m[1]] ??= []).push({ n: Number(m[2]), path: `${REVIEW_IMAGE_DIR}/${name}` })
+  }
+  return Object.fromEntries(Object.entries(out).map(([id, files]) => [id, files.sort((a, b) => a.n - b.n).map((f) => f.path)]))
+}
+
 /** Where a platform hides the rest of a caption behind "See more". */
 export const CAPTION_FOLD: Record<SocialPost['platform'], number> = { facebook: 125, tiktok: 100, instagram: 125 }
 
