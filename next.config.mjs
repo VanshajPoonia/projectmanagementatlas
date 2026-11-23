@@ -43,6 +43,9 @@ const nextConfig = {
           // Allowing the origin grants no access on its own: the buckets are private and
           // every object still requires a signed, short-lived URL.
           "img-src 'self' data: blob: https://*.supabase.co https://www.google.com https://*.gstatic.com",
+          // Social media reels play straight from a signed Storage URL. Without this,
+          // media-src falls back to default-src and the browser refuses every video.
+          "media-src 'self' https://*.supabase.co",
           "font-src 'self' data:",
           "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
           "frame-ancestors 'none'",
