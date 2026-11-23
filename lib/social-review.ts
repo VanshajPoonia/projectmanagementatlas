@@ -126,3 +126,100 @@ export function captionWithTags(post: Pick<SocialPost, 'caption' | 'hashtags'>):
   const tags = post.hashtags.map((h) => `#${h}`).join(' ')
   return tags ? `${post.caption.trimEnd()}\n\n${tags}` : post.caption
 }
+
+/** A saved wording of a post's description (139). Newest is the current one once anyone edits. */
+export interface CaptionVersion {
+  id: string
+  post_id: string
+  caption: string
+  hashtags: string[]
+  source: 'uploaded' | 'edited' | 'restored'
+  restored_from: string | null
+  edited_by: string | null
+  created_at: string
+}
+
+/** Mirrors the caption CHECK on social_posts (138). */
+export const CAPTION_MAX = 5000
+
+/** "#stlouis, realtor #stlouis" -> ["stlouis", "realtor"]. Same cleaning as Postroom's cleanTag. */
+export function parseHashtags(input: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of input.split(/[\s,]+/)) {
+    const tag = raw.replace(/^#+/, '')
+    if (!tag || seen.has(tag.toLowerCase())) continue
+    seen.add(tag.toLowerCase())
+    out.push(tag)
+  }
+  return out
+}
+
+export function formatHashtags(tags: string[]): string {
+  return tags.map((t) => `#${t}`).join(' ')
+}
+
+export function sameDescription(a: Pick<SocialPost, 'caption' | 'hashtags'>, b: Pick<SocialPost, 'caption' | 'hashtags'>): boolean {
+  return a.caption === b.caption && a.hashtags.length === b.hashtags.length && a.hashtags.every((t, i) => t === b.hashtags[i])
+}
+
+/** Mirrors save_social_caption (139): not blank, within the column's limit, and actually changed. */
+export function canSaveCaption(current: Pick<SocialPost, 'caption' | 'hashtags'>, next: Pick<SocialPost, 'caption' | 'hashtags'>): boolean {
+  return !isBlank(next.caption) && next.caption.length <= CAPTION_MAX && !sameDescription(current, next)
+}
+
+/** Microseconds since the epoch. Date.parse stops at milliseconds, and one save writes two rows within one. */
+export function instantMicros(iso: string): number {
+  const frac = /\.(\d+)/.exec(iso)?.[1] ?? ''
+  return Date.parse(iso.replace(/\.\d+/, '')) * 1000 + Number((frac + '000000').slice(0, 6))
+}
+
+/** Newest first, in the order the database wrote them. */
+export function sortVersions(versions: CaptionVersion[]): CaptionVersion[] {
+  return [...versions].sort((a, b) => instantMicros(b.created_at) - instantMicros(a.created_at) || b.id.localeCompare(a.id))
+}
+
+export function versionLabel(v: CaptionVersion, people: Record<string, string>): string {
+  if (v.source === 'uploaded') return 'As uploaded'
+  const who = (v.edited_by && people[v.edited_by]) || 'Someone'
+  return v.source === 'restored' ? `${who} restored an earlier version` : `${who} edited`
+}
+
+export type DiffPart = { kind: 'same' | 'added' | 'removed'; text: string }
+
+/**
+ * Word-level diff from `before` to `after`, keeping spaces and line breaks attached so the result
+ * reads as text. Plain LCS: a caption is at most 5000 characters, so the table stays small.
+ */
+export function wordDiff(before: string, after: string): DiffPart[] {
+  const a = before.match(/\s+|[^\s]+/g) ?? []
+  const b = after.match(/\s+|[^\s]+/g) ?? []
+  const lcs: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0))
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1])
+    }
+  }
+  const out: DiffPart[] = []
+  const push = (kind: DiffPart['kind'], text: string) => {
+    const last = out[out.length - 1]
+    if (last && last.kind === kind) last.text += text
+    else out.push({ kind, text })
+  }
+  let i = 0
+  let j = 0
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      push('same', a[i])
+      i += 1
+      j += 1
+    } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+      push('removed', a[i++])
+    } else {
+      push('added', b[j++])
+    }
+  }
+  while (i < a.length) push('removed', a[i++])
+  while (j < b.length) push('added', b[j++])
+  return out
+}

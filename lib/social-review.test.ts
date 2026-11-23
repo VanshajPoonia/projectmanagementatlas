@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  canSaveCaption,
   canSubmitReview,
   captionWithTags,
   countByStatus,
@@ -9,7 +10,13 @@ import {
   reviewImagePath,
   reviewImageProblem,
   reviewNeedsNote,
+  parseHashtags,
+  formatHashtags,
   sortForReview,
+  sortVersions,
+  versionLabel,
+  wordDiff,
+  type CaptionVersion,
   type SocialPost,
   type SocialReview,
 } from './social-review'
@@ -130,5 +137,95 @@ describe('review images', () => {
       [id]: [`reviews/${id}_2.png`, `reviews/${id}_10.jpg`],
       [other]: [`reviews/${other}_1.jpg`],
     })
+  })
+})
+
+describe('parseHashtags', () => {
+  it('strips the #, splits on spaces and commas, and drops repeats', () => {
+    expect(parseHashtags('#stlouis, realtor  ##stlouis\n#STLouis #homes')).toEqual(['stlouis', 'realtor', 'homes'])
+  })
+
+  it('round-trips through formatHashtags', () => {
+    expect(parseHashtags(formatHashtags(['goATLASgo', 'roofing']))).toEqual(['goATLASgo', 'roofing'])
+    expect(parseHashtags('   ')).toEqual([])
+  })
+})
+
+describe('canSaveCaption', () => {
+  const current = { caption: 'Old words', hashtags: ['a'] }
+
+  it('needs a real change', () => {
+    expect(canSaveCaption(current, { caption: 'Old words', hashtags: ['a'] })).toBe(false)
+    expect(canSaveCaption(current, { caption: 'Old words', hashtags: ['a', 'b'] })).toBe(true)
+    expect(canSaveCaption(current, { caption: 'New words', hashtags: ['a'] })).toBe(true)
+  })
+
+  it('refuses a blank or oversized caption, like save_social_caption', () => {
+    expect(canSaveCaption(current, { caption: '\t\n ', hashtags: ['a'] })).toBe(false)
+    expect(canSaveCaption(current, { caption: 'x'.repeat(5001), hashtags: ['a'] })).toBe(false)
+    expect(canSaveCaption(current, { caption: 'x'.repeat(5000), hashtags: ['a'] })).toBe(true)
+  })
+})
+
+describe('caption versions', () => {
+  const v = (id: string, over: Partial<CaptionVersion>): CaptionVersion => ({
+    id,
+    post_id: 'p1',
+    caption: id,
+    hashtags: [],
+    source: 'edited',
+    restored_from: null,
+    edited_by: 'u1',
+    created_at: '2026-11-23T10:00:00.000Z',
+    ...over,
+  })
+
+  it('sorts newest first, and keeps two rows from one save in the order written', () => {
+    // Ids sort the other way on purpose: only the microseconds can put these in order.
+    const rows = [
+      v('a', { created_at: '2026-11-23T10:00:00.123402+00:00' }),
+      v('z', { created_at: '2026-11-23T10:00:00.1234+00:00', source: 'uploaded' }),
+      v('c', { created_at: '2026-11-24T09:00:00+00:00' }),
+    ]
+    expect(sortVersions(rows).map((r) => r.id)).toEqual(['c', 'a', 'z'])
+  })
+
+  it('names who saved each version', () => {
+    const people = { u1: 'Bobby Shanks' }
+    expect(versionLabel(v('a', { source: 'uploaded', edited_by: null }), people)).toBe('As uploaded')
+    expect(versionLabel(v('b', {}), people)).toBe('Bobby Shanks edited')
+    expect(versionLabel(v('c', { source: 'restored' }), people)).toBe('Bobby Shanks restored an earlier version')
+    expect(versionLabel(v('d', { edited_by: null }), people)).toBe('Someone edited')
+  })
+})
+
+describe('wordDiff', () => {
+  const text = (parts: ReturnType<typeof wordDiff>, kind: 'same' | 'added' | 'removed') =>
+    parts.filter((p) => p.kind !== (kind === 'added' ? 'removed' : 'added')).map((p) => p.text).join('')
+
+  it('marks the words that changed and keeps the rest', () => {
+    const parts = wordDiff('New roof in Imperial today.', 'New deck in Imperial this week.')
+    expect(parts).toEqual([
+      { kind: 'same', text: 'New ' },
+      { kind: 'removed', text: 'roof' },
+      { kind: 'added', text: 'deck' },
+      { kind: 'same', text: ' in Imperial ' },
+      { kind: 'removed', text: 'today.' },
+      { kind: 'added', text: 'this week.' },
+    ])
+  })
+
+  it('rebuilds both sides exactly, line breaks included', () => {
+    const before = 'Line one.\n\nCall 636.275.6060'
+    const after = 'Line one, updated.\n\nCall 636.275.6060 today'
+    const parts = wordDiff(before, after)
+    expect(text(parts, 'removed')).toBe(before)
+    expect(text(parts, 'added')).toBe(after)
+  })
+
+  it('handles empty sides', () => {
+    expect(wordDiff('', 'Hi there')).toEqual([{ kind: 'added', text: 'Hi there' }])
+    expect(wordDiff('Hi', '')).toEqual([{ kind: 'removed', text: 'Hi' }])
+    expect(wordDiff('Same', 'Same')).toEqual([{ kind: 'same', text: 'Same' }])
   })
 })
