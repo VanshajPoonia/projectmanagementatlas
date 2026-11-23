@@ -1145,6 +1145,9 @@ deliberately left out.
   refused, while `data:` (the inline base64 path) still loads, which is exactly why the
   marketing preview was silently broken in production for so long. Any new Storage-backed image
   must be checked against a real production build, not `pnpm dev`.
+  - ⚠️ **`media-src` is its own directive and falls back to `default-src 'self'`.** The Social
+    media page shipped with no `media-src`, so every reel was refused in production
+    ("The element has no supported sources") while the posters loaded fine. Fixed 2026-11-23.
 - **New tables need an explicit `REVOKE ALL`.** Supabase's default privileges grant every new
   table in `public` a blanket ALL to `anon` and `authenticated`, so granting narrowly is not
   enough - the wide grant is already there. `090` is the worked example (and its post-conditions
