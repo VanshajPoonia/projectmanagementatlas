@@ -356,7 +356,7 @@ deliberately left out.
 - ⚠️ **2026-11-17: the dev sandbox (`pxzpewaerhjwnwsbaklc`) no longer resolves**, over REST or the
   pooler, most likely paused after two idle months. Restore it in the Supabase dashboard before
   running `pnpm migrate:status` or any `check:*` harness.
-- Migrations: numbered SQL in `scripts/`, continuing from `139`. **Dev and prod are BOTH fully
+- Migrations: numbered SQL in `scripts/`, continuing from `140`. **Dev and prod are BOTH fully
   applied as of 2026-09-09** - dev reports `applied: 136   pending: 0`, prod reports
   `applied: 135   pending: 0   held: 1   total: 136`. The one-file difference is `125`, which is
   applied on dev and deliberately **held** on prod; that is a hold, not a gap, and the runner
@@ -2083,6 +2083,25 @@ are uploaded from `~/Code/Shanks Social/scripts/upload_portal.mjs`.
 Reviewers can attach JPG or PNG images to a change request or comment (2026-11-20, Bobby's
 ask: the photo he wants used). They sit in the same bucket as `reviews/<review id>_<n>.<ext>`
 with no schema change, and the page lists that folder. The upload portal never reads them.
+
+**Description edits keep their history** (`139`, 2026-11-23). The marketing team can edit a
+post's caption and hashtags on `/social`; History lists every wording with Compare (word diff)
+and Restore. `social_post_caption_versions` is SELECT-only to `authenticated`, and the only
+write is `edit_social_post_caption()`, which saves the post and its version row together.
+- **No trigger on `social_posts`**, so `139` stayed purely additive. The uploader writes
+  captions directly; a wording it left there becomes an `uploaded` version the next time
+  someone saves. Restoring writes a new version and never deletes one.
+- **A save carries the wording it started from** and is refused if the post changed since,
+  so a re-upload or a second editor is never overwritten unseen. Edits do not move
+  `updated_at`, so Bobby's own change never lands in "Updated for you".
+- ⚠️ **`upload_portal.mjs` skips caption and hashtags on any post with an edit**, and
+  `pull_captions.mjs` copies edits back to the batch files and Postroom. Without both, the
+  next re-upload would silently undo Bobby's wording, or we would post the old one.
+- ⚠️ **Order versions by microseconds.** One save writes two rows inside one millisecond and
+  `Date.parse` drops the rest, so `sortVersions` uses `instantMicros`.
+- Gates: the migration's own post-conditions, `lib/social-review.test.ts` and
+  `components/social/social-view.test.tsx`. The dev sandbox was paused, so `139` was also
+  run on a local Postgres 17 with role-switched checks (Bobby, a non-member, anon).
 
 ### Prompt F - My Work, WorkNext, Inbox and notification control (`120`-`122`, dev AND prod, 2026-08-28)
 
