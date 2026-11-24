@@ -2103,6 +2103,22 @@ write is `edit_social_post_caption()`, which saves the post and its version row 
   `components/social/social-view.test.tsx`. The dev sandbox was paused, so `139` was also
   run on a local Postgres 17 with role-switched checks (Bobby, a non-member, anon).
 
+**Social media and Projects live on the Marketing tab** (`140`, 2026-11-24). The tab now has a
+Calendar / Social media / Projects switcher (`components/marketing/marketing-section.tsx`). Each
+button swaps the content below it. The calendar stays mounted so its place survives. Social media
+is the same board as `/social` (`SocialBoard` in `social-view.tsx`, loaded in the browser by
+`social-board-loader.tsx`) and follows the `social_media` module. `/social` still works.
+- **Projects** are `marketing_projects` and `marketing_project_photos` plus a private
+  `marketing-projects` bucket, all gated by `private.can_manage_marketing_channels()`. A project has
+  a name, business, area, finish date and description. The lowest `position` photo is the cover.
+- **Photos shrink in the browser** (`lib/image-compress.ts`): longest edge 1800 px, JPEG at 0.82,
+  upright, transparency flattened to white. The bucket takes JPEG only. HEIC works only where the
+  browser can decode it, and anything unreadable is skipped with a plain-words toast.
+- **No module row.** The Projects button follows the calendar. Until `140` is on a database the tab
+  says "Projects are not set up on this database yet" instead of failing.
+- Purely additive and `--allow-prod` eligible. Checked on a local Postgres 17 with role-switched
+  reads and writes (team, outsider, anon), and the compressor in headless Chrome.
+
 ### Prompt F - My Work, WorkNext, Inbox and notification control (`120`-`122`, dev AND prod, 2026-08-28)
 
 Three migrations, all **purely additive and `--allow-prod` eligible on this repo's own rule** -
