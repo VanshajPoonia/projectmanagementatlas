@@ -306,7 +306,8 @@ export default function TaskRemindersPanel({ taskId, currentUserId, dueDate }: T
             </Select>
             {channel !== 'in_app' && (
               <p className="text-xs text-muted-foreground">
-                Email also depends on your "Due date reminders" setting in Account settings.
+                Email also depends on your "Due date reminders" setting in Account settings. It can
+                arrive up to 6 hours after the reminder time.
               </p>
             )}
           </div>
