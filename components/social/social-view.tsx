@@ -97,11 +97,37 @@ function stamp(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-export default function SocialView({ user, initialPosts, initialReviews, initialVersions, versionsError, people, shell }: SocialViewProps) {
+type SocialData = Pick<SocialViewProps, 'initialPosts' | 'initialReviews' | 'initialVersions' | 'versionsError' | 'people'>
+
+/** The standalone /social page: the board inside the app shell. */
+export default function SocialView({ user, shell, ...data }: SocialViewProps) {
   const role = (user.role ?? 'user') as 'user' | 'admin' | 'super_admin'
   const isAdmin = role === 'admin' || role === 'super_admin'
   const modules = useAppModules(shell?.modules)
   const { calendars } = useMarketingCalendars(shell?.calendars)
+
+  const groups: SidebarNavGroup[] = useMemo(
+    () => buildWorkspaceNav({ role, modules, canUseMarketingCalendar: isAdmin || calendars.length > 0 }),
+    [role, modules, isAdmin, calendars.length],
+  )
+
+  return (
+    <AppShell
+      user={{ id: user.id, role, full_name: user.full_name, email: user.email }}
+      groups={groups}
+      activeId="social"
+      breadcrumbs={[{ label: 'Social media' }]}
+      topbarActions={<ThemeControls />}
+    >
+      <div className="mx-auto w-full max-w-7xl space-y-5 p-4 md:p-6">
+        <SocialBoard userId={user.id} {...data} />
+      </div>
+    </AppShell>
+  )
+}
+
+/** The post board itself. Shown on /social and under the Social media button on the Marketing tab. */
+export function SocialBoard({ userId, initialPosts, initialReviews, initialVersions, versionsError, people, embedded = false }: SocialData & { userId: string; embedded?: boolean }) {
   const [posts, setPosts] = useState(initialPosts)
   const [reviews, setReviews] = useState(initialReviews)
   const [versions, setVersions] = useState(initialVersions)
@@ -113,11 +139,6 @@ export default function SocialView({ user, initialPosts, initialReviews, initial
   )
   const [platform, setPlatform] = useState<'all' | SocialPost['platform']>('all')
   const [brand, setBrand] = useState('all')
-
-  const groups: SidebarNavGroup[] = useMemo(
-    () => buildWorkspaceNav({ role, modules, canUseMarketingCalendar: isAdmin || calendars.length > 0 }),
-    [role, modules, isAdmin, calendars.length],
-  )
 
   // The bucket is private, so every file on the page is shown through a signed URL.
   const signPaths = useCallback(async (paths: string[]) => {
@@ -194,7 +215,7 @@ export default function SocialView({ user, initialPosts, initialReviews, initial
     }
     const { data, error } = await supabase
       .from('social_post_reviews')
-      .insert({ id, post_id: post.id, reviewer_id: user.id, decision, note: note.trim() || null })
+      .insert({ id, post_id: post.id, reviewer_id: userId, decision, note: note.trim() || null })
       .select('*')
     if (error || !data?.length) {
       // Images with no review pointing at them would only use up the storage budget.
@@ -236,14 +257,8 @@ export default function SocialView({ user, initialPosts, initialReviews, initial
   }
 
   return (
-    <AppShell
-      user={{ id: user.id, role, full_name: user.full_name, email: user.email }}
-      groups={groups}
-      activeId="social"
-      breadcrumbs={[{ label: 'Social media' }]}
-      topbarActions={<ThemeControls />}
-    >
-      <div className="mx-auto w-full max-w-7xl space-y-5 p-4 md:p-6">
+    <div className="space-y-5">
+      {!embedded && (
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold">Social media</h1>
           <p className="text-muted-foreground text-sm">
@@ -252,87 +267,87 @@ export default function SocialView({ user, initialPosts, initialReviews, initial
             different wording? Use Edit description. Every earlier version stays under History, where you can compare or restore it.
           </p>
         </header>
+      )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          {(updatedIds.size > 0 || filter === 'updated') && (
-            <Button
-              size="sm"
-              variant={filter === 'updated' ? 'default' : 'outline'}
-              onClick={() => setFilter('updated')}
-              aria-pressed={filter === 'updated'}
-              className={cn(filter !== 'updated' && 'border-amber-400 text-amber-900 dark:text-amber-100')}
-            >
-              <Sparkles className="size-4" aria-hidden="true" />
-              Updated for you
-              <span className="tabular-nums opacity-70">{updatedIds.size}</span>
-            </Button>
-          )}
-          {FILTERS.map((f) => (
-            <Button
-              key={f.key}
-              size="sm"
-              variant={filter === f.key ? 'default' : 'outline'}
-              onClick={() => setFilter(f.key)}
-              aria-pressed={filter === f.key}
-            >
-              {f.label}
-              <span className="tabular-nums opacity-70">{f.key === 'all' ? posts.length : counts[f.key]}</span>
-            </Button>
-          ))}
-          <span className="bg-border mx-1 hidden h-6 w-px sm:block" />
-          <select
-            aria-label="Platform"
-            value={platform}
-            onChange={(e) => setPlatform(e.target.value as typeof platform)}
-            className="border-input bg-background h-8 rounded-md border px-2 text-sm"
+      <div className="flex flex-wrap items-center gap-2">
+        {(updatedIds.size > 0 || filter === 'updated') && (
+          <Button
+            size="sm"
+            variant={filter === 'updated' ? 'default' : 'outline'}
+            onClick={() => setFilter('updated')}
+            aria-pressed={filter === 'updated'}
+            className={cn(filter !== 'updated' && 'border-amber-400 text-amber-900 dark:text-amber-100')}
           >
-            <option value="all">All platforms</option>
-            <option value="facebook">Facebook</option>
-            <option value="tiktok">TikTok</option>
-          </select>
-          <select
-            aria-label="Brand"
-            value={brand}
-            onChange={(e) => setBrand(e.target.value)}
-            className="border-input bg-background h-8 rounded-md border px-2 text-sm"
-          >
-            <option value="all">All brands</option>
-            {brands.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {visible.length === 0 ? (
-          <p className="text-muted-foreground py-16 text-center text-sm">
-            {posts.length === 0
-              ? 'No posts have been uploaded for review yet.'
-              : filter === 'updated' && updatedIds.size === 0
-                ? 'All caught up. Every updated post has been reviewed.'
-                : 'Nothing matches these filters.'}
-          </p>
-        ) : (
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {visible.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                urls={urls}
-                reviews={reviews.filter((r) => r.post_id === post.id)}
-                versions={versions.filter((v) => v.post_id === post.id)}
-                reviewImages={reviewImages}
-                updated={updatedIds.has(post.id)}
-                people={people}
-                onReview={submit}
-                onSaveCaption={saveCaption}
-              />
-            ))}
-          </div>
+            <Sparkles className="size-4" aria-hidden="true" />
+            Updated for you
+            <span className="tabular-nums opacity-70">{updatedIds.size}</span>
+          </Button>
         )}
+        {FILTERS.map((f) => (
+          <Button
+            key={f.key}
+            size="sm"
+            variant={filter === f.key ? 'default' : 'outline'}
+            onClick={() => setFilter(f.key)}
+            aria-pressed={filter === f.key}
+          >
+            {f.label}
+            <span className="tabular-nums opacity-70">{f.key === 'all' ? posts.length : counts[f.key]}</span>
+          </Button>
+        ))}
+        <span className="bg-border mx-1 hidden h-6 w-px sm:block" />
+        <select
+          aria-label="Platform"
+          value={platform}
+          onChange={(e) => setPlatform(e.target.value as typeof platform)}
+          className="border-input bg-background h-8 rounded-md border px-2 text-sm"
+        >
+          <option value="all">All platforms</option>
+          <option value="facebook">Facebook</option>
+          <option value="tiktok">TikTok</option>
+        </select>
+        <select
+          aria-label="Brand"
+          value={brand}
+          onChange={(e) => setBrand(e.target.value)}
+          className="border-input bg-background h-8 rounded-md border px-2 text-sm"
+        >
+          <option value="all">All brands</option>
+          {brands.map((b) => (
+            <option key={b} value={b}>
+              {b}
+            </option>
+          ))}
+        </select>
       </div>
-    </AppShell>
+
+      {visible.length === 0 ? (
+        <p className="text-muted-foreground py-16 text-center text-sm">
+          {posts.length === 0
+            ? 'No posts have been uploaded for review yet.'
+            : filter === 'updated' && updatedIds.size === 0
+              ? 'All caught up. Every updated post has been reviewed.'
+              : 'Nothing matches these filters.'}
+        </p>
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {visible.map((post) => (
+            <PostCard
+              key={post.id}
+              post={post}
+              urls={urls}
+              reviews={reviews.filter((r) => r.post_id === post.id)}
+              versions={versions.filter((v) => v.post_id === post.id)}
+              reviewImages={reviewImages}
+              updated={updatedIds.has(post.id)}
+              people={people}
+              onReview={submit}
+              onSaveCaption={saveCaption}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
