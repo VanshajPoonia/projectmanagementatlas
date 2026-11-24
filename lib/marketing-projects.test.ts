@@ -1,0 +1,113 @@
+import { describe, expect, it } from 'vitest'
+import {
+  coverOf,
+  coverPosition,
+  draftProblem,
+  draftToRow,
+  EMPTY_DRAFT,
+  fitWithin,
+  formatBytes,
+  nextPosition,
+  photoPath,
+  sortPhotos,
+  sortProjects,
+  type MarketingProject,
+  type ProjectPhoto,
+} from './marketing-projects'
+
+const photo = (id: string, position: number): ProjectPhoto => ({
+  id,
+  project_id: 'p',
+  path: `p/${id}.jpg`,
+  caption: '',
+  position,
+  width: null,
+  height: null,
+  bytes: null,
+})
+
+const project = (id: string, over: Partial<MarketingProject> = {}): MarketingProject => ({
+  id,
+  name: id,
+  company_id: null,
+  area: null,
+  completed_on: null,
+  description: '',
+  created_at: '2026-11-01T10:00:00+00:00',
+  updated_at: '2026-11-01T10:00:00+00:00',
+  ...over,
+})
+
+describe('fitWithin', () => {
+  it('shrinks the long edge and keeps the shape', () => {
+    expect(fitWithin(4000, 3000, 1800)).toEqual({ width: 1800, height: 1350 })
+    expect(fitWithin(3000, 4000, 1800)).toEqual({ width: 1350, height: 1800 })
+  })
+  it('never scales up', () => {
+    expect(fitWithin(800, 600, 1800)).toEqual({ width: 800, height: 600 })
+  })
+  it('never returns a zero edge', () => {
+    expect(fitWithin(10000, 1, 1800)).toEqual({ width: 1800, height: 1 })
+  })
+})
+
+describe('draftProblem', () => {
+  it('needs a real name', () => {
+    expect(draftProblem(EMPTY_DRAFT)).toMatch(/name/)
+    expect(draftProblem({ ...EMPTY_DRAFT, name: ' \t\n' })).toMatch(/name/)
+    expect(draftProblem({ ...EMPTY_DRAFT, name: 'Kitchen remodel' })).toBeNull()
+  })
+  it('caps the description', () => {
+    expect(draftProblem({ ...EMPTY_DRAFT, name: 'x', description: 'a'.repeat(5001) })).toMatch(/5000/)
+  })
+})
+
+describe('draftToRow', () => {
+  it('trims and turns blanks into null', () => {
+    expect(draftToRow({ name: ' Deck ', company_id: '', area: '  ', completed_on: '', description: ' Cedar. ' })).toEqual({
+      name: 'Deck',
+      company_id: null,
+      area: null,
+      completed_on: null,
+      description: 'Cedar.',
+    })
+  })
+})
+
+describe('photos', () => {
+  it('names the file after the project and photo', () => {
+    expect(photoPath('proj', 'ph')).toBe('proj/ph.jpg')
+  })
+  it('puts the lowest position first and that one is the cover', () => {
+    const list = [photo('b', 2), photo('a', 1), photo('c', 3)]
+    expect(sortPhotos(list).map((p) => p.id)).toEqual(['a', 'b', 'c'])
+    expect(coverOf(list)?.id).toBe('a')
+    expect(coverOf([])).toBeNull()
+  })
+  it('adds after the last and covers in front of the first', () => {
+    const list = [photo('a', 1), photo('b', 4)]
+    expect(nextPosition(list)).toBe(5)
+    expect(coverPosition(list)).toBe(0)
+    expect(nextPosition([])).toBe(0)
+    expect(coverPosition([])).toBe(0)
+  })
+})
+
+describe('sortProjects', () => {
+  it('orders newest first by completion date, then by when it was added', () => {
+    const list = [
+      project('old', { completed_on: '2026-01-05' }),
+      project('new', { completed_on: '2026-10-05' }),
+      project('undated', { created_at: '2026-11-20T10:00:00+00:00' }),
+    ]
+    expect(sortProjects(list).map((p) => p.id)).toEqual(['undated', 'new', 'old'])
+  })
+})
+
+describe('formatBytes', () => {
+  it('reads in plain units', () => {
+    expect(formatBytes(900)).toBe('900 B')
+    expect(formatBytes(250 * 1024)).toBe('250 KB')
+    expect(formatBytes(3.5 * 1024 * 1024)).toBe('3.5 MB')
+  })
+})
