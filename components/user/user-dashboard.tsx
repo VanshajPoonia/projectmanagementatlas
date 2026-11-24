@@ -24,7 +24,7 @@ import TaskNotificationToasts from '../notifications/task-notification-toasts'
 import AiChatWidget from '../ai-chat/ai-chat-widget'
 import PersonalTasks from '../personal/personal-tasks'
 import BookmarksSection from '../bookmarks/bookmarks-section'
-import MarketingCalendar from '../marketing/marketing-calendar'
+import MarketingSection from '../marketing/marketing-section'
 import DashboardWindow from '../dashboard/dashboard-window'
 import WorkNext from '../dashboard/work-next'
 import AccountSettings from '../account/account-settings'
@@ -471,7 +471,8 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
 
           {showMarketing && (
             <TabsContent value="marketing">
-              <MarketingCalendar
+              <MarketingSection
+                showSocial={isModuleEnabled(modules, 'social_media')}
                 userId={user.id}
                 userName={user.full_name || user.email}
                 isAdmin={isAdmin}
