@@ -1983,8 +1983,8 @@ worse than no velocity, because people plan against it.
   excluded, last updated, live-or-frozen - **from the value object**, never from adjacent copy.
   `lib/work-next.ts` already shipped a reason line computed from a different expression than its
   score; once is enough.
-- **A day with no burndown sample is a GAP, not a zero.** One cron job a day (Hobby plan) plus
-  sampling on page open means gaps are expected, and a gap drawn as zero is a cliff that says the
+- **A day with no burndown sample is a GAP, not a zero.** The cron samples every 6 hours and
+  the page samples on open, so a gap now means a missed run or an outage, and a gap drawn as zero is a cliff that says the
   team finished everything overnight. The series reports `missingDays` and the caption says so.
   `UNIQUE (sprint_id, on_date)` makes both writers idempotent; **today's point refreshes and a
   past day never does**, which is the whole rule expressed at row level.
@@ -2516,7 +2516,9 @@ not by reading, which is why that migration's post-conditions now **try to inser
 rather than assert the constraint exists. "The constraint exists" and "the constraint refuses
 this" are different claims.
 
-⚠️ **The Vercel project is on the HOBBY plan: cron jobs run once a day, maximum two.** Verified
+⚠️ **History: the Vercel project was on the HOBBY plan (cron once a day, maximum two) until
+2026-11-24. It is on Pro now and `scheduled-work` runs every 6 hours (01, 07, 13, 19 UTC), so
+reminder email can be up to 6 hours late. The notes below describe the Hobby-era design.** Verified
 via `vercel api /v2/teams/... -> billing.plan`. That is a hosting fact that shapes the design:
   - `vercel.json` (new) declares one daily job at `/api/cron/scheduled-work`, guarded by
     `CRON_SECRET`. It drives recurrence generation and reminder delivery, and is the **only**

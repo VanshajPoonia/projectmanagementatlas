@@ -5,8 +5,8 @@
 // No chart library: two line series over at most ~30 points does not justify one, and a
 // dependency here would have to be loaded on a page most of this workspace never opens.
 //
-// ⚠️ A DAY WITH NO SAMPLE IS A GAP, NOT A ZERO. This app runs one cron job a day on the Vercel
-// Hobby plan and samples on open, so gaps are expected - and a gap drawn as zero renders a
+// ⚠️ A DAY WITH NO SAMPLE IS A GAP, NOT A ZERO. The cron samples every 6 hours and the page
+// samples on open, so a gap means a missed run - and a gap drawn as zero renders a
 // cliff that says the team finished everything overnight. The path breaks at every null, and
 // the caption reports how many days are missing so the chart labels itself rather than lying
 // quietly.

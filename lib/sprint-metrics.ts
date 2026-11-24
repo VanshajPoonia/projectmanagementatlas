@@ -394,8 +394,8 @@ export interface BurndownSeries {
 /**
  * Build the burndown/burn-up series.
  *
- * ⚠️ A day with no sample is `null`, never 0. This repo runs one cron job a day on the Vercel
- * Hobby plan and samples on demand when someone opens the chart, so gaps are expected - and a
+ * ⚠️ A day with no sample is `null`, never 0. The cron samples every 6 hours and the chart
+ * samples on demand when someone opens it, so a gap means a missed run - and a
  * gap rendered as zero draws a cliff that says the team finished everything overnight. The
  * series reports `missingDays` so the chart can label itself instead of lying quietly.
  */

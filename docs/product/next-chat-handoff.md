@@ -197,9 +197,10 @@ WHAT to build, the master prompt (as reinterpreted by the ruling above) wins.
   **`CRON_SECRET` is set** in `.env.local` and in Vercel (Production + Development; Preview
   skipped on purpose, cron only fires on Production). The route was verified by curl: 401 with
   no header, 401 with a wrong secret, 200 and an honest report with the right one.
-  ⚠️ **The Vercel project is on the HOBBY plan** (verified via the API): cron runs once a day,
-  max two jobs. That is why `117` also exposes `deliver_my_due_reminders()` and the app calls it
-  every 5 minutes while open - in-app reminders are near-real-time, email is once a day.
+  The Vercel project was on the Hobby plan (cron once a day) until 2026-11-24 and is on Pro
+  now, with the sweep every 6 hours. `117` also exposes `deliver_my_due_reminders()` and the app
+  calls it every 5 minutes while open, so in-app reminders are near-real-time and email is
+  within 6 hours.
   **What it replaced:** `025`/`086`'s five recurrence columns had a prominent toggle wired to
   nothing for months (14 such tasks on production, 4 with no pattern at all - those deliberately
   got NO rule rather than an invented cadence), and `lib/reminder-service.ts` was an unscheduled

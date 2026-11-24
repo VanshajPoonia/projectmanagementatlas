@@ -306,8 +306,8 @@ export async function reorderBacklog(
 /**
  * Take today's burndown point for a running sprint.
  *
- * The Vercel Hobby plan runs cron once a day (see /api/cron/scheduled-work), which is enough
- * for the overnight point and not enough to keep a chart current while people are working. So
+ * The cron samples every 6 hours (see /api/cron/scheduled-work), which is not enough to keep a
+ * chart current while people are working. So
  * the page samples on open - migration 124's function refreshes TODAY only and never rewrites a
  * past day, which is what keeps the curve a record rather than a redrawing.
  */
