@@ -13,18 +13,17 @@ import { sendTaskDueSoonEmail } from '@/lib/email'
  * this is what actually pulls the trigger, so neither ends up being another control wired to
  * nothing.
  *
- * ⚠️ THE VERCEL PROJECT IS ON THE HOBBY PLAN, WHICH RUNS CRON JOBS ONCE A DAY, MAXIMUM 2.
- * That is a hard hosting limit, not a choice, and it shapes the design:
+ * RUNS EVERY 6 HOURS (01, 07, 13 and 19 UTC; 13 UTC is 7am in Chicago). The team moved to
+ * Vercel Pro on 2026-11-24, which allows any schedule; 6 hours was the owner's choice over
+ * anything tighter. What that means:
  *   - Recurrence is unaffected. The backfilled rules are all `on_completion`, which produces
  *     work in response to someone finishing something, and the board calls
  *     run_recurrence_generation directly at that moment. This sweep is the safety net.
- *   - Reminders ARE affected. A daily sweep cannot honour "30 minutes before". The app
+ *   - Reminders: a 6-hourly sweep cannot honour "30 minutes before" on its own. The app
  *     therefore also calls `deliver_my_due_reminders()` while it is open (see
  *     components/notifications/use-reminder-delivery.ts), which covers in-app delivery in near
  *     real time for anyone actually using the product. This route remains the only sender of
- *     reminder EMAIL, so email is a once-a-day guarantee and the reminder UI says so.
- * Moving to a paid plan and tightening the schedule in vercel.json is the whole upgrade path;
- * nothing in the database or the app has to change.
+ *     reminder EMAIL, so email can arrive up to 6 hours late and the reminder panel says so.
  *
  * SAFE TO RETRY, ALWAYS. Both underlying functions are idempotent by construction - 116 via
  * UNIQUE(rule_id, occurrence_date), 117 by claiming rows in the same statement that reads them

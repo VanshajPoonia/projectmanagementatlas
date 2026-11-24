@@ -6,10 +6,9 @@ import { createClient } from '@/lib/supabase/client'
 /**
  * Fire the signed-in user's own due reminders while the app is open.
  *
- * ⚠️ THIS EXISTS BECAUSE OF A HOSTING LIMIT, NOT A DESIGN PREFERENCE.
- * The Vercel project is on the Hobby plan, where cron jobs run at most once a day. The nightly
- * sweep at /api/cron/scheduled-work therefore cannot honour a "30 minutes before" reminder, and
- * shipping that option while it silently fired up to 24 hours late would be precisely the kind
+ * The sweep at /api/cron/scheduled-work runs every 6 hours (it ran once a day on Vercel Hobby),
+ * so it cannot honour a "30 minutes before" reminder on its own, and
+ * shipping that option while it silently fired up to 6 hours late would be precisely the kind
  * of control-wired-to-nothing that migrations 116 and 117 were written to end. So the app
  * delivers its own user's reminders as it goes.
  *
@@ -17,7 +16,7 @@ import { createClient } from '@/lib/supabase/client'
  * parameter that could widen it - that is what makes it safe to expose to a client at all, when
  * the full sweep is revoked from every client role. It returns a count and nothing else.
  *
- * Idempotent, so it cannot collide with the nightly sweep or with a second tab: delivery claims
+ * Idempotent, so it cannot collide with the 6-hourly sweep or with a second tab: delivery claims
  * each reminder by stamping delivered_at inside the same statement that reads it, so whichever
  * caller gets there first is the only one that delivers.
  *
@@ -50,7 +49,7 @@ export function useReminderDelivery(userId: string | null | undefined) {
       } catch {
         // Deliberately silent. This is background upkeep the user did not ask for; a toast
         // saying "could not check reminders" is noise about a thing they cannot act on, and
-        // the nightly sweep is the backstop.
+        // the 6-hourly sweep is the backstop.
       } finally {
         running.current = false
       }
