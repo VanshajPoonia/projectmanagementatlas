@@ -30,15 +30,17 @@ export default function MobileBottomNav({ items, moreItems = [], activeTab, onCh
         key={item.value}
         onClick={onClick}
         className={cn(
-          'flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs font-medium transition-colors',
-          isActive ? 'text-primary' : 'text-muted-foreground'
+          'active:bg-accent flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 pt-2 pb-1.5 text-xs font-medium transition-colors',
+          isActive ? 'text-primary font-semibold' : 'text-muted-foreground'
         )}
       >
-        <span className="relative">
-          <Icon className="w-5 h-5" />
-          {item.badge}
+        <span className={cn('relative flex h-8 w-14 items-center justify-center rounded-full transition-colors', isActive && 'bg-primary/10')}>
+          <span className="relative">
+            <Icon className="size-6" />
+            {item.badge}
+          </span>
         </span>
-        <span className="leading-none">{item.label}</span>
+        <span className="w-full truncate text-center leading-none">{item.label}</span>
       </button>
     )
   }
@@ -46,7 +48,7 @@ export default function MobileBottomNav({ items, moreItems = [], activeTab, onCh
   return (
     <>
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch border-t bg-background/95 backdrop-blur-sm pb-[env(safe-area-inset-bottom)]"
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch border-t bg-background/95 backdrop-blur-sm px-[env(safe-area-inset-left)] pb-[env(safe-area-inset-bottom)]"
         aria-label="Primary"
       >
         {items.map((item) =>
@@ -78,11 +80,11 @@ export default function MobileBottomNav({ items, moreItems = [], activeTab, onCh
                       setMoreOpen(false)
                     }}
                     className={cn(
-                      'flex flex-col items-center justify-center gap-2 rounded-lg border p-4 text-sm font-medium transition-colors',
+                      'flex min-h-20 flex-col items-center justify-center gap-2 rounded-lg border p-4 text-sm font-medium transition-colors',
                       isActive ? 'border-primary text-primary bg-primary/5' : 'border-border text-foreground hover:bg-accent'
                     )}
                   >
-                    <Icon className="w-5 h-5" />
+                    <Icon className="size-6" />
                     {item.label}
                   </button>
                 )

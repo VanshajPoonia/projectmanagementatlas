@@ -57,7 +57,7 @@ export function MobileMenu({ open, onOpenChange, groups, activeId, name, email, 
                           onClick={() => onOpenChange(false)}
                           aria-current={isActive ? 'page' : undefined}
                           className={cn(
-                            'flex min-h-11 items-center gap-3 rounded-md px-2 text-sm font-medium transition-colors',
+                            'flex min-h-12 items-center gap-3 rounded-md px-2 text-base font-medium transition-colors',
                             isActive ? 'bg-primary/10 text-primary font-semibold' : 'text-foreground hover:bg-accent',
                           )}
                         >

@@ -392,7 +392,7 @@ export default function BulkActionBar({
   return (
     <>
       <div
-        className="fixed inset-x-0 bottom-4 z-40 mx-auto flex w-fit max-w-[95vw] items-center gap-2 rounded-full border bg-background/95 px-3 py-2 shadow-lg backdrop-blur"
+        className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 md:bottom-4 mx-auto flex w-fit max-w-[95vw] items-center gap-2 rounded-full border bg-background/95 px-3 py-2 shadow-lg backdrop-blur"
         data-testid="bulk-action-bar"
         role="toolbar"
         aria-label={`${selectedIds.length} tasks selected`}

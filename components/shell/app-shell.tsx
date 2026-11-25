@@ -125,14 +125,14 @@ export function AppShell({
             </>
           }
         />
-        <main id="app-main" className="flex-1 pb-20 md:pb-0" tabIndex={-1}>
+        <main id="app-main" className="flex-1 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0" tabIndex={-1}>
           {typeof children === 'function' ? children(density) : children}
         </main>
       </div>
 
       <nav
         aria-label="Primary"
-        className="bg-background/95 fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="bg-background/95 fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t px-[env(safe-area-inset-left)] pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
         {mobile.map((item) => {
           const Icon = navIcon(item.icon)
@@ -143,29 +143,23 @@ export function AppShell({
               href={item.href}
               aria-current={isActive ? 'page' : undefined}
               className={cn(
-                // min-w-0 so five labels share a 320px screen by truncating rather than
-                // forcing the whole page to scroll sideways - measured at the WCAG 1.4.10
-                // reflow width, where "Marketing" alone pushed the bar 29px past the viewport.
-                'relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium sm:text-xs',
+                // 64px tall, 24px icons and 12px labels: the old bar was 20px/11px and too small to
+                // hit. min-w-0 keeps five labels on a 320px screen by truncating, not scrolling.
+                'active:bg-accent relative flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 pt-2 pb-1.5 text-xs font-medium transition-colors',
                 isActive ? 'text-primary font-semibold' : 'text-muted-foreground',
               )}
             >
-              {/*
-                A shape, not just a colour. The active tab used to be marked by `text-primary`
-                alone, which is the one cue WCAG 1.4.1 says may not stand on its own - and it
-                disappears entirely for anyone whose accent happens to sit near the muted
-                foreground. aria-current already carried this for assistive tech; this is the
-                visual half of the same statement.
-              */}
-              {isActive && (
-                <span
-                  className="bg-primary absolute inset-x-3 top-0 h-0.5 rounded-full"
-                  aria-hidden="true"
-                />
-              )}
-              <span className="relative">
-                <Icon className="size-5" aria-hidden="true" />
-                {item.badge}
+              {/* A shape as well as a colour, so the active tab never rests on colour alone (WCAG 1.4.1). */}
+              <span
+                className={cn(
+                  'relative flex h-8 w-14 items-center justify-center rounded-full transition-colors',
+                  isActive && 'bg-primary/10',
+                )}
+              >
+                <span className="relative">
+                  <Icon className="size-6" aria-hidden="true" />
+                  {item.badge}
+                </span>
               </span>
               <span className="w-full truncate text-center leading-none">{item.label}</span>
             </Link>
