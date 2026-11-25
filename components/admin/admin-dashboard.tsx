@@ -23,6 +23,7 @@ import PersonalTasks from '../personal/personal-tasks'
 import ProjectIdsView from '../project-ids/project-ids-view'
 import AppointmentsView from '../appointments/appointments-view'
 import BookmarksSection from '../bookmarks/bookmarks-section'
+import MobileBookmarks from '../bookmarks/mobile-bookmarks'
 import MarketingSection from '../marketing/marketing-section'
 import TaskNotificationToasts from '../notifications/task-notification-toasts'
 import AiChatWidget from '../ai-chat/ai-chat-widget'
@@ -259,6 +260,7 @@ export default function AdminDashboard({ user, users, boards, tasks, shell }: Ad
           <div className="mb-4 sm:mb-6">
             <GlobalSearch isAdmin />
           </div>
+          {showBookmarks && <MobileBookmarks userId={user.id} isAdmin={true} />}
         <div ref={tabsRef}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
 

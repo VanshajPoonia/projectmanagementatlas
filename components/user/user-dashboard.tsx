@@ -24,6 +24,7 @@ import TaskNotificationToasts from '../notifications/task-notification-toasts'
 import AiChatWidget from '../ai-chat/ai-chat-widget'
 import PersonalTasks from '../personal/personal-tasks'
 import BookmarksSection from '../bookmarks/bookmarks-section'
+import MobileBookmarks from '../bookmarks/mobile-bookmarks'
 import MarketingSection from '../marketing/marketing-section'
 import DashboardWindow from '../dashboard/dashboard-window'
 import WorkNext from '../dashboard/work-next'
@@ -265,6 +266,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
           <div className="mb-6">
             <GlobalSearch isAdmin={isAdmin} />
           </div>
+          {showBookmarks && <MobileBookmarks userId={user.id} isAdmin={isAdmin} />}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
 
           <TabsContent value="tasks" className="space-y-6">
