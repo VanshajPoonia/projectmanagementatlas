@@ -169,7 +169,7 @@ export default function ChannelManager({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+        <div className="max-h-[55dvh] space-y-4 overflow-y-auto pr-1">
           <div className="space-y-2">
             {active.map((channel, index) => renderRow(channel, index, active.length))}
             {active.length === 0 && (

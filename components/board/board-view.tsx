@@ -1356,7 +1356,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       {/*
         This header is sticky, so every row it occupies is a row the board never gets back.
         On a phone it was running to roughly 240 of 844 pixels - back button, title, board
@@ -1486,7 +1486,7 @@ export default function BoardView({ board, columns: initialColumns, users, isAdm
                             <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform group-data-[state=open]/switch:rotate-180" aria-hidden="true" />
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="max-h-[60vh] w-64 overflow-y-auto">
+                        <DropdownMenuContent align="start" className="max-h-[60dvh] w-64 overflow-y-auto">
                           {boards.map((entry) => (
                             <DropdownMenuItem
                               key={entry.id}

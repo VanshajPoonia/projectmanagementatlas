@@ -23,7 +23,7 @@ export default function SuperAdminDashboard({ users, currentUserId }: SuperAdmin
   const router = useRouter()
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
         <div className="container mx-auto px-3 py-3 sm:px-4 sm:py-4">
           <div className="flex items-start gap-3 sm:items-center sm:gap-4">

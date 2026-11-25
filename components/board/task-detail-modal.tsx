@@ -1102,7 +1102,7 @@ export function TaskDetailModal({ taskId, open, onClose, onUpdate, board, isAdmi
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
+      <DialogContent className="max-w-3xl max-h-[95dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <div className="flex flex-wrap items-center justify-between gap-2 pr-8">
             <DialogTitle>Task Details</DialogTitle>

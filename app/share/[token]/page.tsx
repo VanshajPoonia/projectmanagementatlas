@@ -34,7 +34,7 @@ function priorityClass(priority: number) {
 
 function InvalidLink() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
+    <div className="flex min-h-dvh items-center justify-center bg-muted/30 p-6">
       <Card className="max-w-md p-8 text-center">
         <Lock className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
         <h1 className="text-lg font-semibold">This link is no longer available</h1>
@@ -48,7 +48,7 @@ function InvalidLink() {
 
 function ShareUnavailable() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
+    <div className="flex min-h-dvh items-center justify-center bg-muted/30 p-6">
       <Card className="max-w-md p-8 text-center">
         <Lock className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
         <h1 className="text-lg font-semibold">This shared item could not be loaded</h1>
@@ -132,7 +132,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
     if (columnsError) return <ShareUnavailable />
 
     return (
-      <div className="min-h-screen bg-muted/20 px-4 py-8">
+      <div className="min-h-dvh bg-muted/20 px-4 py-8">
         <div className="mx-auto max-w-6xl">
           <ViewOnlyBanner label="shared board" />
           <h1 className="text-2xl font-semibold">{board.title}</h1>
@@ -191,7 +191,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
   const desc = cleanTaskDescription(visibleTask.description)
 
   return (
-    <div className="min-h-screen bg-muted/20 px-4 py-8">
+    <div className="min-h-dvh bg-muted/20 px-4 py-8">
       <div className="mx-auto max-w-2xl">
         <ViewOnlyBanner label="shared task" />
         <Card className="space-y-4 p-6">

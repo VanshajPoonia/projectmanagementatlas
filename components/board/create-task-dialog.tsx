@@ -308,7 +308,7 @@ export default function CreateTaskDialog({ open, onOpenChange, column, columns, 
 
   return (
     <Dialog open={open} onOpenChange={guardedClose}>
-      <DialogContent className="max-w-lg max-h-[95vh] overflow-y-auto p-4 sm:p-6">
+      <DialogContent className="max-w-lg max-h-[95dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Create New Task</DialogTitle>
           <DialogDescription>Add a new task to {column?.title}</DialogDescription>

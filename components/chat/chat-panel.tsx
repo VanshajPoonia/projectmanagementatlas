@@ -282,7 +282,7 @@ export default function ChatPanel({ currentUserId, isAdmin, className }: ChatPan
   }
 
   return (
-    <Card className={cn('flex h-[min(72vh,640px)] min-h-[460px] flex-col overflow-hidden', className)}>
+    <Card className={cn('flex h-[min(72dvh,640px)] min-h-[460px] flex-col overflow-hidden', className)}>
       <CardHeader className="border-b p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

@@ -706,7 +706,7 @@ function ProjectDetail({
           </DialogHeader>
           {viewed && urls[viewed.path] && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={urls[viewed.path]} alt={viewed.caption || project.name} className={cn('max-h-[70vh] w-full rounded object-contain')} />
+            <img src={urls[viewed.path]} alt={viewed.caption || project.name} className={cn('max-h-[70dvh] w-full rounded object-contain')} />
           )}
         </DialogContent>
       </Dialog>

@@ -20,7 +20,7 @@ function adminDb() {
 
 function Unavailable({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
+    <div className="flex min-h-dvh items-center justify-center bg-muted/30 p-6">
       <Card className="max-w-md p-8 text-center">
         <Lock className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
         <h1 className="text-lg font-semibold">{title}</h1>
@@ -80,7 +80,7 @@ export default async function BookPage({ params }: { params: Promise<{ token: st
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/20 p-4 py-10">
+    <div className="flex min-h-dvh items-center justify-center bg-muted/20 p-4 py-10">
       <div className="w-full max-w-lg">
         <BookingForm
           token={token}

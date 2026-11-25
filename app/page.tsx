@@ -20,7 +20,7 @@ export default function HomePage() {
   }, [])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-dvh flex items-center justify-center bg-background p-4">
       <div ref={contentRef} className="flex flex-col items-center text-center gap-6 max-w-sm">
         <div className="w-14 h-14 bg-primary rounded-xl flex items-center justify-center">
           <LayoutDashboard className="w-7 h-7 text-primary-foreground" />

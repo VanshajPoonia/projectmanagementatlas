@@ -2455,7 +2455,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       <>
           {/* ── Week board ───────────────────────────────────────────── */}
           {viewMode === 'week' && (
-            <div ref={weekBoardScrollRef} data-marketing-week-scroll className="max-h-[75vh] overflow-auto">
+            <div ref={weekBoardScrollRef} data-marketing-week-scroll className="max-h-[75dvh] overflow-auto">
               <div className="grid min-w-[1080px] grid-cols-7 divide-x">
                 {weekDays.map(date => {
                   const dateKey    = toDateKey(date)
@@ -2644,7 +2644,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
           {/* ── Channel grid ─────────────────────────────────────────── */}
           {viewMode === 'grid' && (
-          <div className="max-h-[75vh] overflow-auto">
+          <div className="max-h-[75dvh] overflow-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>

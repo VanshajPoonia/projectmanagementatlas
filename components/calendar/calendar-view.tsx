@@ -248,7 +248,7 @@ export default function CalendarView({ tasks, users, isAdmin = false }: Calendar
 
       {/* Expanded Date Dialog */}
       <Dialog open={selectedDate !== null} onOpenChange={closeDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[80dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>
