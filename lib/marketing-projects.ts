@@ -12,6 +12,12 @@ export const PHOTO_MAX_EDGE = 1800
 export const PHOTO_QUALITY = 0.82
 /** Plain image/*, so iPhone Safari converts HEIC to JPEG itself instead of handing over the raw file. */
 export const PHOTO_ACCEPT = 'image/*'
+/** Photos and videos. A picked video arrives as MOV or MP4 and is converted before it uploads. */
+export const MEDIA_ACCEPT = 'image/*,video/*'
+/** The biggest video a person may pick. It is shrunk in the browser before it uploads. */
+export const VIDEO_MAX_SOURCE_BYTES = 500 * 1024 * 1024
+/** The most one stored file can be on the Supabase Free plan, and the bucket's own limit. */
+export const VIDEO_MAX_STORED_BYTES = 50 * 1024 * 1024
 
 export interface MarketingProject {
   id: string
@@ -24,10 +30,15 @@ export interface MarketingProject {
   updated_at: string
 }
 
+export type MediaKind = 'image' | 'video'
+
+/** One photo or video in a project. The name stays `ProjectPhoto` because most rows are photos. */
 export interface ProjectPhoto {
   id: string
   project_id: string
   path: string
+  kind: MediaKind
+  duration_seconds: number | null
   caption: string
   position: number
   width: number | null
@@ -86,6 +97,45 @@ export function draftToRow(draft: ProjectDraft) {
 
 export function photoPath(projectId: string, photoId: string): string {
   return `${projectId}/${photoId}.jpg`
+}
+
+export function videoPath(projectId: string, mediaId: string): string {
+  return `${projectId}/${mediaId}.mp4`
+}
+
+/** A video's poster frame is a JPEG stored beside it, under the same id. */
+export function posterPath(path: string): string {
+  return path.replace(/\.mp4$/, '.jpg')
+}
+
+export function isVideo(photo: Pick<ProjectPhoto, 'kind'>): boolean {
+  return photo.kind === 'video'
+}
+
+/** The image to show for a tile: the photo itself, or a video's poster frame. */
+export function thumbPath(photo: Pick<ProjectPhoto, 'kind' | 'path'>): string {
+  return isVideo(photo) ? posterPath(photo.path) : photo.path
+}
+
+/** Every Storage path that has to be signed to show these. A video needs its poster too. */
+export function pathsToSign(photos: Array<Pick<ProjectPhoto, 'kind' | 'path'>>): string[] {
+  return photos.flatMap((p) => (isVideo(p) ? [p.path, posterPath(p.path)] : [p.path]))
+}
+
+/** iPhone files can arrive with no type, so the extension counts too. */
+export function isVideoFile(file: Pick<File, 'type' | 'name'>): boolean {
+  return file.type.startsWith('video/') || /\.(mp4|m4v|mov|webm|3gp|mkv)$/i.test(file.name)
+}
+
+export function isImageFile(file: Pick<File, 'type' | 'name'>): boolean {
+  return file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)
+}
+
+/** "0:07" or "2:41". */
+export function durationLabel(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return ''
+  const whole = Math.round(seconds)
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`
 }
 
 /** Fit inside a square of `maxEdge`, keeping the shape. Never scales up. */

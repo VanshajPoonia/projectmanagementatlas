@@ -2121,6 +2121,15 @@ is the same board as `/social` (`SocialBoard` in `social-view.tsx`, loaded in th
   evening upload is not filed under tomorrow. A project matches a range if it was created in it or
   any photo was uploaded in it. Logic is in `lib/marketing-projects.ts` (`inRange`,
   `projectInRange`, `photosInRange`).
+- **Videos** (`141`, 2026-11-26): a project's media can be a photo or a video (`kind`, `duration_seconds`
+  on `marketing_project_photos`). A picked video up to 500 MB is shrunk in the browser by
+  `lib/video-compress.ts` (mediabunny on WebCodecs, H.264 + AAC MP4, 1280/960/640 px picked from
+  the length so the result fits under **50 MB**, the Supabase Free per-file cap and the bucket's
+  limit). The poster frame is a JPEG stored beside the video under the same id
+  (`posterPath`); it is not a row. Measured in real Chrome: 476 MB / 6 min became 43 MB in 30 s,
+  76 MB / 25 s became 11 MB in 2.4 s. A video too long for 640 px (about 13 min) is refused with a
+  plain message. ⚠️ `141` must be on a database before the code ships: the page selects the new
+  columns, so Projects fails to load without it.
 - **No module row.** The Projects button follows the calendar. Until `140` is on a database the tab
   says "Projects are not set up on this database yet" instead of failing.
 - Purely additive and `--allow-prod` eligible. Checked on a local Postgres 17 with role-switched

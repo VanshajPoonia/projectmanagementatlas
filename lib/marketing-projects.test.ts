@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  durationLabel,
+  isImageFile,
+  isVideoFile,
+  pathsToSign,
+  posterPath,
+  thumbPath,
+  videoPath,
   coverOf,
   coverPosition,
   draftProblem,
@@ -25,6 +32,8 @@ const photo = (id: string, position: number): ProjectPhoto => ({
   id,
   project_id: 'p',
   path: `p/${id}.jpg`,
+  kind: 'image',
+  duration_seconds: null,
   caption: '',
   position,
   width: null,
@@ -163,5 +172,32 @@ describe('upload timestamps and date ranges', () => {
     expect(lastUploadOf([at('a', '2026-11-10T18:00:00+00:00'), at('b', '2026-11-25T18:00:00+00:00')])).toBe('2026-11-25T18:00:00+00:00')
     expect(lastUploadOf([])).toBeNull()
     expect(orderedRange({ from: '2026-11-25', to: '2026-11-20' })).toEqual({ from: '2026-11-20', to: '2026-11-25' })
+  })
+})
+
+describe('video media', () => {
+  it('derives the poster path from the video path', () => {
+    expect(videoPath('p', 'm')).toBe('p/m.mp4')
+    expect(posterPath('p/m.mp4')).toBe('p/m.jpg')
+  })
+
+  it('shows a video by its poster and signs both files', () => {
+    const video = { kind: 'video' as const, path: 'p/m.mp4' }
+    const image = { kind: 'image' as const, path: 'p/i.jpg' }
+    expect(thumbPath(video)).toBe('p/m.jpg')
+    expect(thumbPath(image)).toBe('p/i.jpg')
+    expect(pathsToSign([video, image])).toEqual(['p/m.mp4', 'p/m.jpg', 'p/i.jpg'])
+  })
+
+  it('recognises a phone video by its extension when the type is empty', () => {
+    expect(isVideoFile({ name: 'IMG_1.MOV', type: '' })).toBe(true)
+    expect(isVideoFile({ name: 'IMG_1.HEIC', type: '' })).toBe(false)
+    expect(isImageFile({ name: 'IMG_1.HEIC', type: '' })).toBe(true)
+  })
+
+  it('writes a length as minutes and seconds', () => {
+    expect(durationLabel(161)).toBe('2:41')
+    expect(durationLabel(7.4)).toBe('0:07')
+    expect(durationLabel(null)).toBe('')
   })
 })

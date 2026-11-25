@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, ImagePlus, Loader2, Pencil, Plus, Star, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, ImagePlus, Loader2, Pencil, Play, Plus, Star, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -11,12 +11,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { compressPhoto } from '@/lib/image-compress'
+import { compressVideo } from '@/lib/video-compress'
 import {
   AREA_MAX,
   DESCRIPTION_MAX,
   EMPTY_DRAFT,
   NAME_MAX,
-  PHOTO_ACCEPT,
+  MEDIA_ACCEPT,
   PHOTO_CAPTION_MAX,
   PROJECT_BUCKET,
   coverOf,
@@ -24,29 +25,37 @@ import {
   draftFrom,
   draftProblem,
   draftToRow,
+  durationLabel,
   formatBytes,
+  isImageFile,
+  isVideo,
+  isVideoFile,
   lastUploadOf,
   nextPosition,
   NO_RANGE,
   orderedRange,
+  pathsToSign,
   photoPath,
+  posterPath,
   photosInRange,
   projectInRange,
   rangeIsSet,
   sortPhotos,
   sortProjects,
+  thumbPath,
   timestampLabel,
   type DateRange,
   type MarketingProject,
   type ProjectDraft,
   type ProjectPhoto,
+  videoPath,
 } from '@/lib/marketing-projects'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
 const SIGNED_URL_SECONDS = 60 * 60
 const PROJECT_COLUMNS = 'id, name, company_id, area, completed_on, description, created_at, updated_at'
-const PHOTO_COLUMNS = 'id, project_id, path, caption, position, width, height, bytes, created_at, created_by'
+const PHOTO_COLUMNS = 'id, project_id, path, kind, duration_seconds, caption, position, width, height, bytes, created_at, created_by'
 
 interface Company {
   id: string
@@ -60,9 +69,15 @@ function dateLabel(date: string | null): string | null {
   return new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-/** Keeps images only. iPhone files can arrive with no type, so the extension counts too. */
-function pickImages(list: FileList | null): File[] {
-  return Array.from(list ?? []).filter((f) => f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name))
+/** Keeps photos and videos. iPhone files can arrive with no type, so the extension counts too. */
+function pickMedia(list: FileList | null): File[] {
+  return Array.from(list ?? []).filter((f) => isImageFile(f) || isVideoFile(f))
+}
+
+/** "photo", "video" or "item", for a count that may mix both. */
+function mediaNoun(files: File[]): string {
+  const videos = files.filter(isVideoFile).length
+  return videos === 0 ? 'photo' : videos === files.length ? 'video' : 'item'
 }
 
 /** True when the migration that creates the tables has not been applied to this database. */
@@ -85,7 +100,7 @@ export default function MarketingProjects({ userId }: { userId: string }) {
   // Photos picked from the list, waiting for the person to say which project they belong to.
   const [incoming, setIncoming] = useState<File[] | null>(null)
   const [targetId, setTargetId] = useState('')
-  const [sending, setSending] = useState<{ done: number; total: number } | null>(null)
+  const [sending, setSending] = useState<{ done: number; total: number; note?: string } | null>(null)
   const quickInput = useRef<HTMLInputElement>(null)
 
   const signPaths = useCallback(async (paths: string[]) => {
@@ -117,7 +132,7 @@ export default function MarketingProjects({ userId }: { userId: string }) {
         const loadedPhotos = (photosResult.data ?? []) as ProjectPhoto[]
         setProjects((projectsResult.data ?? []) as MarketingProject[])
         setPhotos(loadedPhotos)
-        void signPaths(loadedPhotos.map((p) => p.path))
+        void signPaths(pathsToSign(loadedPhotos))
       }
       const names = (peopleResult.data ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>
       setPeople(Object.fromEntries(names.map((n) => [n.id, n.full_name || n.email || 'Someone'])))
@@ -193,7 +208,7 @@ export default function MarketingProjects({ userId }: { userId: string }) {
     toast.success('Project deleted')
   }
 
-  const addPhotos = async (project: MarketingProject, files: File[], onProgress: (done: number, total: number) => void) => {
+  const addPhotos = async (project: MarketingProject, files: File[], onProgress: (done: number, total: number, note?: string) => void) => {
     const supabase = createClient()
     const storage = supabase.storage.from(PROJECT_BUCKET)
     let position = nextPosition(photosByProject[project.id] ?? [])
@@ -201,33 +216,56 @@ export default function MarketingProjects({ userId }: { userId: string }) {
     let savedBytes = 0
     for (const [i, file] of files.entries()) {
       onProgress(i, files.length)
+      const uploaded: string[] = []
       try {
-        const shrunk = await compressPhoto(file)
         const id = crypto.randomUUID()
-        const path = photoPath(project.id, id)
-        const upload = await storage.upload(path, shrunk.blob, { contentType: 'image/jpeg', upsert: false })
-        if (upload.error) throw new Error(upload.error.message)
+        const video = isVideoFile(file)
+        let path: string
+        let row: Record<string, unknown>
+        let stored: number
+        let original: number
+        if (video) {
+          const shrunk = await compressVideo(file, (fraction) => onProgress(i, files.length, `Shrinking video ${Math.round(fraction * 100)}%`))
+          onProgress(i, files.length, 'Uploading video')
+          path = videoPath(project.id, id)
+          const poster = await storage.upload(posterPath(path), shrunk.poster, { contentType: 'image/jpeg', upsert: false })
+          if (poster.error) throw new Error(poster.error.message)
+          uploaded.push(posterPath(path))
+          const upload = await storage.upload(path, shrunk.blob, { contentType: 'video/mp4', upsert: false })
+          if (upload.error) throw new Error(upload.error.message)
+          uploaded.push(path)
+          row = { kind: 'video', duration_seconds: Math.round(shrunk.duration * 10) / 10, width: shrunk.width, height: shrunk.height, bytes: shrunk.blob.size }
+          stored = shrunk.blob.size
+          original = shrunk.originalBytes
+        } else {
+          const shrunk = await compressPhoto(file)
+          path = photoPath(project.id, id)
+          const upload = await storage.upload(path, shrunk.blob, { contentType: 'image/jpeg', upsert: false })
+          if (upload.error) throw new Error(upload.error.message)
+          uploaded.push(path)
+          row = { kind: 'image', width: shrunk.width, height: shrunk.height, bytes: shrunk.blob.size }
+          stored = shrunk.blob.size
+          original = shrunk.originalBytes
+        }
         const { data, error } = await supabase
           .from('marketing_project_photos')
-          .insert({ id, project_id: project.id, path, position, width: shrunk.width, height: shrunk.height, bytes: shrunk.blob.size, created_by: userId })
+          .insert({ id, project_id: project.id, path, position, created_by: userId, ...row })
           .select(PHOTO_COLUMNS)
           .single()
-        if (error || !data) {
-          // A file with no row pointing at it would only use up the storage budget.
-          await storage.remove([path])
-          throw new Error(error?.message ?? 'The photo was not saved.')
-        }
+        if (error || !data) throw new Error(error?.message ?? 'The upload was not saved.')
         position += 1
         added += 1
-        savedBytes += Math.max(0, shrunk.originalBytes - shrunk.blob.size)
+        savedBytes += Math.max(0, original - stored)
         setPhotos((prev) => [...prev, data as ProjectPhoto])
-        void signPaths([path])
+        void signPaths(pathsToSign([data as ProjectPhoto]))
       } catch (e) {
+        // A file with no row pointing at it would only use up the storage budget.
+        if (uploaded.length) await storage.remove(uploaded)
         toast.error(`Skipped ${file.name}`, { description: e instanceof Error ? e.message : 'The upload failed.' })
       }
     }
     onProgress(files.length, files.length)
-    if (added) toast.success(`${added} photo${added === 1 ? '' : 's'} added`, { description: savedBytes > 0 ? `Shrunk to save ${formatBytes(savedBytes)}.` : undefined })
+    if (added) toast.success(`${added} ${mediaNoun(files)}${added === 1 ? '' : 's'} added`, { description: savedBytes > 0 ? `Shrunk to save ${formatBytes(savedBytes)}.` : undefined })
   }
 
   const saveCaption = async (photo: ProjectPhoto, caption: string): Promise<boolean> => {
@@ -257,12 +295,12 @@ export default function MarketingProjects({ userId }: { userId: string }) {
       toast.error('The photo was not removed', { description: error.message })
       return
     }
-    await supabase.storage.from(PROJECT_BUCKET).remove([photo.path])
+    await supabase.storage.from(PROJECT_BUCKET).remove(pathsToSign([photo]))
     setPhotos((prev) => prev.filter((p) => p.id !== photo.id))
   }
 
   const pickForProject = (list: FileList | null) => {
-    const files = pickImages(list)
+    const files = pickMedia(list)
     if (quickInput.current) quickInput.current.value = ''
     if (!files.length) return
     setIncoming(files)
@@ -273,7 +311,7 @@ export default function MarketingProjects({ userId }: { userId: string }) {
     const project = projects.find((p) => p.id === targetId)
     if (!project || !incoming || sending) return
     setSending({ done: 0, total: incoming.length })
-    await addPhotos(project, incoming, (done, total) => setSending({ done, total }))
+    await addPhotos(project, incoming, (done, total, note) => setSending({ done, total, note }))
     setSending(null)
     setIncoming(null)
     setOpenId(project.id)
@@ -303,15 +341,15 @@ export default function MarketingProjects({ userId }: { userId: string }) {
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-muted-foreground max-w-2xl text-sm">
-              Name a project, add its best photos and write it up. Photos are shrunk automatically when they upload.
+              Name a project, add its best photos and videos and write it up. Everything is shrunk automatically when it uploads.
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {sorted.length > 0 && (
                 <>
-                  <input ref={quickInput} type="file" multiple accept={PHOTO_ACCEPT} className="sr-only" aria-label="Choose photos to upload" onChange={(e) => pickForProject(e.target.files)} />
+                  <input ref={quickInput} type="file" multiple accept={MEDIA_ACCEPT} className="sr-only" aria-label="Choose photos or videos to upload" onChange={(e) => pickForProject(e.target.files)} />
                   <Button size="sm" variant="outline" onClick={() => quickInput.current?.click()} className="gap-1.5">
                     <ImagePlus className="h-4 w-4" />
-                    Upload photos
+                    Upload photos or videos
                   </Button>
                 </>
               )}
@@ -356,16 +394,16 @@ export default function MarketingProjects({ userId }: { userId: string }) {
                     className="bg-card hover:border-foreground/30 group overflow-hidden rounded-lg border text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
                   >
                     <div className="bg-muted relative aspect-[4/3] w-full">
-                      {cover && urls[cover.path] ? (
+                      {cover && urls[thumbPath(cover)] ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={urls[cover.path]} alt="" loading="lazy" className="h-full w-full object-cover" />
+                        <img src={urls[thumbPath(cover)]} alt="" loading="lazy" className="h-full w-full object-cover" />
                       ) : (
                         <span className="text-muted-foreground flex h-full items-center justify-center text-sm">
-                          {cover ? 'Loading photo...' : 'No photos yet'}
+                          {cover ? 'Loading...' : 'No photos yet'}
                         </span>
                       )}
                       {own.length > 1 && (
-                        <span className="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white tabular-nums">{own.length} photos</span>
+                        <span className="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white tabular-nums">{own.length} {own.some(isVideo) ? 'items' : 'photos'}</span>
                       )}
                     </div>
                     <div className="space-y-1 p-3">
@@ -395,9 +433,9 @@ export default function MarketingProjects({ userId }: { userId: string }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Add {incoming?.length ?? 0} photo{incoming?.length === 1 ? '' : 's'} to a project
+              Add {incoming?.length ?? 0} {mediaNoun(incoming ?? [])}{incoming?.length === 1 ? '' : 's'} to a project
             </DialogTitle>
-            <DialogDescription>Pick the project. Each photo is shrunk and shows who uploaded it and when.</DialogDescription>
+            <DialogDescription>Pick the project. Each photo or video is shrunk and shows who uploaded it and when.</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label htmlFor="upload-project">Project</Label>
@@ -421,7 +459,7 @@ export default function MarketingProjects({ userId }: { userId: string }) {
             </Button>
             <Button onClick={() => void sendIncoming()} disabled={!targetId || !!sending} className="gap-1.5">
               {sending && <Loader2 className="h-4 w-4 animate-spin" />}
-              {sending ? `Uploading ${Math.min(sending.done + 1, sending.total)} of ${sending.total}` : 'Upload'}
+              {sending ? `${sending.note ?? 'Uploading'} (${Math.min(sending.done + 1, sending.total)} of ${sending.total})` : 'Upload'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -557,13 +595,13 @@ function ProjectDetail({
   onBack: () => void
   onEdit: () => void
   onDelete: () => Promise<void>
-  onAddPhotos: (files: File[], onProgress: (done: number, total: number) => void) => Promise<void>
+  onAddPhotos: (files: File[], onProgress: (done: number, total: number, note?: string) => void) => Promise<void>
   onCaption: (photo: ProjectPhoto, caption: string) => Promise<boolean>
   onCover: (photo: ProjectPhoto) => Promise<void>
   onRemove: (photo: ProjectPhoto) => Promise<void>
 }) {
   const input = useRef<HTMLInputElement>(null)
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [progress, setProgress] = useState<{ done: number; total: number; note?: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [viewing, setViewing] = useState<string | null>(null)
   const [range, setRange] = useState<DateRange>(NO_RANGE)
@@ -572,11 +610,11 @@ function ProjectDetail({
   const viewed = photos.find((p) => p.id === viewing) ?? null
 
   const pick = async (list: FileList | null) => {
-    const files = pickImages(list)
+    const files = pickMedia(list)
     if (input.current) input.current.value = ''
     if (!files.length) return
     setProgress({ done: 0, total: files.length })
-    await onAddPhotos(files, (done, total) => setProgress({ done, total }))
+    await onAddPhotos(files, (done, total, note) => setProgress({ done, total, note }))
     setProgress(null)
   }
 
@@ -627,12 +665,12 @@ function ProjectDetail({
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <h3 className="font-semibold">Photos</h3>
-          <input ref={input} type="file" multiple accept={PHOTO_ACCEPT} className="sr-only" aria-label="Add photos" onChange={(e) => void pick(e.target.files)} />
+          <input ref={input} type="file" multiple accept={MEDIA_ACCEPT} className="sr-only" aria-label="Add photos or videos" onChange={(e) => void pick(e.target.files)} />
           <Button size="sm" variant="outline" disabled={!!progress} onClick={() => input.current?.click()} className="gap-1.5">
             {progress ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-            {progress ? `Shrinking and uploading ${Math.min(progress.done + 1, progress.total)} of ${progress.total}` : 'Add photos'}
+            {progress ? `${progress.note ?? 'Shrinking and uploading'} (${Math.min(progress.done + 1, progress.total)} of ${progress.total})` : 'Add photos or videos'}
           </Button>
-          <span className="text-muted-foreground text-xs">Pick as many as you like. Each one is shrunk before it uploads.</span>
+          <span className="text-muted-foreground text-xs">Pick as many as you like, videos up to 500 MB. Each one is shrunk before it uploads.</span>
         </div>
 
         {photos.length > 0 && (
@@ -647,7 +685,7 @@ function ProjectDetail({
             className="text-muted-foreground hover:border-foreground/40 flex w-full flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-14 text-sm transition-colors"
           >
             <ImagePlus className="h-6 w-6" />
-            Add the best photos of this project
+            Add the best photos and videos of this project
           </button>
         ) : visible.length === 0 ? (
           <p className="text-muted-foreground rounded-lg border border-dashed px-6 py-10 text-center text-sm">No photos were uploaded in those dates.</p>
@@ -655,12 +693,24 @@ function ProjectDetail({
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {visible.map((photo) => (
               <figure key={photo.id} className="bg-card overflow-hidden rounded-lg border">
-                <button type="button" onClick={() => setViewing(photo.id)} className="bg-muted relative block aspect-[4/3] w-full" aria-label="View photo larger">
-                  {urls[photo.path] ? (
+                <button type="button" onClick={() => setViewing(photo.id)} className="bg-muted relative block aspect-[4/3] w-full" aria-label={isVideo(photo) ? 'Play video' : 'View photo larger'}>
+                  {urls[thumbPath(photo)] ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={urls[photo.path]} alt={photo.caption || project.name} loading="lazy" className="h-full w-full object-cover" />
+                    <img src={urls[thumbPath(photo)]} alt={photo.caption || project.name} loading="lazy" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="text-muted-foreground flex h-full items-center justify-center text-sm">Loading photo...</span>
+                    <span className="text-muted-foreground flex h-full items-center justify-center text-sm">{isVideo(photo) ? 'Loading video...' : 'Loading photo...'}</span>
+                  )}
+                  {isVideo(photo) && (
+                    <>
+                      <span className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
+                        <span className="flex size-14 items-center justify-center rounded-full bg-black/60 text-white">
+                          <Play className="size-6 fill-current" />
+                        </span>
+                      </span>
+                      {photo.duration_seconds != null && (
+                        <span className="absolute right-2 bottom-2 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white tabular-nums">{durationLabel(photo.duration_seconds)}</span>
+                      )}
+                    </>
                   )}
                   {photo.id === photos[0]?.id && (
                     <span className="absolute top-2 left-2 flex items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white">
@@ -683,7 +733,7 @@ function ProjectDetail({
                           Make cover
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" onClick={() => void onRemove(photo)} className="h-7 gap-1 px-2 text-xs" aria-label="Remove photo">
+                      <Button size="sm" variant="ghost" onClick={() => void onRemove(photo)} className="h-7 gap-1 px-2 text-xs" aria-label={isVideo(photo) ? 'Remove video' : 'Remove photo'}>
                         <Trash2 className="h-3.5 w-3.5" />
                         Remove
                       </Button>
@@ -704,7 +754,20 @@ function ProjectDetail({
               {[viewed?.caption || 'No caption', viewed ? `Uploaded ${timestampLabel(viewed.created_at)}` : ''].filter(Boolean).join(' · ')}
             </DialogDescription>
           </DialogHeader>
-          {viewed && urls[viewed.path] && (
+          {viewed && urls[viewed.path] && isVideo(viewed) && (
+            <video
+              key={viewed.id}
+              src={urls[viewed.path]}
+              poster={urls[thumbPath(viewed)]}
+              controls
+              autoPlay
+              playsInline
+              preload="metadata"
+              aria-label={viewed.caption || project.name}
+              className="max-h-[70dvh] w-full rounded bg-black object-contain"
+            />
+          )}
+          {viewed && urls[viewed.path] && !isVideo(viewed) && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={urls[viewed.path]} alt={viewed.caption || project.name} className={cn('max-h-[70dvh] w-full rounded object-contain')} />
           )}

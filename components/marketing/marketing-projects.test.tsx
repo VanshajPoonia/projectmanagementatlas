@@ -36,6 +36,12 @@ function table(name: string) {
 
 vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({ from: table, storage: { from: () => bucket } }) }))
 vi.mock('sonner', () => ({ toast: toastMock }))
+vi.mock('@/lib/video-compress', () => ({
+  compressVideo: vi.fn(async (file: File, onProgress?: (f: number) => void) => {
+    onProgress?.(0.5)
+    return { blob: new Blob(['v'], { type: 'video/mp4' }), poster: new Blob(['p'], { type: 'image/jpeg' }), width: 1280, height: 720, duration: 7.4, originalBytes: file.size }
+  }),
+}))
 vi.mock('@/lib/image-compress', () => ({
   compressPhoto: vi.fn(async (file: File) => ({ blob: new Blob(['x'], { type: 'image/jpeg' }), width: 1800, height: 1200, originalBytes: file.size })),
 }))
@@ -52,7 +58,7 @@ const project = {
   created_at: '2026-10-06T10:00:00+00:00',
   updated_at: '2026-10-06T10:00:00+00:00',
 }
-const photo = (id: string, position: number) => ({ id, project_id: 'p1', path: `p1/${id}.jpg`, caption: '', position, width: 1800, height: 1200, bytes: 250_000, created_at: '2026-11-25T21:42:00+00:00', created_by: 'u2' })
+const photo = (id: string, position: number) => ({ id, project_id: 'p1', path: `p1/${id}.jpg`, kind: 'image', duration_seconds: null, caption: '', position, width: 1800, height: 1200, bytes: 250_000, created_at: '2026-11-25T21:42:00+00:00', created_by: 'u2' })
 
 beforeEach(() => {
   db.projects = []
@@ -105,8 +111,8 @@ describe('MarketingProjects', () => {
     db.projects = [project, { ...project, id: 'p2', name: 'Deck rebuild', completed_on: '2026-09-01' }]
     render(<MarketingProjects userId="u1" />)
     await screen.findByText('Deck rebuild')
-    const input = screen.getByLabelText('Choose photos to upload') as HTMLInputElement
-    expect(input.accept).toBe('image/*')
+    const input = screen.getByLabelText('Choose photos or videos to upload') as HTMLInputElement
+    expect(input.accept).toBe('image/*,video/*')
     // An iPhone can hand over a HEIC with no type at all.
     const heic = new File(['a'], 'IMG_0042.HEIC', { type: '' })
     fireEvent.change(input, { target: { files: [heic] } })
@@ -119,6 +125,31 @@ describe('MarketingProjects', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Deck rebuild' })).toBeInTheDocument())
   })
 
+  it('shrinks a picked video and uploads it with a poster frame', async () => {
+    db.projects = [project]
+    render(<MarketingProjects userId="u1" />)
+    await screen.findByText('Kitchen remodel')
+    const input = screen.getByLabelText('Choose photos or videos to upload') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['a'], 'IMG_0100.MOV', { type: 'video/quicktime' })] } })
+    expect(await screen.findByText('Add 1 video to a project')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await waitFor(() => expect(bucket.upload).toHaveBeenCalledTimes(2))
+    const paths = (bucket.upload.mock.calls as unknown as string[][]).map((c) => c[0])
+    expect(paths[0]).toMatch(/^p1\/.+\.jpg$/)
+    expect(paths[1]).toMatch(/^p1\/.+\.mp4$/)
+    expect(db.inserted[0]).toMatchObject({ project_id: 'p1', kind: 'video', duration_seconds: 7.4, created_by: 'u1' })
+  })
+
+  it('shows a video as a playable tile with its length', async () => {
+    db.projects = [project]
+    db.photos = [{ ...photo('v1', 1), path: 'p1/v1.mp4', kind: 'video', duration_seconds: 161 }]
+    render(<MarketingProjects userId="u1" />)
+    fireEvent.click(await screen.findByText('Kitchen remodel'))
+    expect(await screen.findByRole('button', { name: 'Play video' })).toBeInTheDocument()
+    expect(screen.getByText('2:41')).toBeInTheDocument()
+    await waitFor(() => expect(bucket.createSignedUrls).toHaveBeenCalledWith(['p1/v1.mp4', 'p1/v1.jpg'], expect.any(Number)))
+  })
+
   it('creates a project and opens it for photos', async () => {
     render(<MarketingProjects userId="u1" />)
     fireEvent.click((await screen.findAllByRole('button', { name: /new project/i }))[0])
@@ -129,6 +160,6 @@ describe('MarketingProjects', () => {
     fireEvent.click(create)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Deck rebuild' })).toBeInTheDocument())
     expect(db.inserted[0]).toMatchObject({ name: 'Deck rebuild', description: 'Cedar.', company_id: null, created_by: 'u1' })
-    expect(screen.getByText('Add the best photos of this project')).toBeInTheDocument()
+    expect(screen.getByText('Add the best photos and videos of this project')).toBeInTheDocument()
   })
 })
