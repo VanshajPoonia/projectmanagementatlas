@@ -2648,7 +2648,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>
-                  <th className="sticky left-0 top-0 z-40 w-[142px] border-b border-r bg-foreground px-3 py-2 text-left text-xs font-bold uppercase text-background">
+                  <th className="sticky left-0 top-0 z-40 w-[92px] border-b border-r bg-foreground px-2 py-2 text-left text-xs font-bold uppercase text-background sm:w-[142px] sm:px-3">
                     Date
                   </th>
                   {/* Columns are rearrangeable: drag a header, or use the arrows
@@ -2750,11 +2750,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
                   return (
                     <tr key={dateKey} className={cn('align-top', isToday && 'bg-surface-note')}>
-                      <td className="sticky left-0 z-20 border-b border-r bg-background px-3 py-3">
+                      <td className="sticky left-0 z-20 border-b border-r bg-background px-2 py-2 sm:px-3 sm:py-3">
                         <div className="flex items-start gap-2">
-                          <div className={cn('mt-1 h-2.5 w-2.5 rounded-full', isToday ? 'bg-green-500' : 'bg-muted-foreground/30')} />
+                          <div className={cn('mt-1 hidden h-2.5 w-2.5 rounded-full sm:block', isToday ? 'bg-green-500' : 'bg-muted-foreground/30')} />
                           <div>
-                            <div className="font-bold">{fullDateFormatter.format(date)}</div>
+                            <div className="text-sm font-bold sm:text-base">{fullDateFormatter.format(date)}</div>
                             <div className="text-xs text-muted-foreground">{dayDone}/{dayItems.length} posted</div>
                           </div>
                         </div>

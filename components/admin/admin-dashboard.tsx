@@ -255,8 +255,8 @@ export default function AdminDashboard({ user, users, boards, tasks, shell }: Ad
         </aside>}
 
         {/* Main Content */}
-        <div className="flex-1 min-w-0 px-4 py-8 overflow-x-hidden">
-          <div className="mb-6">
+        <div className="flex-1 min-w-0 px-3 py-4 sm:px-4 sm:py-8 overflow-x-hidden">
+          <div className="mb-4 sm:mb-6">
             <GlobalSearch isAdmin />
           </div>
         <div ref={tabsRef}>

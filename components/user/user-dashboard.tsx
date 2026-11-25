@@ -260,7 +260,7 @@ export default function UserDashboard({ user, tasks, boards, users, shell }: Use
         {/* Main Content */}
         <div className={cn(
           'min-w-0 flex-1 overflow-x-hidden sm:px-4 sm:py-8',
-          activeTab === 'marketing' ? 'px-4 py-8' : 'px-3 py-5',
+          activeTab === 'marketing' ? 'px-3 py-4' : 'px-3 py-5',
         )}>
           <div className="mb-6">
             <GlobalSearch isAdmin={isAdmin} />
