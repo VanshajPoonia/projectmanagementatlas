@@ -232,6 +232,7 @@ function storeCalendarId(userId: string, calendarId: string) {
 
 const dateFormatter     = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
 const fullDateFormatter = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+const shortDateFormatter = new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric' })
 const monthFormatter    = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' })
 
 function parseDate(date: string) {
@@ -2455,8 +2456,9 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
       <>
           {/* ── Week board ───────────────────────────────────────────── */}
           {viewMode === 'week' && (
-            <div ref={weekBoardScrollRef} data-marketing-week-scroll className="max-h-[75dvh] overflow-auto">
-              <div className="grid min-w-[1080px] grid-cols-7 divide-x">
+            <div ref={weekBoardScrollRef} data-marketing-week-scroll className="max-h-[75dvh] snap-x snap-proximity overflow-auto">
+              {/* A phone gets one wide day at a time, 82vw each, instead of seven slivers. */}
+              <div className="grid min-w-[574vw] grid-cols-7 divide-x sm:min-w-[1080px]">
                 {weekDays.map(date => {
                   const dateKey    = toDateKey(date)
                   const dayItems   = weekItemsByDate.get(dateKey) ?? []
@@ -2467,7 +2469,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
 
                   return (
                     <div key={dateKey} data-calendar-date={dateKey}
-                      className={cn('flex min-h-[360px] flex-col border-b transition-colors', isDragOver && 'bg-primary/5')}
+                      className={cn('flex min-h-[360px] snap-start flex-col border-b transition-colors', isDragOver && 'bg-primary/5')}
                       onDragOver={handleCellDragOver(dayKey)}
                       onDragLeave={() => setDragOverKey(cur => cur === dayKey ? null : cur)}
                       onDrop={handleDayDrop(dateKey)}>
@@ -2754,8 +2756,11 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                         <div className="flex items-start gap-2">
                           <div className={cn('mt-1 hidden h-2.5 w-2.5 rounded-full sm:block', isToday ? 'bg-green-500' : 'bg-muted-foreground/30')} />
                           <div>
-                            <div className="text-sm font-bold sm:text-base">{fullDateFormatter.format(date)}</div>
-                            <div className="text-xs text-muted-foreground">{dayDone}/{dayItems.length} posted</div>
+                            <div className="text-sm font-bold sm:text-base">
+                              <span className="sm:hidden">{shortDateFormatter.format(date)}</span>
+                              <span className="max-sm:hidden">{fullDateFormatter.format(date)}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">{dayDone}/{dayItems.length}<span className="max-sm:hidden"> posted</span></div>
                           </div>
                         </div>
                       </td>
@@ -2882,7 +2887,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                           const primaryColor = item.companies[0]?.color ?? '#64748b'
 
                           return (
-                            <div key={item.id} className={cn('group flex items-center gap-3 px-3 py-2.5 transition-colors',
+                            <div key={item.id} className={cn('group flex flex-wrap items-center gap-x-1 gap-y-0 px-2 py-1.5 transition-colors sm:flex-nowrap sm:gap-x-3 sm:px-3 sm:py-2.5',
                               posted ? 'bg-muted/40' : missed ? 'bg-red-50 dark:bg-red-950/40' : 'hover:bg-accent/40')}>
                               {/* Status toggle (marks posted) */}
                               <button type="button" disabled={busyItemId === item.id} onClick={() => toggleItem(item)}
@@ -2915,10 +2920,10 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                               </span>
 
                               {/* Content + reason */}
-                              <span className="flex min-w-0 flex-1 flex-col">
+                              <span className="order-last flex min-w-0 basis-full flex-col sm:order-none sm:flex-1 sm:basis-auto">
                                 <span
                                   onClick={() => editable && openEditDialog(item)}
-                                  className={cn('truncate text-sm', editable && 'cursor-pointer hover:underline',
+                                  className={cn('line-clamp-2 break-words text-sm sm:truncate', editable && 'cursor-pointer hover:underline',
                                     posted && 'text-muted-foreground line-through decoration-2',
                                     missed && 'text-red-700 dark:text-red-300')}>
                                   {item.content}
@@ -2934,7 +2939,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                               </span>
 
                               {/* Badges */}
-                              <div className="flex flex-shrink-0 items-center gap-1.5">
+                              <div className="ml-auto flex flex-shrink-0 items-center gap-0 sm:ml-0 sm:gap-1.5">
                                 <button type="button" onClick={() => openAttachmentDialog(item)}
                                   aria-label={item.attachment ? `Open file for ${item.content}` : `Attach file to ${item.content}`}
                                   title={item.attachment ? 'Open attached file' : 'Attach a file'}
@@ -2957,7 +2962,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                                   <>
                                     <button type="button" onClick={() => openEditDialog(item)}
                                       aria-label="Edit event"
-                                      className="text-muted-foreground opacity-0 transition-colors hover:text-foreground group-hover:opacity-100">
+                                      className="text-muted-foreground opacity-0 transition-colors hover:text-foreground group-hover:opacity-100 max-sm:hidden">
                                       <Pencil className="h-3.5 w-3.5" />
                                     </button>
                                     <button type="button" onClick={() => handleDeleteItem(item)}
