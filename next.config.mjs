@@ -42,12 +42,14 @@ const nextConfig = {
           // marketing preview had been silently broken in production only.
           // Allowing the origin grants no access on its own: the buckets are private and
           // every object still requires a signed, short-lived URL.
-          "img-src 'self' data: blob: https://*.supabase.co https://www.google.com https://*.gstatic.com",
+          "img-src 'self' data: blob: https://*.supabase.co https://*.r2.cloudflarestorage.com https://www.google.com https://*.gstatic.com",
+          // Projects photos and videos load from, and upload to, signed Cloudflare R2 links, so R2 is
+          // listed under img-src, media-src and connect-src.
           // Social media reels play straight from a signed Storage URL. Without this,
           // media-src falls back to default-src and the browser refuses every video.
-          "media-src 'self' https://*.supabase.co",
+          "media-src 'self' https://*.supabase.co https://*.r2.cloudflarestorage.com",
           "font-src 'self' data:",
-          "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+          "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.r2.cloudflarestorage.com",
           "frame-ancestors 'none'",
           "object-src 'none'",
           "base-uri 'self'",
