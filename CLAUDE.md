@@ -2114,6 +2114,13 @@ is the same board as `/social` (`SocialBoard` in `social-view.tsx`, loaded in th
 - **Photos shrink in the browser** (`lib/image-compress.ts`): longest edge 1800 px, JPEG at 0.82,
   upright, transparency flattened to white. The bucket takes JPEG only. HEIC works only where the
   browser can decode it, and anything unreadable is skipped with a plain-words toast.
+- **Uploads carry a timestamp and can be filtered by date** (2026-11-25, no migration: photos
+  already had `created_at` and `created_by`). Each photo shows "Uploaded <time> by <name>", each
+  project card shows its last upload, and both the project list and a project's photos have a
+  From / To filter. Days are business-timezone days (`businessDate`, America/Chicago), so an
+  evening upload is not filed under tomorrow. A project matches a range if it was created in it or
+  any photo was uploaded in it. Logic is in `lib/marketing-projects.ts` (`inRange`,
+  `projectInRange`, `photosInRange`).
 - **No module row.** The Projects button follows the calendar. Until `140` is on a database the tab
   says "Projects are not set up on this database yet" instead of failing.
 - Purely additive and `--allow-prod` eligible. Checked on a local Postgres 17 with role-switched
