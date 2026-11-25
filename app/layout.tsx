@@ -1,5 +1,5 @@
 import React from "react"
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
@@ -15,7 +15,22 @@ export const metadata: Metadata = {
   description: 'Internal project management dashboard for task boards, collaboration, and team communication.',
   icons: {
     icon: '/favicon.ico',
+    apple: '/apple-icon.png',
   },
+  // Added to the iPhone home screen, it opens like an app instead of a Safari tab.
+  appleWebApp: { capable: true, title: 'Atlas', statusBarStyle: 'default' },
+}
+
+// viewport-fit=cover lets the page fill the notch and home-indicator areas. The bottom bar
+// pads itself with env(safe-area-inset-*) so nothing sits under them.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
+  ],
 }
 
 export default function RootLayout({
@@ -36,7 +51,7 @@ export default function RootLayout({
               inherit from :root. */}
           <AccentBoot>
             {children}
-            <footer className="py-3 text-center text-xs text-muted-foreground">
+            <footer className="py-3 pb-[calc(5rem+env(safe-area-inset-bottom))] text-center text-xs text-muted-foreground md:pb-3">
               Powered by{' '}
               <a
                 href="https://kreativvantage.com"
