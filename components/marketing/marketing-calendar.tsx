@@ -16,6 +16,7 @@ import {
   ImageIcon,
   Loader2,
   Megaphone,
+  MoreHorizontal,
   Paperclip,
   Pencil,
   Plus,
@@ -35,6 +36,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
 import { fetchAllRows } from '@/lib/fetch-all-rows'
@@ -455,7 +457,7 @@ function EventEntry({
       }}
       title={editable ? 'Click to edit, drag to reschedule' : 'Click the circle to toggle posted'}
       className={cn(
-        'cursor-pointer rounded-md border p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'group/card cursor-pointer rounded-md border p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         posted ? 'border-transparent bg-muted text-muted-foreground'
                : missed ? 'border-red-300 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40'
                : item.is_highlighted ? 'border-amber-300 bg-amber-100 hover:bg-amber-200 dark:border-amber-800 dark:bg-amber-950/60'
@@ -472,11 +474,6 @@ function EventEntry({
           <span className="truncate text-[10px] font-bold uppercase tracking-wide" style={{ color: labelInk }}>
             {companyLabel}{showChannelLabel ? ` · ${channelLabel}` : ''}
           </span>
-          {missed && (
-            <span className="flex-shrink-0 rounded bg-red-600 px-1 text-[9px] font-bold uppercase tracking-wide text-white">
-              Missed
-            </span>
-          )}
         </span>
         <span className="flex flex-shrink-0 items-center gap-1">
           <button type="button"
@@ -487,7 +484,7 @@ function EventEntry({
               'rounded p-0.5 transition-colors',
               item.attachment
                 ? 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-950/60 dark:text-sky-300'
-                : 'text-muted-foreground/50 hover:bg-muted hover:text-foreground',
+                : 'text-muted-foreground/50 opacity-0 hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover/card:opacity-100',
             )}>
             {item.attachment
               ? <FileText className="h-3.5 w-3.5" />
@@ -507,17 +504,17 @@ function EventEntry({
           </button>
         </span>
       </div>
-      <p className={cn('mt-1.5 break-words text-[13px] font-semibold leading-snug [overflow-wrap:anywhere]',
+      <p title={item.content} className={cn('mt-1.5 line-clamp-3 break-words text-[13px] font-semibold leading-snug [overflow-wrap:anywhere]',
         posted && 'line-through decoration-2')}>
         {item.content}
       </p>
       {missed && (
         <button type="button"
           onClick={e => { e.stopPropagation(); onEditReason() }}
-          className={cn('mt-1.5 flex w-full items-start gap-1 rounded border border-red-200 bg-card/60 px-1.5 py-1 text-left text-[11px] transition-colors hover:bg-card dark:border-red-900',
-            note ? 'text-red-700 dark:text-red-300' : 'text-red-600 dark:text-red-300')}>
-          <Pencil className="mt-0.5 h-3 w-3 flex-shrink-0" />
-          <span className="break-words [overflow-wrap:anywhere]">{note ? note : 'Add reason'}</span>
+          className={cn('mt-1 flex w-full items-center gap-1 text-left text-[11px] hover:underline',
+            note ? 'text-red-700 dark:text-red-300' : 'text-red-600/80 dark:text-red-300')}>
+          <Pencil className="h-3 w-3 flex-shrink-0" />
+          <span className="line-clamp-1">{note ? note : 'Add reason'}</span>
         </button>
       )}
     </div>
@@ -2317,38 +2314,29 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
     <section className="overflow-hidden rounded-lg border bg-background shadow-sm">
 
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="bg-brand-band px-4 py-4 text-brand-band-foreground sm:px-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-normal text-brand-accent">
-              <CalendarDays className="h-4 w-4" />
-              2026 Calendar
-            </div>
-            <h2 className="mt-1 break-words text-2xl font-bold tracking-normal sm:text-3xl">
-              {selectedCalendar ? selectedCalendar.name : 'Posting Board'}
-            </h2>
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 bg-brand-band px-4 py-2.5 text-brand-band-foreground sm:px-6">
+        <h2 className="min-w-0 break-words text-lg font-bold tracking-normal">
+          {selectedCalendar ? selectedCalendar.name : 'Posting Board'}
+        </h2>
+        <dl className="flex flex-wrap items-baseline gap-x-5 gap-y-0.5 text-sm">
+          <div className="flex items-baseline gap-1.5">
+            <dd className="font-semibold">{completionPercent}%</dd>
+            <dt className="text-xs text-brand-band-muted">Posted</dt>
           </div>
-
-          <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[360px]">
-            <div className="rounded-md border border-brand-band-foreground/15 bg-brand-band-foreground/10 p-3">
-              <div className="text-xl font-semibold">{completionPercent}%</div>
-              <div className="text-xs text-brand-band-muted">Posted</div>
-            </div>
-            <div className="rounded-md border border-brand-band-foreground/15 bg-brand-band-foreground/10 p-3">
-              <div className="text-xl font-semibold">{checkedPeriod}/{periodItems.length}</div>
-              <div className="text-xs text-brand-band-muted">{viewMode === 'month' ? 'This month' : 'This week'}</div>
-            </div>
-            <div className="rounded-md border border-brand-band-foreground/15 bg-brand-band-foreground/10 p-3">
-              <div className="text-xl font-semibold">{checkedVisible}/{totalVisible}</div>
-              <div className="text-xs text-brand-band-muted">All time</div>
-            </div>
+          <div className="flex items-baseline gap-1.5">
+            <dd className="font-semibold">{checkedPeriod}/{periodItems.length}</dd>
+            <dt className="text-xs text-brand-band-muted">{viewMode === 'month' ? 'This month' : 'This week'}</dt>
           </div>
-        </div>
+          <div className="flex items-baseline gap-1.5">
+            <dd className="font-semibold">{checkedVisible}/{totalVisible}</dd>
+            <dt className="text-xs text-brand-band-muted">All time</dt>
+          </div>
+        </dl>
       </div>
 
       {/* ── Controls ─────────────────────────────────────────────────── */}
-      <div className="border-b bg-muted/40 px-4 py-4 sm:px-6">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="border-b bg-muted/40 px-4 py-2.5 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="flex flex-wrap items-center gap-2">
             {activeCalendars.length > 1 && (
               <select
@@ -2366,7 +2354,7 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
               aria-label={viewMode === 'month' ? 'Previous month' : 'Previous week'}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="min-w-[168px] rounded-md border bg-background px-3 py-2 text-center text-sm font-semibold">
+            <div className="min-w-[150px] rounded-md border bg-background px-3 py-1.5 text-center text-sm font-semibold">
               {rangeLabel}
             </div>
             <Button type="button" variant="outline" size="icon" onClick={() => moveCalendar(1)}
@@ -2414,25 +2402,32 @@ export default function MarketingCalendar({ userId, userName, isAdmin = false, c
                 </Button>
               )
             })}
-            <Button variant="outline" size="icon" onClick={() => { loadCalendar(); loadChannels(); loadCompanies() }} aria-label="Refresh calendar">
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-
             {/* Not admin-gated: migration 105 lets any member of a marketing calendar maintain
                 the shared channel list, which is the same set of people who can see this tab.
                 Manage Calendars stays admin-only - that one grants other people access. */}
-            <Button type="button" variant="outline" size="sm" className="gap-1.5"
-              onClick={() => setChannelManagerOpen(true)}>
-              <SlidersHorizontal className="h-4 w-4" />
-              Edit channels
-            </Button>
-
-            {isAdmin && (
-              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setManageOpen(true)}>
-                <Settings className="h-4 w-4" />
-                Manage Calendars
-              </Button>
-            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" size="icon" aria-label="More calendar options">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => { loadCalendar(); loadChannels(); loadCompanies() }}>
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh calendar
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setChannelManagerOpen(true)}>
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Edit channels
+                </DropdownMenuItem>
+                {isAdmin && (
+                  <DropdownMenuItem onSelect={() => setManageOpen(true)}>
+                    <Settings className="h-4 w-4" />
+                    Manage Calendars
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* New event */}
             <Button size="sm" onClick={() => openCreateDialog()} className="gap-1.5">
