@@ -60,6 +60,11 @@ function dateLabel(date: string | null): string | null {
   return new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+/** Keeps images only. iPhone files can arrive with no type, so the extension counts too. */
+function pickImages(list: FileList | null): File[] {
+  return Array.from(list ?? []).filter((f) => f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name))
+}
+
 /** True when the migration that creates the tables has not been applied to this database. */
 function tablesMissing(error: { code?: string; message: string }): boolean {
   return error.code === 'PGRST205' || error.code === '42P01' || /could not find the table|does not exist/i.test(error.message)
@@ -77,6 +82,11 @@ export default function MarketingProjects({ userId }: { userId: string }) {
   const [openId, setOpenId] = useState<string | null>(null)
   // null = closed, 'new' = creating, otherwise the id of the project being edited.
   const [editing, setEditing] = useState<string | 'new' | null>(null)
+  // Photos picked from the list, waiting for the person to say which project they belong to.
+  const [incoming, setIncoming] = useState<File[] | null>(null)
+  const [targetId, setTargetId] = useState('')
+  const [sending, setSending] = useState<{ done: number; total: number } | null>(null)
+  const quickInput = useRef<HTMLInputElement>(null)
 
   const signPaths = useCallback(async (paths: string[]) => {
     if (!paths.length) return
@@ -251,6 +261,24 @@ export default function MarketingProjects({ userId }: { userId: string }) {
     setPhotos((prev) => prev.filter((p) => p.id !== photo.id))
   }
 
+  const pickForProject = (list: FileList | null) => {
+    const files = pickImages(list)
+    if (quickInput.current) quickInput.current.value = ''
+    if (!files.length) return
+    setIncoming(files)
+    setTargetId((id) => (projects.some((p) => p.id === id) ? id : (sorted[0]?.id ?? '')))
+  }
+
+  const sendIncoming = async () => {
+    const project = projects.find((p) => p.id === targetId)
+    if (!project || !incoming || sending) return
+    setSending({ done: 0, total: incoming.length })
+    await addPhotos(project, incoming, (done, total) => setSending({ done, total }))
+    setSending(null)
+    setIncoming(null)
+    setOpenId(project.id)
+  }
+
   if (loading) return <p className="text-muted-foreground py-16 text-center text-sm">Loading projects...</p>
   if (loadError) return <p role="alert" className="text-muted-foreground py-16 text-center text-sm">{loadError}</p>
 
@@ -277,10 +305,21 @@ export default function MarketingProjects({ userId }: { userId: string }) {
             <p className="text-muted-foreground max-w-2xl text-sm">
               Name a project, add its best photos and write it up. Photos are shrunk automatically when they upload.
             </p>
-            <Button size="sm" onClick={() => setEditing('new')} className="gap-1.5">
-              <Plus className="h-4 w-4" />
-              New project
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {sorted.length > 0 && (
+                <>
+                  <input ref={quickInput} type="file" multiple accept={PHOTO_ACCEPT} className="sr-only" aria-label="Choose photos to upload" onChange={(e) => pickForProject(e.target.files)} />
+                  <Button size="sm" variant="outline" onClick={() => quickInput.current?.click()} className="gap-1.5">
+                    <ImagePlus className="h-4 w-4" />
+                    Upload photos
+                  </Button>
+                </>
+              )}
+              <Button size="sm" onClick={() => setEditing('new')} className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                New project
+              </Button>
+            </div>
           </div>
 
           {sorted.length > 0 && <DateRangeFilter label="Added between" range={range} onChange={setRange} summary={rangeIsSet(range) ? `${shown.length} of ${sorted.length} projects` : null} />}
@@ -351,6 +390,42 @@ export default function MarketingProjects({ userId }: { userId: string }) {
           )}
         </>
       )}
+
+      <Dialog open={!!incoming} onOpenChange={(next) => !next && !sending && setIncoming(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Add {incoming?.length ?? 0} photo{incoming?.length === 1 ? '' : 's'} to a project
+            </DialogTitle>
+            <DialogDescription>Pick the project. Each photo is shrunk and shows who uploaded it and when.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="upload-project">Project</Label>
+            <select
+              id="upload-project"
+              value={targetId}
+              onChange={(e) => setTargetId(e.target.value)}
+              disabled={!!sending}
+              className="border-input bg-background h-10 w-full rounded-md border px-2 text-base sm:text-sm"
+            >
+              {sorted.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIncoming(null)} disabled={!!sending}>
+              Cancel
+            </Button>
+            <Button onClick={() => void sendIncoming()} disabled={!targetId || !!sending} className="gap-1.5">
+              {sending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {sending ? `Uploading ${Math.min(sending.done + 1, sending.total)} of ${sending.total}` : 'Upload'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {editing && (
         <ProjectEditor
@@ -497,7 +572,7 @@ function ProjectDetail({
   const viewed = photos.find((p) => p.id === viewing) ?? null
 
   const pick = async (list: FileList | null) => {
-    const files = Array.from(list ?? []).filter((f) => f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name))
+    const files = pickImages(list)
     if (input.current) input.current.value = ''
     if (!files.length) return
     setProgress({ done: 0, total: files.length })

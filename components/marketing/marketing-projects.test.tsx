@@ -36,6 +36,9 @@ function table(name: string) {
 
 vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({ from: table, storage: { from: () => bucket } }) }))
 vi.mock('sonner', () => ({ toast: toastMock }))
+vi.mock('@/lib/image-compress', () => ({
+  compressPhoto: vi.fn(async (file: File) => ({ blob: new Blob(['x'], { type: 'image/jpeg' }), width: 1800, height: 1200, originalBytes: file.size })),
+}))
 
 import MarketingProjects from './marketing-projects'
 
@@ -96,6 +99,24 @@ describe('MarketingProjects', () => {
 
     fireEvent.click(screen.getByText('Kitchen remodel'))
     expect(await screen.findByText('Uploaded Nov 25, 2026, 3:42 PM CST')).toBeInTheDocument()
+  })
+
+  it('uploads photos picked from the list to the project chosen', async () => {
+    db.projects = [project, { ...project, id: 'p2', name: 'Deck rebuild', completed_on: '2026-09-01' }]
+    render(<MarketingProjects userId="u1" />)
+    await screen.findByText('Deck rebuild')
+    const input = screen.getByLabelText('Choose photos to upload') as HTMLInputElement
+    expect(input.accept).toBe('image/*')
+    // An iPhone can hand over a HEIC with no type at all.
+    const heic = new File(['a'], 'IMG_0042.HEIC', { type: '' })
+    fireEvent.change(input, { target: { files: [heic] } })
+    expect(await screen.findByText('Add 1 photo to a project')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'p2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await waitFor(() => expect(bucket.upload).toHaveBeenCalledTimes(1))
+    expect((bucket.upload.mock.calls[0] as unknown as string[])[0]).toMatch(/^p2\//)
+    expect(db.inserted[0]).toMatchObject({ project_id: 'p2', created_by: 'u1' })
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Deck rebuild' })).toBeInTheDocument())
   })
 
   it('creates a project and opens it for photos', async () => {
