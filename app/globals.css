@@ -213,3 +213,64 @@
     }
   }
 }
+
+/*
+  Phone and touch fixes. Kept outside @layer so they beat Tailwind utilities, which is the
+  point: these correct utility classes that only make sense for a mouse.
+*/
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+@media (pointer: coarse) {
+  /* No 300ms double-tap-to-zoom wait, and no grey flash on every tap. */
+  a,
+  button,
+  [role='button'],
+  [role='tab'],
+  select,
+  summary,
+  label {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* iOS Safari zooms the whole page when a field under 16px takes focus, and never zooms back. */
+  select,
+  textarea,
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='hidden']) {
+    font-size: 16px;
+  }
+
+  /* Icon-only buttons were 44px tall and as narrow as their glyph. */
+  button:has(> svg:only-child),
+  a[data-slot='button']:has(> svg:only-child) {
+    min-width: 44px;
+  }
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  /* Type under 12px is unreadable at arm's length. */
+  .text-\[8px\],
+  .text-\[9px\],
+  .text-\[10px\],
+  .text-\[11px\] {
+    font-size: 12px;
+  }
+}
+
+/*
+  Tailwind wraps every hover: variant in (hover: hover), so on a phone a control written as
+  "opacity-0 group-hover:opacity-100" never appears at all. Show those controls.
+*/
+@media (hover: none) {
+  [class*='hover:opacity-100'],
+  [class*='group-hover/'][class*=':opacity-100'] {
+    opacity: 1 !important;
+  }
+}
