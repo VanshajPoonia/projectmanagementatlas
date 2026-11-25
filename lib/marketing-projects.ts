@@ -16,8 +16,8 @@ export const PHOTO_ACCEPT = 'image/*'
 export const MEDIA_ACCEPT = 'image/*,video/*'
 /** The biggest video a person may pick. It is shrunk in the browser before it uploads. */
 export const VIDEO_MAX_SOURCE_BYTES = 500 * 1024 * 1024
-/** The most one stored file can be on the Supabase Free plan, and the bucket's own limit. */
-export const VIDEO_MAX_STORED_BYTES = 50 * 1024 * 1024
+/** The most a shrunk video may weigh. R2 has no real cap, so this only keeps uploads quick on a phone. */
+export const VIDEO_MAX_STORED_BYTES = 250 * 1024 * 1024
 
 export interface MarketingProject {
   id: string
@@ -99,9 +99,19 @@ export function photoPath(projectId: string, photoId: string): string {
   return `${projectId}/${photoId}.jpg`
 }
 
-export function videoPath(projectId: string, mediaId: string): string {
-  return `${projectId}/${mediaId}.mp4`
+/** Where new media lives in Cloudflare R2. Older photos sit in Supabase Storage as `<project>/<id>.jpg`. */
+export const R2_PREFIX = 'projects/'
+
+export function mediaKey(projectId: string, mediaId: string, ext: 'jpg' | 'mp4'): string {
+  return `${R2_PREFIX}${projectId}/${mediaId}.${ext}`
 }
+
+export function isR2Path(path: string): boolean {
+  return path.startsWith(R2_PREFIX)
+}
+
+/** Only keys this app writes: projects/<uuid>/<uuid>.jpg or .mp4. Anything else is refused. */
+export const R2_KEY_PATTERN = /^projects\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|mp4)$/i
 
 /** A video's poster frame is a JPEG stored beside it, under the same id. */
 export function posterPath(path: string): string {
@@ -115,6 +125,11 @@ export function isVideo(photo: Pick<ProjectPhoto, 'kind'>): boolean {
 /** The image to show for a tile: the photo itself, or a video's poster frame. */
 export function thumbPath(photo: Pick<ProjectPhoto, 'kind' | 'path'>): string {
   return isVideo(photo) ? posterPath(photo.path) : photo.path
+}
+
+/** The Supabase half and the R2 half of a set of paths, since each is signed by a different service. */
+export function splitPaths(paths: string[]): { supabase: string[]; r2: string[] } {
+  return { supabase: paths.filter((p) => !isR2Path(p)), r2: paths.filter(isR2Path) }
 }
 
 /** Every Storage path that has to be signed to show these. A video needs its poster too. */

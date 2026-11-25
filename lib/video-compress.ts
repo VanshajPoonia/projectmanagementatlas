@@ -1,13 +1,14 @@
 // Shrinks a video in the browser before it uploads, so a phone video of several hundred MB lands
-// as an MP4 small enough for one Storage file (50 MB on the Supabase Free plan).
+// as an MP4 that uploads quickly on mobile data. R2 has no per-file cap, so the limit here is about
+// upload time, not storage.
 //
 // mediabunny does the work on WebCodecs, which uses the phone's video hardware, and is loaded only
 // when someone picks a video so it never weighs down the rest of the app.
 
 import { VIDEO_MAX_SOURCE_BYTES, VIDEO_MAX_STORED_BYTES } from '@/lib/marketing-projects'
 
-/** Aim under the stored limit: the container and audio add a little on top of the video bitrate. */
-const TARGET_BYTES = Math.floor(VIDEO_MAX_STORED_BYTES * 0.88)
+/** Aim well under the stored limit: the container and audio add a little on top of the video bitrate. */
+const TARGET_BYTES = 150 * 1024 * 1024
 const AUDIO_BITRATE = 96_000
 /** A small MP4 is left alone, because re-encoding it would only cost quality. */
 const KEEP_AS_IS_BYTES = 20 * 1024 * 1024
@@ -20,7 +21,8 @@ interface Tier {
 
 /** Best first. A longer video drops to a smaller picture before it drops to mush. */
 const TIERS: Tier[] = [
-  { edge: 1280, minBitrate: 1_200_000, maxBitrate: 3_500_000 },
+  { edge: 1920, minBitrate: 3_000_000, maxBitrate: 8_000_000 },
+  { edge: 1280, minBitrate: 1_200_000, maxBitrate: 4_000_000 },
   { edge: 960, minBitrate: 700_000, maxBitrate: 2_000_000 },
   { edge: 640, minBitrate: 350_000, maxBitrate: 1_000_000 },
 ]
@@ -94,7 +96,7 @@ export async function compressVideo(file: File, onProgress?: (fraction: number) 
 
   const plan = planVideo(duration, width, height, Boolean(audio))
   if (!plan) {
-    throw new Error(`${file.name} is too long to shrink under 50 MB. Keep it under about ${Math.floor(longestVideoSeconds() / 60)} minutes.`)
+    throw new Error(`${file.name} is too long to shrink enough to upload. Keep it under about ${Math.floor(longestVideoSeconds() / 60)} minutes.`)
   }
 
   const sink = new CanvasSink(track, { width: Math.min(plan.width, 640), fit: 'contain' })
@@ -123,6 +125,6 @@ export async function compressVideo(file: File, onProgress?: (fraction: number) 
   const buffer = output.target.buffer
   if (!buffer) throw new Error(`${file.name} could not be converted.`)
   const blob = new Blob([buffer], { type: 'video/mp4' })
-  if (blob.size > VIDEO_MAX_STORED_BYTES) throw new Error(`${file.name} is still over 50 MB after shrinking. Trim it and try again.`)
+  if (blob.size > VIDEO_MAX_STORED_BYTES) throw new Error(`${file.name} is still too big after shrinking. Trim it and try again.`)
   return { blob, poster, width: plan.width, height: plan.height, duration, originalBytes: file.size }
 }

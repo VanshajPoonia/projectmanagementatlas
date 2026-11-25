@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { compressPhoto } from '@/lib/image-compress'
+import { removeMedia, signMedia, uploadMedia } from '@/lib/project-media-client'
 import { compressVideo } from '@/lib/video-compress'
 import {
   AREA_MAX,
@@ -35,7 +36,7 @@ import {
   NO_RANGE,
   orderedRange,
   pathsToSign,
-  photoPath,
+  mediaKey,
   posterPath,
   photosInRange,
   projectInRange,
@@ -47,8 +48,8 @@ import {
   type DateRange,
   type MarketingProject,
   type ProjectDraft,
+  splitPaths,
   type ProjectPhoto,
-  videoPath,
 } from '@/lib/marketing-projects'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -105,13 +106,21 @@ export default function MarketingProjects({ userId }: { userId: string }) {
 
   const signPaths = useCallback(async (paths: string[]) => {
     if (!paths.length) return
-    const { data, error } = await createClient().storage.from(PROJECT_BUCKET).createSignedUrls(paths, SIGNED_URL_SECONDS)
-    if (error) {
-      toast.error('Could not load the project photos', { description: error.message })
-      return
+    const { supabase: legacy, r2 } = splitPaths(paths)
+    const signed: Record<string, string> = {}
+    if (legacy.length) {
+      const { data, error } = await createClient().storage.from(PROJECT_BUCKET).createSignedUrls(legacy, SIGNED_URL_SECONDS)
+      if (error) toast.error('Could not load some project photos', { description: error.message })
+      for (const d of (data ?? []) as Array<{ path: string | null; signedUrl: string }>) if (d.path) signed[d.path] = d.signedUrl
     }
-    const signed = (data ?? []).filter((d: { path: string | null }) => d.path) as Array<{ path: string; signedUrl: string }>
-    setUrls((prev) => ({ ...prev, ...Object.fromEntries(signed.map((d) => [d.path, d.signedUrl])) }))
+    if (r2.length) {
+      try {
+        Object.assign(signed, await signMedia(r2))
+      } catch (e) {
+        toast.error('Could not load the project media', { description: e instanceof Error ? e.message : undefined })
+      }
+    }
+    setUrls((prev) => ({ ...prev, ...signed }))
   }, [])
 
   useEffect(() => {
@@ -189,6 +198,24 @@ export default function MarketingProjects({ userId }: { userId: string }) {
     return true
   }
 
+  /** Removes files wherever they live. Returns how many stayed behind. */
+  const removeFiles = async (paths: string[]): Promise<number> => {
+    const { supabase: legacy, r2 } = splitPaths(paths)
+    let stayed = 0
+    if (legacy.length) {
+      const { error } = await createClient().storage.from(PROJECT_BUCKET).remove(legacy)
+      if (error) stayed += legacy.length
+    }
+    if (r2.length) {
+      try {
+        stayed += (await removeMedia(r2)).failed.length
+      } catch {
+        stayed += r2.length
+      }
+    }
+    return stayed
+  }
+
   const deleteProject = async (project: MarketingProject) => {
     const supabase = createClient()
     const own = photosByProject[project.id] ?? []
@@ -199,8 +226,8 @@ export default function MarketingProjects({ userId }: { userId: string }) {
     }
     // The rows are gone, so a file that will not delete only costs storage.
     if (own.length) {
-      const { error: removeError } = await supabase.storage.from(PROJECT_BUCKET).remove(own.map((p) => p.path))
-      if (removeError) toast.error('The project is deleted but some photo files stayed in storage', { description: removeError.message })
+      const stayed = await removeFiles(pathsToSign(own))
+      if (stayed) toast.error('The project is deleted but some files stayed in storage', { description: `${stayed} file${stayed === 1 ? '' : 's'} could not be removed.` })
     }
     setProjects((prev) => prev.filter((p) => p.id !== project.id))
     setPhotos((prev) => prev.filter((p) => p.project_id !== project.id))
@@ -210,7 +237,6 @@ export default function MarketingProjects({ userId }: { userId: string }) {
 
   const addPhotos = async (project: MarketingProject, files: File[], onProgress: (done: number, total: number, note?: string) => void) => {
     const supabase = createClient()
-    const storage = supabase.storage.from(PROJECT_BUCKET)
     let position = nextPosition(photosByProject[project.id] ?? [])
     let added = 0
     let savedBytes = 0
@@ -219,29 +245,24 @@ export default function MarketingProjects({ userId }: { userId: string }) {
       const uploaded: string[] = []
       try {
         const id = crypto.randomUUID()
-        const video = isVideoFile(file)
         let path: string
         let row: Record<string, unknown>
         let stored: number
         let original: number
-        if (video) {
+        if (isVideoFile(file)) {
           const shrunk = await compressVideo(file, (fraction) => onProgress(i, files.length, `Shrinking video ${Math.round(fraction * 100)}%`))
-          onProgress(i, files.length, 'Uploading video')
-          path = videoPath(project.id, id)
-          const poster = await storage.upload(posterPath(path), shrunk.poster, { contentType: 'image/jpeg', upsert: false })
-          if (poster.error) throw new Error(poster.error.message)
+          path = mediaKey(project.id, id, 'mp4')
+          await uploadMedia(posterPath(path), shrunk.poster, 'image/jpeg')
           uploaded.push(posterPath(path))
-          const upload = await storage.upload(path, shrunk.blob, { contentType: 'video/mp4', upsert: false })
-          if (upload.error) throw new Error(upload.error.message)
+          await uploadMedia(path, shrunk.blob, 'video/mp4', (fraction) => onProgress(i, files.length, `Uploading video ${Math.round(fraction * 100)}%`))
           uploaded.push(path)
           row = { kind: 'video', duration_seconds: Math.round(shrunk.duration * 10) / 10, width: shrunk.width, height: shrunk.height, bytes: shrunk.blob.size }
           stored = shrunk.blob.size
           original = shrunk.originalBytes
         } else {
           const shrunk = await compressPhoto(file)
-          path = photoPath(project.id, id)
-          const upload = await storage.upload(path, shrunk.blob, { contentType: 'image/jpeg', upsert: false })
-          if (upload.error) throw new Error(upload.error.message)
+          path = mediaKey(project.id, id, 'jpg')
+          await uploadMedia(path, shrunk.blob, 'image/jpeg')
           uploaded.push(path)
           row = { kind: 'image', width: shrunk.width, height: shrunk.height, bytes: shrunk.blob.size }
           stored = shrunk.blob.size
@@ -260,7 +281,7 @@ export default function MarketingProjects({ userId }: { userId: string }) {
         void signPaths(pathsToSign([data as ProjectPhoto]))
       } catch (e) {
         // A file with no row pointing at it would only use up the storage budget.
-        if (uploaded.length) await storage.remove(uploaded)
+        if (uploaded.length) await removeFiles(uploaded)
         toast.error(`Skipped ${file.name}`, { description: e instanceof Error ? e.message : 'The upload failed.' })
       }
     }
@@ -295,7 +316,7 @@ export default function MarketingProjects({ userId }: { userId: string }) {
       toast.error('The photo was not removed', { description: error.message })
       return
     }
-    await supabase.storage.from(PROJECT_BUCKET).remove(pathsToSign([photo]))
+    await removeFiles(pathsToSign([photo]))
     setPhotos((prev) => prev.filter((p) => p.id !== photo.id))
   }
 

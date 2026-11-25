@@ -3,15 +3,15 @@ import { VIDEO_MAX_STORED_BYTES } from './marketing-projects'
 import { longestVideoSeconds, planVideo, videoProblem } from './video-compress'
 
 describe('planVideo', () => {
-  it('keeps a short clip sharp at 720p', () => {
+  it('keeps a short clip sharp at 1080p', () => {
     const plan = planVideo(30, 1920, 1080, true)!
-    expect(plan).toMatchObject({ width: 1280, height: 720 })
-    expect(plan.bitrate).toBe(3_500_000)
+    expect(plan).toMatchObject({ width: 1920, height: 1080 })
+    expect(plan.bitrate).toBe(8_000_000)
   })
 
   it('keeps a portrait phone video upright and even-sized', () => {
     const plan = planVideo(20, 2160, 3840, true)!
-    expect(plan.height).toBe(1280)
+    expect(plan.height).toBe(1920)
     expect(plan.width % 2).toBe(0)
     expect(plan.width).toBeLessThan(plan.height)
   })
@@ -22,12 +22,12 @@ describe('planVideo', () => {
 
   it('drops the picture size before the bitrate for a longer video', () => {
     const short = planVideo(120, 1920, 1080, true)!
-    const long = planVideo(600, 1920, 1080, true)!
+    const long = planVideo(1800, 1920, 1080, true)!
     expect(long.width).toBeLessThan(short.width)
   })
 
   it('always fits the stored limit', () => {
-    for (const seconds of [5, 60, 240, 480, 700]) {
+    for (const seconds of [5, 60, 240, 900, 1800, 2400]) {
       const plan = planVideo(seconds, 1920, 1080, true)
       if (!plan) continue
       const bytes = ((plan.bitrate + 96_000) * seconds) / 8
@@ -40,7 +40,7 @@ describe('planVideo', () => {
   })
 
   it('gives a silent video the audio share too', () => {
-    expect(planVideo(400, 1920, 1080, false)!.bitrate).toBeGreaterThan(planVideo(400, 1920, 1080, true)!.bitrate)
+    expect(planVideo(900, 1920, 1080, false)!.bitrate).toBeGreaterThan(planVideo(900, 1920, 1080, true)!.bitrate)
   })
 
   it('rejects empty or unknown sizes', () => {

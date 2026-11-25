@@ -6,7 +6,9 @@ import {
   pathsToSign,
   posterPath,
   thumbPath,
-  videoPath,
+  mediaKey,
+  isR2Path,
+  splitPaths,
   coverOf,
   coverPosition,
   draftProblem,
@@ -177,8 +179,8 @@ describe('upload timestamps and date ranges', () => {
 
 describe('video media', () => {
   it('derives the poster path from the video path', () => {
-    expect(videoPath('p', 'm')).toBe('p/m.mp4')
-    expect(posterPath('p/m.mp4')).toBe('p/m.jpg')
+    expect(mediaKey('p', 'm', 'mp4')).toBe('projects/p/m.mp4')
+    expect(posterPath('projects/p/m.mp4')).toBe('projects/p/m.jpg')
   })
 
   it('shows a video by its poster and signs both files', () => {
@@ -199,5 +201,13 @@ describe('video media', () => {
     expect(durationLabel(161)).toBe('2:41')
     expect(durationLabel(7.4)).toBe('0:07')
     expect(durationLabel(null)).toBe('')
+  })
+})
+
+describe('where media lives', () => {
+  it('tells R2 keys from older Supabase paths', () => {
+    expect(isR2Path('projects/a/b.jpg')).toBe(true)
+    expect(isR2Path('a/b.jpg')).toBe(false)
+    expect(splitPaths(['a/b.jpg', 'projects/a/b.mp4'])).toEqual({ supabase: ['a/b.jpg'], r2: ['projects/a/b.mp4'] })
   })
 })

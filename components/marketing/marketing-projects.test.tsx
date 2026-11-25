@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { db, bucket, toastMock } = vi.hoisted(() => {
+const { db, bucket, toastMock, media } = vi.hoisted(() => {
   const bucket = {
     createSignedUrls: vi.fn(async (paths: string[]) => ({ data: paths.map((path) => ({ path, signedUrl: `https://files/${path}` })), error: null })),
     upload: vi.fn(async () => ({ error: null })),
@@ -15,7 +15,12 @@ const { db, bucket, toastMock } = vi.hoisted(() => {
     projectsError: null as null | { code?: string; message: string },
     inserted: [] as unknown[],
   }
-  return { db, bucket, toastMock: { error: vi.fn(), success: vi.fn() } }
+  const media = {
+    uploadMedia: vi.fn(async () => undefined),
+    signMedia: vi.fn(async (keys: string[]) => Object.fromEntries(keys.map((k) => [k, `https://r2/${k}`]))),
+    removeMedia: vi.fn(async () => ({ failed: [] as string[] })),
+  }
+  return { db, bucket, toastMock: { error: vi.fn(), success: vi.fn() }, media }
 })
 
 function table(name: string) {
@@ -36,6 +41,7 @@ function table(name: string) {
 
 vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({ from: table, storage: { from: () => bucket } }) }))
 vi.mock('sonner', () => ({ toast: toastMock }))
+vi.mock('@/lib/project-media-client', () => media)
 vi.mock('@/lib/video-compress', () => ({
   compressVideo: vi.fn(async (file: File, onProgress?: (f: number) => void) => {
     onProgress?.(0.5)
@@ -119,8 +125,8 @@ describe('MarketingProjects', () => {
     expect(await screen.findByText('Add 1 photo to a project')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'p2' } })
     fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
-    await waitFor(() => expect(bucket.upload).toHaveBeenCalledTimes(1))
-    expect((bucket.upload.mock.calls[0] as unknown as string[])[0]).toMatch(/^p2\//)
+    await waitFor(() => expect(media.uploadMedia).toHaveBeenCalledTimes(1))
+    expect((media.uploadMedia.mock.calls[0] as unknown as string[])[0]).toMatch(/^projects\/p2\/.+\.jpg$/)
     expect(db.inserted[0]).toMatchObject({ project_id: 'p2', created_by: 'u1' })
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Deck rebuild' })).toBeInTheDocument())
   })
@@ -133,21 +139,21 @@ describe('MarketingProjects', () => {
     fireEvent.change(input, { target: { files: [new File(['a'], 'IMG_0100.MOV', { type: 'video/quicktime' })] } })
     expect(await screen.findByText('Add 1 video to a project')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
-    await waitFor(() => expect(bucket.upload).toHaveBeenCalledTimes(2))
-    const paths = (bucket.upload.mock.calls as unknown as string[][]).map((c) => c[0])
-    expect(paths[0]).toMatch(/^p1\/.+\.jpg$/)
-    expect(paths[1]).toMatch(/^p1\/.+\.mp4$/)
+    await waitFor(() => expect(media.uploadMedia).toHaveBeenCalledTimes(2))
+    const paths = (media.uploadMedia.mock.calls as unknown as string[][]).map((c) => c[0])
+    expect(paths[0]).toMatch(/^projects\/p1\/.+\.jpg$/)
+    expect(paths[1]).toMatch(/^projects\/p1\/.+\.mp4$/)
     expect(db.inserted[0]).toMatchObject({ project_id: 'p1', kind: 'video', duration_seconds: 7.4, created_by: 'u1' })
   })
 
   it('shows a video as a playable tile with its length', async () => {
     db.projects = [project]
-    db.photos = [{ ...photo('v1', 1), path: 'p1/v1.mp4', kind: 'video', duration_seconds: 161 }]
+    db.photos = [{ ...photo('v1', 1), path: 'projects/p1/v1.mp4', kind: 'video', duration_seconds: 161 }]
     render(<MarketingProjects userId="u1" />)
     fireEvent.click(await screen.findByText('Kitchen remodel'))
     expect(await screen.findByRole('button', { name: 'Play video' })).toBeInTheDocument()
     expect(screen.getByText('2:41')).toBeInTheDocument()
-    await waitFor(() => expect(bucket.createSignedUrls).toHaveBeenCalledWith(['p1/v1.mp4', 'p1/v1.jpg'], expect.any(Number)))
+    await waitFor(() => expect(media.signMedia).toHaveBeenCalledWith(['projects/p1/v1.mp4', 'projects/p1/v1.jpg']))
   })
 
   it('creates a project and opens it for photos', async () => {
