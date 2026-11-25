@@ -2121,15 +2121,25 @@ is the same board as `/social` (`SocialBoard` in `social-view.tsx`, loaded in th
   evening upload is not filed under tomorrow. A project matches a range if it was created in it or
   any photo was uploaded in it. Logic is in `lib/marketing-projects.ts` (`inRange`,
   `projectInRange`, `photosInRange`).
-- **Videos** (`141`, 2026-11-26): a project's media can be a photo or a video (`kind`, `duration_seconds`
-  on `marketing_project_photos`). A picked video up to 500 MB is shrunk in the browser by
-  `lib/video-compress.ts` (mediabunny on WebCodecs, H.264 + AAC MP4, 1280/960/640 px picked from
-  the length so the result fits under **50 MB**, the Supabase Free per-file cap and the bucket's
-  limit). The poster frame is a JPEG stored beside the video under the same id
-  (`posterPath`); it is not a row. Measured in real Chrome: 476 MB / 6 min became 43 MB in 30 s,
-  76 MB / 25 s became 11 MB in 2.4 s. A video too long for 640 px (about 13 min) is refused with a
-  plain message. ⚠️ `141` must be on a database before the code ships: the page selects the new
-  columns, so Projects fails to load without it.
+- **Projects media lives in Cloudflare R2** (2026-11-26, migrations `141` and `142`). A project's
+  media is a photo or a video (`kind`, `duration_seconds`). New uploads go to the private R2 bucket
+  `atlas-pm-projects` under `projects/<project id>/<media id>.jpg|mp4`; older photos stay in the
+  Supabase `marketing-projects` bucket until `scripts/copy-projects-to-r2.mjs` moves them
+  (`isR2Path` tells them apart, so both work meanwhile). ⚠️ Not the `atlas-media` bucket: that is
+  the AGC website's public bucket.
+  - **One door:** `app/api/marketing-projects/media` signs download, upload and delete links, and
+    only after `public.marketing_projects_access()` (142, a wrapper over
+    `private.can_manage_marketing_channels()`) says yes for the signed-in caller. R2 is outside
+    RLS, so this check IS the access rule. Keys must match `R2_KEY_PATTERN`.
+  - **Signing is hand-written SigV4** in `lib/r2.ts` (no SDK), tested against AWS's published
+    example signature. Browser code is `lib/project-media-client.ts`; the browser PUTs straight to R2.
+  - **Settings:** `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` on
+    Vercel. Without them the route answers 503 "File storage is not set up yet." CSP lists
+    `*.r2.cloudflarestorage.com` under img-src, media-src and connect-src. Bucket CORS allows
+    project.goatlasgo.us and localhost:3000 for GET, PUT and HEAD.
+  - **Videos up to 500 MB** are shrunk in the browser first (`lib/video-compress.ts`, mediabunny on
+    WebCodecs, H.264 + AAC MP4, 1080p down to 360p by length, aimed at 150 MB). Measured in real
+    Chrome: 476 MB / 6 min became 43 MB in 30 s at the old 50 MB target.
 - **No module row.** The Projects button follows the calendar. Until `140` is on a database the tab
   says "Projects are not set up on this database yet" instead of failing.
 - Purely additive and `--allow-prod` eligible. Checked on a local Postgres 17 with role-switched
