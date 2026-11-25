@@ -25,10 +25,18 @@ import {
   draftProblem,
   draftToRow,
   formatBytes,
+  lastUploadOf,
   nextPosition,
+  NO_RANGE,
+  orderedRange,
   photoPath,
+  photosInRange,
+  projectInRange,
+  rangeIsSet,
   sortPhotos,
   sortProjects,
+  timestampLabel,
+  type DateRange,
   type MarketingProject,
   type ProjectDraft,
   type ProjectPhoto,
@@ -38,7 +46,7 @@ import { cn } from '@/lib/utils'
 
 const SIGNED_URL_SECONDS = 60 * 60
 const PROJECT_COLUMNS = 'id, name, company_id, area, completed_on, description, created_at, updated_at'
-const PHOTO_COLUMNS = 'id, project_id, path, caption, position, width, height, bytes'
+const PHOTO_COLUMNS = 'id, project_id, path, caption, position, width, height, bytes, created_at, created_by'
 
 interface Company {
   id: string
@@ -61,6 +69,8 @@ export default function MarketingProjects({ userId }: { userId: string }) {
   const [projects, setProjects] = useState<MarketingProject[]>([])
   const [photos, setPhotos] = useState<ProjectPhoto[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
+  const [people, setPeople] = useState<Record<string, string>>({})
+  const [range, setRange] = useState<DateRange>(NO_RANGE)
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -83,10 +93,11 @@ export default function MarketingProjects({ userId }: { userId: string }) {
     let active = true
     const load = async () => {
       const supabase = createClient()
-      const [projectsResult, photosResult, companiesResult] = await Promise.all([
+      const [projectsResult, photosResult, companiesResult, peopleResult] = await Promise.all([
         supabase.from('marketing_projects').select(PROJECT_COLUMNS),
         supabase.from('marketing_project_photos').select(PHOTO_COLUMNS),
         supabase.from('companies').select('id, code, name, color, position, is_archived').order('position'),
+        supabase.from('profiles').select('id, full_name, email'),
       ])
       if (!active) return
       const failed = projectsResult.error ?? photosResult.error
@@ -98,6 +109,8 @@ export default function MarketingProjects({ userId }: { userId: string }) {
         setPhotos(loadedPhotos)
         void signPaths(loadedPhotos.map((p) => p.path))
       }
+      const names = (peopleResult.data ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>
+      setPeople(Object.fromEntries(names.map((n) => [n.id, n.full_name || n.email || 'Someone'])))
       setCompanies(((companiesResult.data ?? []) as Array<Company & { is_archived: boolean }>).filter((c) => !c.is_archived))
       setLoading(false)
     }
@@ -114,6 +127,7 @@ export default function MarketingProjects({ userId }: { userId: string }) {
   }, [photos])
   const companyById = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies])
   const sorted = useMemo(() => sortProjects(projects), [projects])
+  const shown = useMemo(() => sorted.filter((p) => projectInRange(p, photosByProject[p.id] ?? [], range)), [sorted, photosByProject, range])
   const open = projects.find((p) => p.id === openId) ?? null
   const editTarget = editing && editing !== 'new' ? (projects.find((p) => p.id === editing) ?? null) : null
 
@@ -247,6 +261,7 @@ export default function MarketingProjects({ userId }: { userId: string }) {
           project={open}
           company={open.company_id ? companyById.get(open.company_id) : undefined}
           photos={sortPhotos(photosByProject[open.id] ?? [])}
+          people={people}
           urls={urls}
           onBack={() => setOpenId(null)}
           onEdit={() => setEditing(open.id)}
@@ -268,6 +283,8 @@ export default function MarketingProjects({ userId }: { userId: string }) {
             </Button>
           </div>
 
+          {sorted.length > 0 && <DateRangeFilter label="Added between" range={range} onChange={setRange} summary={rangeIsSet(range) ? `${shown.length} of ${sorted.length} projects` : null} />}
+
           {sorted.length === 0 ? (
             <div className="rounded-lg border border-dashed px-6 py-16 text-center">
               <p className="font-medium">No projects yet</p>
@@ -277,13 +294,21 @@ export default function MarketingProjects({ userId }: { userId: string }) {
                 New project
               </Button>
             </div>
+          ) : shown.length === 0 ? (
+            <div className="rounded-lg border border-dashed px-6 py-12 text-center">
+              <p className="font-medium">Nothing was added in those dates</p>
+              <Button size="sm" variant="outline" className="mt-4" onClick={() => setRange(NO_RANGE)}>
+                Clear dates
+              </Button>
+            </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {sorted.map((p) => {
+              {shown.map((p) => {
                 const own = photosByProject[p.id] ?? []
                 const cover = coverOf(own)
                 const company = p.company_id ? companyById.get(p.company_id) : undefined
                 const meta = [p.area, dateLabel(p.completed_on)].filter(Boolean).join(' · ')
+                const lastUpload = lastUploadOf(own)
                 return (
                   <button
                     key={p.id}
@@ -315,6 +340,9 @@ export default function MarketingProjects({ userId }: { userId: string }) {
                       </div>
                       {meta && <p className="text-muted-foreground text-xs">{meta}</p>}
                       {p.description && <p className="text-muted-foreground line-clamp-2 text-sm">{p.description}</p>}
+                      <p className="text-muted-foreground text-xs">
+                        {lastUpload ? `Last upload ${timestampLabel(lastUpload)}` : `Created ${timestampLabel(p.created_at)}`}
+                      </p>
                     </div>
                   </button>
                 )
@@ -436,6 +464,7 @@ function ProjectDetail({
   project,
   company,
   photos,
+  people,
   urls,
   onBack,
   onEdit,
@@ -448,6 +477,7 @@ function ProjectDetail({
   project: MarketingProject
   company: Company | undefined
   photos: ProjectPhoto[]
+  people: Record<string, string>
   urls: Record<string, string>
   onBack: () => void
   onEdit: () => void
@@ -461,6 +491,8 @@ function ProjectDetail({
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [viewing, setViewing] = useState<string | null>(null)
+  const [range, setRange] = useState<DateRange>(NO_RANGE)
+  const visible = photosInRange(photos, range)
   const meta = [company?.name, project.area, dateLabel(project.completed_on)].filter(Boolean).join(' · ')
   const viewed = photos.find((p) => p.id === viewing) ?? null
 
@@ -528,6 +560,10 @@ function ProjectDetail({
           <span className="text-muted-foreground text-xs">Pick as many as you like. Each one is shrunk before it uploads.</span>
         </div>
 
+        {photos.length > 0 && (
+          <DateRangeFilter label="Uploaded between" range={range} onChange={setRange} summary={rangeIsSet(range) ? `${visible.length} of ${photos.length} photos` : null} />
+        )}
+
         {photos.length === 0 ? (
           <button
             type="button"
@@ -538,9 +574,11 @@ function ProjectDetail({
             <ImagePlus className="h-6 w-6" />
             Add the best photos of this project
           </button>
+        ) : visible.length === 0 ? (
+          <p className="text-muted-foreground rounded-lg border border-dashed px-6 py-10 text-center text-sm">No photos were uploaded in those dates.</p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {photos.map((photo, i) => (
+            {visible.map((photo) => (
               <figure key={photo.id} className="bg-card overflow-hidden rounded-lg border">
                 <button type="button" onClick={() => setViewing(photo.id)} className="bg-muted relative block aspect-[4/3] w-full" aria-label="View photo larger">
                   {urls[photo.path] ? (
@@ -549,7 +587,7 @@ function ProjectDetail({
                   ) : (
                     <span className="text-muted-foreground flex h-full items-center justify-center text-sm">Loading photo...</span>
                   )}
-                  {i === 0 && (
+                  {photo.id === photos[0]?.id && (
                     <span className="absolute top-2 left-2 flex items-center gap-1 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white">
                       <Star className="h-3 w-3" aria-hidden="true" /> Cover
                     </span>
@@ -557,10 +595,14 @@ function ProjectDetail({
                 </button>
                 <figcaption className="space-y-2 p-3">
                   <CaptionField photo={photo} onSave={onCaption} />
+                  <p className="text-muted-foreground text-xs">
+                    Uploaded {timestampLabel(photo.created_at)}
+                    {photo.created_by && people[photo.created_by] ? ` by ${people[photo.created_by]}` : ''}
+                  </p>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-muted-foreground text-xs tabular-nums">{photo.bytes ? formatBytes(photo.bytes) : ''}</span>
                     <div className="flex gap-1">
-                      {i !== 0 && (
+                      {photo.id !== photos[0]?.id && (
                         <Button size="sm" variant="ghost" onClick={() => void onCover(photo)} className="h-7 gap-1 px-2 text-xs">
                           <Star className="h-3.5 w-3.5" />
                           Make cover
@@ -583,7 +625,9 @@ function ProjectDetail({
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>{project.name}</DialogTitle>
-            <DialogDescription>{viewed?.caption || 'No caption'}</DialogDescription>
+            <DialogDescription>
+              {[viewed?.caption || 'No caption', viewed ? `Uploaded ${timestampLabel(viewed.created_at)}` : ''].filter(Boolean).join(' · ')}
+            </DialogDescription>
           </DialogHeader>
           {viewed && urls[viewed.path] && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -618,6 +662,33 @@ function CaptionField({ photo, onSave }: { photo: ProjectPhoto; onSave: (photo: 
         }}
       />
       {saved && <Check className="absolute top-2 right-2 h-4 w-4 text-emerald-600" aria-label="Saved" />}
+    </div>
+  )
+}
+
+function DateRangeFilter({ label, range, onChange, summary }: { label: string; range: DateRange; onChange: (range: DateRange) => void; summary: string | null }) {
+  const set = (key: keyof DateRange, value: string) => onChange(orderedRange({ ...range, [key]: value }))
+  const id = label.toLowerCase().replace(/\s+/g, '-')
+  return (
+    <div className="flex flex-wrap items-end gap-3" role="group" aria-label={label}>
+      <div className="space-y-1">
+        <Label htmlFor={`${id}-from`} className="text-xs">
+          {label}: from
+        </Label>
+        <Input id={`${id}-from`} type="date" value={range.from} max={range.to || undefined} onChange={(e) => set('from', e.target.value)} className="h-8 w-40" />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`${id}-to`} className="text-xs">
+          to
+        </Label>
+        <Input id={`${id}-to`} type="date" value={range.to} min={range.from || undefined} onChange={(e) => set('to', e.target.value)} className="h-8 w-40" />
+      </div>
+      {rangeIsSet(range) && (
+        <Button size="sm" variant="ghost" onClick={() => onChange(NO_RANGE)} className="h-8">
+          Clear dates
+        </Button>
+      )}
+      {summary && <span className="text-muted-foreground pb-1.5 text-xs tabular-nums">{summary}</span>}
     </div>
   )
 }

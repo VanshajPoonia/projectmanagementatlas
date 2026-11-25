@@ -49,7 +49,7 @@ const project = {
   created_at: '2026-10-06T10:00:00+00:00',
   updated_at: '2026-10-06T10:00:00+00:00',
 }
-const photo = (id: string, position: number) => ({ id, project_id: 'p1', path: `p1/${id}.jpg`, caption: '', position, width: 1800, height: 1200, bytes: 250_000 })
+const photo = (id: string, position: number) => ({ id, project_id: 'p1', path: `p1/${id}.jpg`, caption: '', position, width: 1800, height: 1200, bytes: 250_000, created_at: '2026-11-25T21:42:00+00:00', created_by: 'u2' })
 
 beforeEach(() => {
   db.projects = []
@@ -80,6 +80,22 @@ describe('MarketingProjects', () => {
     expect(screen.getByText('SRG')).toBeInTheDocument()
     expect(screen.getByText('2 photos')).toBeInTheDocument()
     await waitFor(() => expect(document.querySelector('img')).toHaveAttribute('src', 'https://files/p1/a.jpg'))
+  })
+
+  it('shows when and by whom a photo was uploaded, and filters by date', async () => {
+    db.projects = [project, { ...project, id: 'p2', name: 'Deck rebuild', created_at: '2026-09-01T10:00:00+00:00' }]
+    db.photos = [photo('a', 1), { ...photo('z', 1), id: 'z', project_id: 'p2', path: 'p2/z.jpg', created_at: '2026-09-02T18:00:00+00:00' }]
+    render(<MarketingProjects userId="u1" />)
+    expect(await screen.findByText('Deck rebuild')).toBeInTheDocument()
+    expect(screen.getByText('Last upload Nov 25, 2026, 3:42 PM CST')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Added between: from'), { target: { value: '2026-11-01' } })
+    expect(screen.queryByText('Deck rebuild')).not.toBeInTheDocument()
+    expect(screen.getByText('Kitchen remodel')).toBeInTheDocument()
+    expect(screen.getByText('1 of 2 projects')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Kitchen remodel'))
+    expect(await screen.findByText('Uploaded Nov 25, 2026, 3:42 PM CST')).toBeInTheDocument()
   })
 
   it('creates a project and opens it for photos', async () => {
