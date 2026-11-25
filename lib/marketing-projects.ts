@@ -1,5 +1,7 @@
 // Pure rules for Projects on the Marketing tab (migration 140). No React, no Supabase.
 
+import { BUSINESS_TIME_ZONE, businessDate } from '@/lib/crm'
+
 export const PROJECT_BUCKET = 'marketing-projects'
 export const NAME_MAX = 160
 export const AREA_MAX = 160
@@ -31,7 +33,17 @@ export interface ProjectPhoto {
   width: number | null
   height: number | null
   bytes: number | null
+  created_at: string
+  created_by: string | null
 }
+
+/** Both ends are `YYYY-MM-DD` calendar days in the business timezone. Empty means open-ended. */
+export interface DateRange {
+  from: string
+  to: string
+}
+
+export const NO_RANGE: DateRange = { from: '', to: '' }
 
 export interface ProjectDraft {
   name: string
@@ -112,4 +124,67 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const STAMP = new Intl.DateTimeFormat('en-US', {
+  timeZone: BUSINESS_TIME_ZONE,
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZoneName: 'short',
+})
+
+/** "Nov 25, 2026, 3:42 PM CST". Always the business timezone so everyone reads the same time. */
+export function timestampLabel(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? '' : STAMP.format(date)
+}
+
+/** The calendar day an instant falls on in the business timezone, or '' when it is missing. */
+export function dayOf(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? '' : businessDate(date)
+}
+
+export function rangeIsSet(range: DateRange): boolean {
+  return range.from !== '' || range.to !== ''
+}
+
+/** True when the instant's business day sits inside the range, ends included. */
+export function inRange(iso: string | null | undefined, range: DateRange): boolean {
+  const day = dayOf(iso)
+  if (!day) return false
+  if (range.from && day < range.from) return false
+  if (range.to && day > range.to) return false
+  return true
+}
+
+/** Photos uploaded inside the range. No range keeps every photo. */
+export function photosInRange(photos: ProjectPhoto[], range: DateRange): ProjectPhoto[] {
+  return rangeIsSet(range) ? photos.filter((p) => inRange(p.created_at, range)) : photos
+}
+
+/**
+ * A project matches when it was created inside the range or any of its photos was uploaded inside it,
+ * so a job started in October still turns up on the day Bobby adds a photo to it.
+ */
+export function projectInRange(project: MarketingProject, photos: ProjectPhoto[], range: DateRange): boolean {
+  if (!rangeIsSet(range)) return true
+  return inRange(project.created_at, range) || photos.some((p) => inRange(p.created_at, range))
+}
+
+/** The newest upload time among the photos, or null when there are none. */
+export function lastUploadOf(photos: ProjectPhoto[]): string | null {
+  let latest: string | null = null
+  for (const p of photos) if (p.created_at && (!latest || p.created_at > latest)) latest = p.created_at
+  return latest
+}
+
+/** A range typed backwards is read the way the person meant it. */
+export function orderedRange(range: DateRange): DateRange {
+  return range.from && range.to && range.from > range.to ? { from: range.to, to: range.from } : range
 }

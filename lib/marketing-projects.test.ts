@@ -11,6 +11,12 @@ import {
   photoPath,
   sortPhotos,
   sortProjects,
+  inRange,
+  lastUploadOf,
+  orderedRange,
+  photosInRange,
+  projectInRange,
+  timestampLabel,
   type MarketingProject,
   type ProjectPhoto,
 } from './marketing-projects'
@@ -24,6 +30,8 @@ const photo = (id: string, position: number): ProjectPhoto => ({
   width: null,
   height: null,
   bytes: null,
+  created_at: '2026-11-25T15:42:00+00:00',
+  created_by: null,
 })
 
 const project = (id: string, over: Partial<MarketingProject> = {}): MarketingProject => ({
@@ -109,5 +117,51 @@ describe('formatBytes', () => {
     expect(formatBytes(900)).toBe('900 B')
     expect(formatBytes(250 * 1024)).toBe('250 KB')
     expect(formatBytes(3.5 * 1024 * 1024)).toBe('3.5 MB')
+  })
+})
+
+describe('upload timestamps and date ranges', () => {
+  const at = (id: string, created_at: string): ProjectPhoto => ({ ...photo(id, 0), created_at })
+
+  it('writes the time in the business timezone', () => {
+    expect(timestampLabel('2026-11-25T21:42:00+00:00')).toBe('Nov 25, 2026, 3:42 PM CST')
+    expect(timestampLabel(null)).toBe('')
+    expect(timestampLabel('nonsense')).toBe('')
+  })
+
+  it('judges the day where the business is, not in UTC', () => {
+    // 02:00 UTC on the 26th is still the evening of the 25th in Chicago.
+    const late = '2026-11-26T02:00:00+00:00'
+    expect(inRange(late, { from: '2026-11-25', to: '2026-11-25' })).toBe(true)
+    expect(inRange(late, { from: '2026-11-26', to: '' })).toBe(false)
+  })
+
+  it('treats both ends as included and an empty end as open', () => {
+    const range = { from: '2026-11-20', to: '2026-11-25' }
+    expect(inRange('2026-11-20T18:00:00+00:00', range)).toBe(true)
+    expect(inRange('2026-11-25T18:00:00+00:00', range)).toBe(true)
+    expect(inRange('2026-11-26T18:00:00+00:00', range)).toBe(false)
+    expect(inRange('2026-11-19T18:00:00+00:00', { from: '', to: '2026-11-20' })).toBe(true)
+  })
+
+  it('keeps every photo when no range is set and filters when one is', () => {
+    const list = [at('a', '2026-11-10T18:00:00+00:00'), at('b', '2026-11-25T18:00:00+00:00')]
+    expect(photosInRange(list, { from: '', to: '' })).toHaveLength(2)
+    expect(photosInRange(list, { from: '2026-11-24', to: '' }).map((p) => p.id)).toEqual(['b'])
+  })
+
+  it('matches a project by its own creation day or by any photo upload day', () => {
+    const old = project('old', { created_at: '2026-10-01T18:00:00+00:00' })
+    const range = { from: '2026-11-24', to: '2026-11-26' }
+    expect(projectInRange(old, [], range)).toBe(false)
+    expect(projectInRange(old, [at('a', '2026-11-25T18:00:00+00:00')], range)).toBe(true)
+    expect(projectInRange(project('new', { created_at: '2026-11-25T18:00:00+00:00' }), [], range)).toBe(true)
+    expect(projectInRange(old, [], { from: '', to: '' })).toBe(true)
+  })
+
+  it('finds the newest upload and swaps a backwards range', () => {
+    expect(lastUploadOf([at('a', '2026-11-10T18:00:00+00:00'), at('b', '2026-11-25T18:00:00+00:00')])).toBe('2026-11-25T18:00:00+00:00')
+    expect(lastUploadOf([])).toBeNull()
+    expect(orderedRange({ from: '2026-11-25', to: '2026-11-20' })).toEqual({ from: '2026-11-20', to: '2026-11-25' })
   })
 })
