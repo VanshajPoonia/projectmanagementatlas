@@ -3,8 +3,10 @@
 import * as React from 'react'
 import { useState } from 'react'
 import Link from 'next/link'
+import { MoreHorizontal } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { AppSidebar, type FavoriteItem, type SidebarNavGroup } from './app-sidebar'
 import { AppTopbar } from './app-topbar'
 import { CommandPalette } from './command-palette'
@@ -80,8 +82,15 @@ export function AppShell({
   const { density, setDensity } = useDensity(user.id)
   const { records: recent } = useRecentRecords(user.id)
   const [commandOpen, setCommandOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
 
-  const mobile = (mobileItems ?? groups[0]?.items ?? []).slice(0, 5)
+  const essentials = (mobileItems ?? groups[0]?.items ?? []).slice(0, 5)
+  const everyItem = groups.flatMap((g) => g.items)
+  // Five fixed tabs hid everything else on a phone, since the sidebar is desktop-only. When the
+  // workspace has more than five places to go, the fifth tab becomes a More drawer holding all of them.
+  const needsMore = everyItem.length > 5
+  const mobile = needsMore ? essentials.slice(0, 4) : essentials
+  const moreActive = needsMore && !mobile.some((i) => i.id === activeId) && everyItem.some((i) => i.id === activeId)
 
   return (
     <div className="bg-background flex min-h-dvh" style={style}>
@@ -168,7 +177,64 @@ export function AppShell({
             </Link>
           )
         })}
+        {needsMore && (
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            aria-haspopup="dialog"
+            aria-current={moreActive ? 'page' : undefined}
+            className={cn(
+              'relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium sm:text-xs',
+              moreActive ? 'text-primary font-semibold' : 'text-muted-foreground',
+            )}
+          >
+            {moreActive && <span className="bg-primary absolute inset-x-3 top-0 h-0.5 rounded-full" aria-hidden="true" />}
+            <MoreHorizontal className="size-5" aria-hidden="true" />
+            <span className="w-full truncate text-center leading-none">More</span>
+          </button>
+        )}
       </nav>
+
+      {needsMore && (
+        <Drawer open={moreOpen} onOpenChange={setMoreOpen}>
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle>Everything</DrawerTitle>
+            </DrawerHeader>
+            <div className="max-h-[70vh] space-y-4 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+              {groups.map((group) => (
+                <section key={group.id} aria-label={group.label}>
+                  <h3 className="text-muted-foreground mb-2 text-xs font-semibold uppercase">{group.label}</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {group.items.map((item) => {
+                      const Icon = navIcon(item.icon)
+                      const isActive = item.id === activeId
+                      return (
+                        <Link
+                          key={item.id}
+                          href={item.href}
+                          onClick={() => setMoreOpen(false)}
+                          aria-current={isActive ? 'page' : undefined}
+                          className={cn(
+                            'flex min-w-0 flex-col items-center justify-center gap-2 rounded-lg border p-3 text-center text-xs font-medium transition-colors',
+                            isActive ? 'border-primary text-primary bg-primary/5' : 'border-border text-foreground hover:bg-accent',
+                          )}
+                        >
+                          <span className="relative">
+                            <Icon className="size-5" aria-hidden="true" />
+                            {item.badge}
+                          </span>
+                          <span className="w-full truncate">{item.label}</span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </DrawerContent>
+        </Drawer>
+      )}
 
       <CommandPalette
         groups={groups}
