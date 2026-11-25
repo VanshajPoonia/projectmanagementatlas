@@ -10,8 +10,8 @@ export const PHOTO_CAPTION_MAX = 500
 /** Photos are shrunk to this long edge before they upload. */
 export const PHOTO_MAX_EDGE = 1800
 export const PHOTO_QUALITY = 0.82
-/** What the browser will try to read. HEIC only works where the browser can decode it. */
-export const PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif'
+/** Plain image/*, so iPhone Safari converts HEIC to JPEG itself instead of handing over the raw file. */
+export const PHOTO_ACCEPT = 'image/*'
 
 export interface MarketingProject {
   id: string
