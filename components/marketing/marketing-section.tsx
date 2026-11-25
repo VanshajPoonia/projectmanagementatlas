@@ -29,7 +29,7 @@ export default function MarketingSection({ showSocial, ...calendar }: CalendarPr
 
   return (
     <div className="space-y-4">
-      <div className="inline-flex overflow-hidden rounded-md border" role="group" aria-label="Marketing sections">
+      <div className="grid grid-flow-col auto-cols-fr overflow-hidden rounded-md border sm:inline-grid" role="group" aria-label="Marketing sections">
         {buttons.map(({ key, label, Icon }) => (
           <button
             key={key}
@@ -37,11 +37,11 @@ export default function MarketingSection({ showSocial, ...calendar }: CalendarPr
             onClick={() => setSection(key)}
             aria-pressed={current === key}
             className={cn(
-              'flex items-center gap-1.5 px-4 py-2 text-sm font-semibold transition-colors',
+              'flex min-h-11 items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold whitespace-nowrap transition-colors sm:px-4',
               current === key ? 'bg-foreground text-background' : 'bg-background text-muted-foreground hover:text-foreground',
             )}
           >
-            <Icon className="h-4 w-4" aria-hidden="true" />
+            <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
             {label}
           </button>
         ))}
