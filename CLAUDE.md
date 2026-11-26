@@ -2140,13 +2140,26 @@ is the same board as `/social` (`SocialBoard` in `social-view.tsx`, loaded in th
   - **Videos up to 500 MB** are shrunk in the browser first (`lib/video-compress.ts`, mediabunny on
     WebCodecs, H.264 + AAC MP4, 1080p down to 360p by length, aimed at 150 MB). Measured in real
     Chrome: 476 MB / 6 min became 43 MB in 30 s at the old 50 MB target.
-  - **An iCloud Photos link imports from this Mac** (2026-11-26):
-    `scripts/import-icloud-link.mjs <link> "<project>" --allow-prod --apply`. Same 1800 px JPEG and
-    1080p H.264 limits as the browser, via sips, avconvert (turns iPhone HDR video into SDR) and
-    ffmpeg. Fixed ids make re-runs skip what is in. Built after Bobby's first phone upload of a
-    big batch failed: on 2026-11-26 no browser upload had ever reached R2 (all 29 objects were
-    the copy script's), his try logged three media POSTs and left no object or row, and the cause
-    was not pinned. CORS and a browser PUT under the live CSP were tested and work.
+  - **Big phone uploads** (2026-11-26, after Bobby's first big batch from his phone failed: it
+    logged three media POSTs and left no object or row, cause not pinned). A batch keeps the
+    screen on (`lib/wake-lock.ts`), warns before the tab closes, sends photos two at a time and
+    then videos one by one, and shows a banner on every Projects screen until it ends. Positions
+    keep the order picked. A dropped PUT gets two more tries with a fresh link
+    (`uploadMedia`). Failures are named in one toast at the end, not one toast per file.
+  - ⚠️ **A picked file's id comes from its content** (`contentMediaId`: project, size, first and
+    last 256 KB, SHA-256). Picking the same files again after a dropped upload skips the ones
+    already in, and a 23505 on insert means another tab got there first, so its R2 file stays.
+    Random ids would bring back the double uploads this exists to stop.
+  - **An iCloud Photos link imports on the server** (2026-11-26). The **Import an iCloud link** box
+    on a project posts to `app/api/marketing-projects/icloud`, which checks access like the media
+    route, replies with found / already in / queued / skipped, then copies in `after()`
+    (`maxDuration` 800, Fluid on Pro). It copies the JPEG (2048 px, upright) and 720p H.264 MP4
+    iCloud already keeps, so nothing is re-encoded and Bobby can close the page. The page polls
+    and adds items as they land. Reading the link is `lib/icloud-share.ts`, shared with the script.
+  - **The Mac script is still there for 1080p**:
+    `scripts/import-icloud-link.mjs <link> "<project>" --allow-prod --apply` shrinks the originals
+    with sips, avconvert (turns iPhone HDR video into SDR) and ffmpeg. Both paths use
+    `fixedMediaId(project, iCloud item)`, so either one skips what the other brought in.
 - **No module row.** The Projects button follows the calendar. Until `140` is on a database the tab
   says "Projects are not set up on this database yet" instead of failing.
 - Purely additive and `--allow-prod` eligible. Checked on a local Postgres 17 with role-switched
