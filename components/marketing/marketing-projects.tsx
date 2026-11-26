@@ -1,7 +1,7 @@
 'use client'
 
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, ImagePlus, Loader2, Pencil, Play, Plus, Star, Trash2 } from 'lucide-react'
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, Check, ImagePlus, Link2, Loader2, Pencil, Play, Plus, Star, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { compressPhoto } from '@/lib/image-compress'
-import { removeMedia, signMedia, uploadMedia } from '@/lib/project-media-client'
+import { importIcloudLink, removeMedia, signMedia, uploadMedia } from '@/lib/project-media-client'
 import { compressVideo } from '@/lib/video-compress'
 import { keepScreenOn } from '@/lib/wake-lock'
 import {
@@ -61,6 +61,9 @@ const PROJECT_COLUMNS = 'id, name, company_id, area, completed_on, description, 
 const PHOTO_COLUMNS = 'id, project_id, path, kind, duration_seconds, caption, position, width, height, bytes, created_at, created_by'
 /** Two photos shrink and upload at once. More would run a phone out of memory. Videos go one by one. */
 const PHOTO_WORKERS = 2
+const IMPORT_POLL_MS = 5000
+/** An iCloud import that shows nothing new for this long has stopped, and the page says so. */
+const IMPORT_STALL_MS = 3 * 60_000
 
 interface UploadJob {
   projectId: string
@@ -70,6 +73,14 @@ interface UploadJob {
   note?: string
 }
 
+interface ImportWatch {
+  projectId: string
+  name: string
+  landed: number
+  total: number
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 interface Company {
   id: string
@@ -115,7 +126,20 @@ export default function MarketingProjects({ userId }: { userId: string }) {
   const [incoming, setIncoming] = useState<File[] | null>(null)
   const [targetId, setTargetId] = useState('')
   const [upload, setUpload] = useState<UploadJob | null>(null)
+  const [importing, setImporting] = useState<ImportWatch | null>(null)
   const quickInput = useRef<HTMLInputElement>(null)
+  const photosRef = useRef<ProjectPhoto[]>([])
+  const alive = useRef(true)
+
+  useEffect(() => {
+    photosRef.current = photos
+  }, [photos])
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+    }
+  }, [])
 
   const signPaths = useCallback(async (paths: string[]) => {
     if (!paths.length) return
@@ -356,6 +380,67 @@ export default function MarketingProjects({ userId }: { userId: string }) {
     }
   }
 
+  /** Follows a server-side iCloud import while this page is open, adding each item as it lands. */
+  const watchImport = async (project: MarketingProject, total: number, baseline: number) => {
+    setImporting({ projectId: project.id, name: project.name, landed: 0, total })
+    let landed = 0
+    let lastChange = Date.now()
+    while (alive.current) {
+      await sleep(IMPORT_POLL_MS)
+      if (!alive.current) return
+      const { data, error } = await createClient().from('marketing_project_photos').select(PHOTO_COLUMNS).eq('project_id', project.id)
+      // A failed check is tried again on the next tick, and counts toward the stall timer meanwhile.
+      if (!error && data) {
+        const rows = data as ProjectPhoto[]
+        const known = new Set(photosRef.current.map((p) => p.id))
+        const fresh = rows.filter((r) => !known.has(r.id))
+        if (fresh.length) {
+          setPhotos((prev) => [...prev, ...fresh.filter((r) => !prev.some((p) => p.id === r.id))])
+          void signPaths(pathsToSign(fresh))
+        }
+        const now = Math.max(0, rows.length - baseline)
+        if (now !== landed) {
+          landed = now
+          lastChange = Date.now()
+          setImporting((w) => w && { ...w, landed: Math.min(now, total) })
+        }
+      }
+      if (landed >= total) {
+        toast.success(`All ${total} from iCloud are in ${project.name}`)
+        break
+      }
+      if (Date.now() - lastChange > IMPORT_STALL_MS) {
+        toast.error(`The iCloud import stopped at ${landed} of ${total}`, { description: 'Paste the same link again to bring in the rest. Anything already in is skipped.' })
+        break
+      }
+    }
+    setImporting(null)
+  }
+
+  const importLink = async (project: MarketingProject, link: string): Promise<boolean> => {
+    let result
+    try {
+      result = await importIcloudLink(project.id, link)
+    } catch (e) {
+      toast.error('The link was not imported', { description: e instanceof Error ? e.message : undefined })
+      return false
+    }
+    const { skipped } = result
+    const skippedNote = skipped.length
+      ? `${skipped.length} could not come in: ${skipped.slice(0, 3).map((s) => s.name).join(', ')}${skipped.length > 3 ? ' and more' : ''}.`
+      : ''
+    if (!result.queued) {
+      toast.success(result.found ? 'Everything from that link is already in' : 'That link has nothing in it', { description: skippedNote || undefined })
+      return true
+    }
+    const alreadyNote = result.already ? `${result.already} already in. ` : ''
+    toast.success(`Importing ${result.queued} from iCloud`, {
+      description: `${alreadyNote}You can close this page. They land here over the next few minutes. ${skippedNote}`.trim(),
+    })
+    void watchImport(project, result.queued, (photosByProject[project.id] ?? []).length)
+    return true
+  }
+
   const saveCaption = async (photo: ProjectPhoto, caption: string): Promise<boolean> => {
     const { error } = await createClient().from('marketing_project_photos').update({ caption }).eq('id', photo.id)
     if (error) {
@@ -414,6 +499,11 @@ export default function MarketingProjects({ userId }: { userId: string }) {
           Uploading to {upload.name}: {upload.done} of {upload.total} done{upload.note ? `, ${upload.note}` : ''}. Keep this page open.
         </ActivityBanner>
       )}
+      {importing && (
+        <ActivityBanner>
+          Importing from iCloud into {importing.name}: {importing.landed} of {importing.total} in. You can close this page.
+        </ActivityBanner>
+      )}
       {open ? (
         <ProjectDetail
           project={open}
@@ -426,7 +516,9 @@ export default function MarketingProjects({ userId }: { userId: string }) {
           onDelete={() => deleteProject(open)}
           upload={upload?.projectId === open.id ? upload : null}
           busy={!!upload}
+          importing={importing?.projectId === open.id}
           onAddPhotos={(files) => void runUpload(open, files)}
+          onImportLink={(link) => importLink(open, link)}
           onCaption={saveCaption}
           onCover={makeCover}
           onRemove={removePhoto}
@@ -673,10 +765,12 @@ function ProjectDetail({
   urls,
   upload,
   busy,
+  importing,
   onBack,
   onEdit,
   onDelete,
   onAddPhotos,
+  onImportLink,
   onCaption,
   onCover,
   onRemove,
@@ -691,12 +785,16 @@ function ProjectDetail({
   onDelete: () => Promise<void>
   upload: UploadJob | null
   busy: boolean
+  importing: boolean
   onAddPhotos: (files: File[]) => void
+  onImportLink: (link: string) => Promise<boolean>
   onCaption: (photo: ProjectPhoto, caption: string) => Promise<boolean>
   onCover: (photo: ProjectPhoto) => Promise<void>
   onRemove: (photo: ProjectPhoto) => Promise<void>
 }) {
   const input = useRef<HTMLInputElement>(null)
+  const [link, setLink] = useState<string | null>(null)
+  const [linkBusy, setLinkBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [viewing, setViewing] = useState<string | null>(null)
   const [range, setRange] = useState<DateRange>(NO_RANGE)
@@ -708,6 +806,15 @@ function ProjectDetail({
     const files = pickMedia(list)
     if (input.current) input.current.value = ''
     if (files.length) onAddPhotos(files)
+  }
+
+  const submitLink = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!link?.trim() || linkBusy) return
+    setLinkBusy(true)
+    const ok = await onImportLink(link.trim())
+    setLinkBusy(false)
+    if (ok) setLink(null)
   }
 
   return (
@@ -762,10 +869,44 @@ function ProjectDetail({
             {upload ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
             {upload ? `Uploading ${upload.done} of ${upload.total}` : 'Add photos or videos'}
           </Button>
+          {link === null && (
+            <Button size="sm" variant="outline" disabled={importing} onClick={() => setLink('')} className="gap-1.5">
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+              {importing ? 'Importing from iCloud' : 'Import an iCloud link'}
+            </Button>
+          )}
           <span className="text-muted-foreground text-xs">
             Pick as many as you like, videos up to 500 MB. Keep this page open while they upload. Anything already in is skipped.
           </span>
         </div>
+
+        {link !== null && (
+          <form onSubmit={(e) => void submitLink(e)} className="bg-muted/40 space-y-2 rounded-lg border p-3">
+            <Label htmlFor="icloud-link">iCloud Photos link</Label>
+            <p className="text-muted-foreground text-xs">
+              For a big batch: in Photos, select the photos and videos, tap Share, then Copy iCloud Link, and paste it here. It keeps going after you close this page.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                id="icloud-link"
+                type="url"
+                inputMode="url"
+                autoFocus
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                placeholder="https://share.icloud.com/photos/..."
+                className="min-w-0 flex-1 sm:max-w-md"
+              />
+              <Button type="submit" size="sm" disabled={!link.trim() || linkBusy} className="gap-1.5">
+                {linkBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                Import
+              </Button>
+              <Button type="button" size="sm" variant="ghost" disabled={linkBusy} onClick={() => setLink(null)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        )}
 
         {photos.length > 0 && (
           <DateRangeFilter label="Uploaded between" range={range} onChange={setRange} summary={rangeIsSet(range) ? `${visible.length} of ${photos.length} photos` : null} />

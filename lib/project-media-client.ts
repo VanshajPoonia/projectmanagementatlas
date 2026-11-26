@@ -77,3 +77,15 @@ export async function removeMedia(keys: string[]): Promise<{ failed: string[] }>
   const { failed } = await call<{ removed: number; failed: string[] }>({ action: 'remove', keys })
   return { failed }
 }
+
+export interface LinkImport {
+  found: number
+  already: number
+  queued: number
+  skipped: Array<{ name: string; reason: string }>
+}
+
+/** Starts a server-side import of a shared iCloud Photos link. It keeps going after this page closes. */
+export async function importIcloudLink(projectId: string, link: string): Promise<LinkImport> {
+  return call<LinkImport>({ projectId, link }, '/api/marketing-projects/icloud')
+}

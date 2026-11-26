@@ -19,6 +19,7 @@ const { db, bucket, toastMock, media, wake } = vi.hoisted(() => {
     uploadMedia: vi.fn(async () => undefined),
     signMedia: vi.fn(async (keys: string[]) => Object.fromEntries(keys.map((k) => [k, `https://r2/${k}`]))),
     removeMedia: vi.fn(async () => ({ failed: [] as string[] })),
+    importIcloudLink: vi.fn(),
   }
   const wake = { release: vi.fn() }
   return { db, bucket, toastMock: { error: vi.fn(), success: vi.fn() }, media, wake }
@@ -226,5 +227,37 @@ describe('MarketingProjects', () => {
     finish()
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
     expect(wake.release).toHaveBeenCalledTimes(1)
+  })
+
+  it('imports an iCloud link on the server and adds the items as they land', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    media.importIcloudLink.mockResolvedValueOnce({ found: 3, already: 1, queued: 2, skipped: [] })
+    await openProject()
+    fireEvent.click(screen.getByRole('button', { name: 'Import an iCloud link' }))
+    fireEvent.change(screen.getByLabelText('iCloud Photos link'), { target: { value: ' https://share.icloud.com/photos/0b0lORNjGddgmWyqJxTL9pfeg ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    await waitFor(() => expect(media.importIcloudLink).toHaveBeenCalledWith('p1', 'https://share.icloud.com/photos/0b0lORNjGddgmWyqJxTL9pfeg'))
+    expect(toastMock.success).toHaveBeenCalledWith('Importing 2 from iCloud', {
+      description: '1 already in. You can close this page. They land here over the next few minutes.',
+    })
+    expect(await screen.findByText('Importing from iCloud into Kitchen remodel: 0 of 2 in. You can close this page.')).toBeInTheDocument()
+
+    db.photos = [photo('i1', 0), photo('i2', 1)]
+    await vi.advanceTimersByTimeAsync(5000)
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith('All 2 from iCloud are in Kitchen remodel'))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'View photo larger' })).toHaveLength(2)
+  })
+
+  it('keeps the link box open and says why when the import is refused', async () => {
+    media.importIcloudLink.mockRejectedValueOnce(new Error('That is not an iCloud Photos link. In Photos, use Share, then Copy iCloud Link.'))
+    await openProject()
+    fireEvent.click(screen.getByRole('button', { name: 'Import an iCloud link' }))
+    fireEvent.change(screen.getByLabelText('iCloud Photos link'), { target: { value: 'https://example.com/x' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    await waitFor(() =>
+      expect(toastMock.error).toHaveBeenCalledWith('The link was not imported', { description: 'That is not an iCloud Photos link. In Photos, use Share, then Copy iCloud Link.' }),
+    )
+    expect(screen.getByLabelText('iCloud Photos link')).toHaveValue('https://example.com/x')
   })
 })
