@@ -11,7 +11,6 @@
 // gets a fixed id, so a re-run skips what is already in. Only one item is on disk at a time.
 
 import { execFile } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -19,6 +18,7 @@ import { promisify } from 'node:util'
 
 import { createClient } from '@supabase/supabase-js'
 
+import { fixedMediaId, listShareItems } from '../lib/icloud-share.ts'
 import { deleteObject, presignPut, r2Config } from '../lib/r2.ts'
 import { assertMigrationTarget } from './guard-db.mjs'
 
@@ -37,8 +37,6 @@ const KEEP_AS_IS_BYTES = 20 * 1024 * 1024
 const VIDEO_MAX_STORED_BYTES = 250 * 1024 * 1024
 const SRGB = '/System/Library/ColorSync/Profiles/sRGB Profile.icc'
 
-const CLOUDKIT = 'https://ckdatabasews.icloud.com/database/1/com.apple.photos.cloud/production'
-
 if (!LINK || !PROJECT_NAME) {
   console.error('Usage: import-icloud-link.mjs <iCloud link> "<project name>" --allow-prod [--apply] [--as <email>]')
   process.exit(1)
@@ -55,60 +53,9 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
   process.exit(1)
 }
 
-async function cloudkit(endpoint, body) {
-  const res = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'text/plain', origin: 'https://www.icloud.com' }, body: JSON.stringify(body) })
-  if (!res.ok) throw new Error(`iCloud said ${res.status}: ${(await res.text()).slice(0, 200)}`)
-  return res.json()
-}
-
-/** Every item behind the link, oldest first. Download links expire, so call it again for fresh ones. */
+/** Every item behind the link, with the original file to shrink here. */
 async function listItems(link) {
-  const token = link.replace(/[?#].*$/, '').split('/').filter(Boolean).pop()
-  const { results } = await cloudkit(`${CLOUDKIT}/public/records/resolve?remapEnums=true`, { shortGUIDs: [{ value: token }] })
-  const share = results?.[0]
-  if (!share?.anonymousPublicAccess) throw new Error(`iCloud could not open that link (${share?.reason ?? 'no reply'}).`)
-  const host = share.anonymousPublicAccess.databasePartition.replace(/:443$/, '')
-  const auth = encodeURIComponent(share.anonymousPublicAccess.token)
-  const total = share.rootRecord.fields.assetCount.value
-  const records = []
-  for (let rank = 0; rank < total; ) {
-    const page = await cloudkit(`${host}/database/1/com.apple.photos.cloud/production/shared/records/query?remapEnums=true&publicAccessAuthToken=${auth}`, {
-      query: {
-        recordType: 'CPLAssetAndMasterByAssetDateWithoutHiddenOrDeleted',
-        filterBy: [
-          { fieldName: 'direction', comparator: 'EQUALS', fieldValue: { value: 'ASCENDING', type: 'STRING' } },
-          { fieldName: 'startRank', comparator: 'EQUALS', fieldValue: { value: rank, type: 'INT64' } },
-        ],
-      },
-      zoneID: share.zoneID,
-      resultsLimit: 64,
-    })
-    const assets = page.records.filter((r) => r.recordType === 'CPLAsset')
-    if (!assets.length) break
-    records.push(...page.records)
-    rank += assets.length
-  }
-  const masters = new Map(records.filter((r) => r.recordType === 'CPLMaster').map((r) => [r.recordName, r.fields]))
-  return records
-    .filter((r) => r.recordType === 'CPLAsset')
-    .map((asset) => {
-      const master = masters.get(asset.fields.masterRef.value.recordName)
-      const name = Buffer.from(master.filenameEnc.value, 'base64').toString()
-      const type = master.resOriginalFileType.value
-      return {
-        key: asset.recordName,
-        name,
-        video: type === 'com.apple.quicktime-movie' || type === 'public.mpeg-4',
-        bytes: master.resOriginalFileSize.value,
-        download: master.resOriginalRes.value.downloadURL.replace('${f}', encodeURIComponent(name)),
-      }
-    })
-}
-
-/** A UUID fixed by the project and the iCloud item, so the same item never goes in twice. */
-function fixedId(projectId, itemKey) {
-  const h = createHash('sha1').update(`${projectId}:${itemKey}`).digest('hex')
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${((parseInt(h[16], 16) & 3) | 8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`
+  return (await listShareItems(link)).map((i) => ({ key: i.key, name: i.name, video: i.video, bytes: i.original.bytes, download: i.original.url }))
 }
 
 async function probe(file) {
@@ -179,7 +126,7 @@ let items = await listItems(LINK)
 const have = new Set(existing.map((p) => p.id))
 let position = existing.length ? Math.max(...existing.map((p) => p.position)) + 1 : 0
 // Positions follow the shoot order, but photos run first so the job fills in before the slow videos.
-const plan = items.map((item) => ({ ...item, id: fixedId(project.id, item.key) })).filter((item) => !have.has(item.id)).map((item) => ({ ...item, position: position++ }))
+const plan = items.map((item) => ({ ...item, id: fixedMediaId(project.id, item.key) })).filter((item) => !have.has(item.id)).map((item) => ({ ...item, position: position++ }))
 plan.sort((a, b) => Number(a.video) - Number(b.video))
 const already = items.length - plan.length
 plan.splice(LIMIT)
