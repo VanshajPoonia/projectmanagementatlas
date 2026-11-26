@@ -2140,6 +2140,13 @@ is the same board as `/social` (`SocialBoard` in `social-view.tsx`, loaded in th
   - **Videos up to 500 MB** are shrunk in the browser first (`lib/video-compress.ts`, mediabunny on
     WebCodecs, H.264 + AAC MP4, 1080p down to 360p by length, aimed at 150 MB). Measured in real
     Chrome: 476 MB / 6 min became 43 MB in 30 s at the old 50 MB target.
+  - **An iCloud Photos link imports from this Mac** (2026-11-26):
+    `scripts/import-icloud-link.mjs <link> "<project>" --allow-prod --apply`. Same 1800 px JPEG and
+    1080p H.264 limits as the browser, via sips, avconvert (turns iPhone HDR video into SDR) and
+    ffmpeg. Fixed ids make re-runs skip what is in. Built after Bobby's first phone upload of a
+    big batch failed: on 2026-11-26 no browser upload had ever reached R2 (all 29 objects were
+    the copy script's), his try logged three media POSTs and left no object or row, and the cause
+    was not pinned. CORS and a browser PUT under the live CSP were tested and work.
 - **No module row.** The Projects button follows the calendar. Until `140` is on a database the tab
   says "Projects are not set up on this database yet" instead of failing.
 - Purely additive and `--allow-prod` eligible. Checked on a local Postgres 17 with role-switched
