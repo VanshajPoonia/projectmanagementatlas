@@ -6,6 +6,7 @@
 //   node --env-file=.env.production.local scripts/import-icloud-link.mjs <link> "<project name>" --allow-prod --apply
 //   ... --as <email>     who the uploads are credited to (default the super admin)
 //   ... --limit <n>      import only the first n, to check one before the rest
+//   ... --skip <names>   leave out these files, comma separated, e.g. smaller copies of a clip also shared as a MOV
 //
 // macOS only: sips, avconvert and ffmpeg do the shrinking, to the same limits as the browser. Each item
 // gets a fixed id, so a re-run skips what is already in. Only one item is on disk at a time.
@@ -28,7 +29,8 @@ const APPLY = ARGS.includes('--apply')
 const flag = (name) => (ARGS.includes(name) ? ARGS[ARGS.indexOf(name) + 1] : undefined)
 const AS_EMAIL = flag('--as') ?? 'vanshaj.admin@goatlasgo.us'
 const LIMIT = Number(flag('--limit') ?? Infinity)
-const [LINK, PROJECT_NAME] = ARGS.filter((a, i) => !a.startsWith('--') && !['--as', '--limit'].includes(ARGS[i - 1]))
+const SKIP = new Set((flag('--skip') ?? '').split(',').map((n) => n.trim().toLowerCase()).filter(Boolean))
+const [LINK, PROJECT_NAME] = ARGS.filter((a, i) => !a.startsWith('--') && !['--as', '--limit', '--skip'].includes(ARGS[i - 1]))
 
 // Same limits as lib/marketing-projects.ts and lib/video-compress.ts.
 const PHOTO_MAX_EDGE = 1800
@@ -126,12 +128,13 @@ let items = await listItems(LINK)
 const have = new Set(existing.map((p) => p.id))
 let position = existing.length ? Math.max(...existing.map((p) => p.position)) + 1 : 0
 // Positions follow the shoot order, but photos run first so the job fills in before the slow videos.
-const plan = items.map((item) => ({ ...item, id: fixedMediaId(project.id, item.key) })).filter((item) => !have.has(item.id)).map((item) => ({ ...item, position: position++ }))
+const plan = items.map((item) => ({ ...item, id: fixedMediaId(project.id, item.key) })).filter((item) => !have.has(item.id) && !SKIP.has(item.name.toLowerCase())).map((item) => ({ ...item, position: position++ }))
 plan.sort((a, b) => Number(a.video) - Number(b.video))
-const already = items.length - plan.length
+const skipped = items.filter((item) => SKIP.has(item.name.toLowerCase()) && !have.has(fixedMediaId(project.id, item.key))).length
+const already = items.length - plan.length - skipped
 plan.splice(LIMIT)
 const videos = plan.filter((i) => i.video).length
-console.log(`${project.name}: ${items.length} items behind the link, ${already} already in, ${plan.length - videos} photos and ${videos} videos to import as ${uploader.full_name}.${APPLY ? '' : ' (dry run)'}`)
+console.log(`${project.name}: ${items.length} items behind the link, ${already} already in, ${skipped} skipped, ${plan.length - videos} photos and ${videos} videos to import as ${uploader.full_name}.${APPLY ? '' : ' (dry run)'}`)
 
 let added = 0
 let failed = 0
