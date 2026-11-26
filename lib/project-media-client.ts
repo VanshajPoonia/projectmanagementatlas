@@ -1,13 +1,22 @@
 // Browser side of Projects media in Cloudflare R2: ask the route for links, then talk to R2 directly.
 
-async function call<T>(body: unknown): Promise<T> {
-  const res = await fetch('/api/marketing-projects/media', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+const UPLOAD_TRIES = 3
+
+/** A failure worth another go: the connection dropped, or the service had a bad moment. */
+class TransientError extends Error {}
+
+async function call<T>(body: unknown, route = '/api/marketing-projects/media'): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch(route, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  } catch {
+    throw new TransientError('The file service could not be reached. Check the connection and try again.')
+  }
   const json = (await res.json().catch(() => ({}))) as T & { error?: string }
-  if (!res.ok) throw new Error(json.error ?? `The file service said ${res.status}.`)
+  if (!res.ok) {
+    const message = json.error ?? `The file service said ${res.status}.`
+    throw res.status >= 500 || res.status === 429 ? new TransientError(message) : new Error(message)
+  }
   return json
 }
 
@@ -23,8 +32,7 @@ export async function signMedia(keys: string[]): Promise<Record<string, string>>
   return out
 }
 
-/** Uploads straight to R2, reporting bytes sent so a big video shows real progress. */
-export async function uploadMedia(key: string, body: Blob, contentType: string, onProgress?: (fraction: number) => void): Promise<void> {
+async function uploadOnce(key: string, body: Blob, contentType: string, onProgress?: (fraction: number) => void): Promise<void> {
   const { urls } = await call<{ urls: Record<string, string> }>({ action: 'upload', items: [{ key, contentType }] })
   const url = urls[key]
   if (!url) throw new Error('The file service gave no upload link.')
@@ -35,10 +43,33 @@ export async function uploadMedia(key: string, body: Blob, contentType: string, 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress?.(e.loaded / e.total)
     }
-    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`The upload was refused (${xhr.status}).`)))
-    xhr.onerror = () => reject(new Error('The upload could not reach the file service. Check the connection and try again.'))
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve()
+      else reject(new (xhr.status >= 500 ? TransientError : Error)(`The upload was refused (${xhr.status}).`))
+    }
+    xhr.onerror = () => reject(new TransientError('The upload could not reach the file service. Check the connection and try again.'))
     xhr.send(body)
   })
+}
+
+/** Waits a little longer each time, and until the phone is back online. */
+async function waitToRetry(attempt: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, attempt * 3000))
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    await new Promise((resolve) => window.addEventListener('online', resolve, { once: true }))
+  }
+}
+
+/** Uploads straight to R2, reporting bytes sent so a big video shows real progress. A dropped connection gets two more tries. */
+export async function uploadMedia(key: string, body: Blob, contentType: string, onProgress?: (fraction: number) => void): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await uploadOnce(key, body, contentType, onProgress)
+    } catch (e) {
+      if (!(e instanceof TransientError) || attempt >= UPLOAD_TRIES) throw e
+      await waitToRetry(attempt)
+    }
+  }
 }
 
 export async function removeMedia(keys: string[]): Promise<{ failed: string[] }> {
