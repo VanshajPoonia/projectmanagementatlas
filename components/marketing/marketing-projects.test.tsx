@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { db, bucket, toastMock, media } = vi.hoisted(() => {
+const { db, bucket, toastMock, media, wake } = vi.hoisted(() => {
   const bucket = {
     createSignedUrls: vi.fn(async (paths: string[]) => ({ data: paths.map((path) => ({ path, signedUrl: `https://files/${path}` })), error: null })),
     upload: vi.fn(async () => ({ error: null })),
@@ -20,7 +20,8 @@ const { db, bucket, toastMock, media } = vi.hoisted(() => {
     signMedia: vi.fn(async (keys: string[]) => Object.fromEntries(keys.map((k) => [k, `https://r2/${k}`]))),
     removeMedia: vi.fn(async () => ({ failed: [] as string[] })),
   }
-  return { db, bucket, toastMock: { error: vi.fn(), success: vi.fn() }, media }
+  const wake = { release: vi.fn() }
+  return { db, bucket, toastMock: { error: vi.fn(), success: vi.fn() }, media, wake }
 })
 
 function table(name: string) {
@@ -29,6 +30,7 @@ function table(name: string) {
   const chain: Record<string, unknown> = {
     select: () => chain,
     order: () => chain,
+    eq: () => chain,
     insert: (row: Record<string, unknown>) => {
       db.inserted.push(row)
       const made = { id: 'new-id', created_at: '2026-11-24T10:00:00+00:00', updated_at: '2026-11-24T10:00:00+00:00', company_id: null, area: null, completed_on: null, description: '', ...row }
@@ -48,10 +50,14 @@ vi.mock('@/lib/video-compress', () => ({
     return { blob: new Blob(['v'], { type: 'video/mp4' }), poster: new Blob(['p'], { type: 'image/jpeg' }), width: 1280, height: 720, duration: 7.4, originalBytes: file.size }
   }),
 }))
+vi.mock('@/lib/wake-lock', () => ({ keepScreenOn: vi.fn(async () => wake.release) }))
 vi.mock('@/lib/image-compress', () => ({
   compressPhoto: vi.fn(async (file: File) => ({ blob: new Blob(['x'], { type: 'image/jpeg' }), width: 1800, height: 1200, originalBytes: file.size })),
 }))
 
+import { compressPhoto } from '@/lib/image-compress'
+import { contentMediaId } from '@/lib/marketing-projects'
+import { keepScreenOn } from '@/lib/wake-lock'
 import MarketingProjects from './marketing-projects'
 
 const project = {
@@ -73,7 +79,17 @@ beforeEach(() => {
   db.inserted = []
   vi.clearAllMocks()
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
+
+async function openProject() {
+  db.projects = [project]
+  render(<MarketingProjects userId="u1" />)
+  fireEvent.click(await screen.findByText('Kitchen remodel'))
+  return (await screen.findByLabelText('Add photos or videos')) as HTMLInputElement
+}
 
 describe('MarketingProjects', () => {
   it('invites the first project when there are none', async () => {
@@ -167,5 +183,48 @@ describe('MarketingProjects', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Deck rebuild' })).toBeInTheDocument())
     expect(db.inserted[0]).toMatchObject({ name: 'Deck rebuild', description: 'Cedar.', company_id: null, created_by: 'u1' })
     expect(screen.getByText('Add the best photos and videos of this project')).toBeInTheDocument()
+  })
+
+  it('skips a file that is already in the project when it is picked again', async () => {
+    const file = new File(['same bytes'], 'IMG_0042.jpg', { type: 'image/jpeg' })
+    db.photos = [{ ...photo('x', 1), id: await contentMediaId('p1', file) }]
+    const input = await openProject()
+    fireEvent.change(input, { target: { files: [file] } })
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith('That one is already in this project'))
+    expect(media.uploadMedia).not.toHaveBeenCalled()
+    expect(db.inserted).toHaveLength(0)
+  })
+
+  it('uploads photos before videos and keeps the order they were picked in', async () => {
+    const input = await openProject()
+    const clip = new File(['v'], 'IMG_0100.MOV', { type: 'video/quicktime' })
+    const still = new File(['p'], 'IMG_0101.jpg', { type: 'image/jpeg' })
+    fireEvent.change(input, { target: { files: [clip, still] } })
+    await waitFor(() => expect(db.inserted).toHaveLength(2))
+    expect(db.inserted.map((r) => (r as { kind: string }).kind)).toEqual(['image', 'video'])
+    expect(db.inserted.map((r) => (r as { position: number }).position)).toEqual([1, 0])
+  })
+
+  it('keeps going past a file that fails and names it in one message', async () => {
+    vi.mocked(compressPhoto).mockRejectedValueOnce(new Error('This photo could not be read.'))
+    const input = await openProject()
+    const files = [new File(['a'], 'IMG_1.jpg', { type: 'image/jpeg' }), new File(['b'], 'IMG_2.jpg', { type: 'image/jpeg' })]
+    fireEvent.change(input, { target: { files } })
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith('IMG_1.jpg did not upload', { description: 'This photo could not be read. Pick it again to retry.' }))
+    expect(db.inserted).toHaveLength(1)
+    expect(toastMock.success).toHaveBeenCalledWith('1 photo added', expect.anything())
+  })
+
+  it('shows the upload in a banner and keeps the screen on until it is done', async () => {
+    let finish = () => {}
+    media.uploadMedia.mockImplementationOnce(() => new Promise<undefined>((resolve) => (finish = () => resolve(undefined))))
+    const input = await openProject()
+    fireEvent.change(input, { target: { files: [new File(['a'], 'IMG_1.jpg', { type: 'image/jpeg' })] } })
+    expect(await screen.findByText('Uploading to Kitchen remodel: 0 of 1 done. Keep this page open.')).toBeInTheDocument()
+    expect(keepScreenOn).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('Add photos or videos').nextElementSibling).toBeDisabled()
+    finish()
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
+    expect(wake.release).toHaveBeenCalledTimes(1)
   })
 })

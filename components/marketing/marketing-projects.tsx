@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Check, ImagePlus, Loader2, Pencil, Play, Plus, Star, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -13,8 +13,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { compressPhoto } from '@/lib/image-compress'
 import { removeMedia, signMedia, uploadMedia } from '@/lib/project-media-client'
 import { compressVideo } from '@/lib/video-compress'
+import { keepScreenOn } from '@/lib/wake-lock'
 import {
   AREA_MAX,
+  contentMediaId,
   DESCRIPTION_MAX,
   EMPTY_DRAFT,
   NAME_MAX,
@@ -57,6 +59,17 @@ import { cn } from '@/lib/utils'
 const SIGNED_URL_SECONDS = 60 * 60
 const PROJECT_COLUMNS = 'id, name, company_id, area, completed_on, description, created_at, updated_at'
 const PHOTO_COLUMNS = 'id, project_id, path, kind, duration_seconds, caption, position, width, height, bytes, created_at, created_by'
+/** Two photos shrink and upload at once. More would run a phone out of memory. Videos go one by one. */
+const PHOTO_WORKERS = 2
+
+interface UploadJob {
+  projectId: string
+  name: string
+  done: number
+  total: number
+  note?: string
+}
+
 
 interface Company {
   id: string
@@ -101,7 +114,7 @@ export default function MarketingProjects({ userId }: { userId: string }) {
   // Photos picked from the list, waiting for the person to say which project they belong to.
   const [incoming, setIncoming] = useState<File[] | null>(null)
   const [targetId, setTargetId] = useState('')
-  const [sending, setSending] = useState<{ done: number; total: number; note?: string } | null>(null)
+  const [upload, setUpload] = useState<UploadJob | null>(null)
   const quickInput = useRef<HTMLInputElement>(null)
 
   const signPaths = useCallback(async (paths: string[]) => {
@@ -235,26 +248,37 @@ export default function MarketingProjects({ userId }: { userId: string }) {
     toast.success('Project deleted')
   }
 
-  const addPhotos = async (project: MarketingProject, files: File[], onProgress: (done: number, total: number, note?: string) => void) => {
+  const addPhotos = async (project: MarketingProject, files: File[]) => {
     const supabase = createClient()
-    let position = nextPosition(photosByProject[project.id] ?? [])
+    const own = photosByProject[project.id] ?? []
+    const have = new Set(own.map((p) => p.id))
+    const start = nextPosition(own)
+    // A file's id comes from its content, so one picked twice, or again after a dropped upload, is skipped.
+    const ids = await Promise.all(files.map((f) => contentMediaId(project.id, f)))
+    const jobs = files
+      .map((file, i) => ({ file, id: ids[i], position: start + i }))
+      .filter((job, i) => !have.has(job.id) && ids.indexOf(job.id) === i)
+    const already = files.length - jobs.length
+    let done = 0
     let added = 0
     let savedBytes = 0
-    for (const [i, file] of files.entries()) {
-      onProgress(i, files.length)
+    const failed: Array<{ name: string; reason: string }> = []
+    const report = (note?: string) => setUpload((u) => u && { ...u, done, note })
+    setUpload({ projectId: project.id, name: project.name, done: 0, total: jobs.length })
+
+    const uploadOne = async ({ file, id, position }: (typeof jobs)[number]) => {
       const uploaded: string[] = []
       try {
-        const id = crypto.randomUUID()
         let path: string
         let row: Record<string, unknown>
         let stored: number
         let original: number
         if (isVideoFile(file)) {
-          const shrunk = await compressVideo(file, (fraction) => onProgress(i, files.length, `Shrinking video ${Math.round(fraction * 100)}%`))
+          const shrunk = await compressVideo(file, (fraction) => report(`shrinking a video, ${Math.round(fraction * 100)}%`))
           path = mediaKey(project.id, id, 'mp4')
           await uploadMedia(posterPath(path), shrunk.poster, 'image/jpeg')
           uploaded.push(posterPath(path))
-          await uploadMedia(path, shrunk.blob, 'video/mp4', (fraction) => onProgress(i, files.length, `Uploading video ${Math.round(fraction * 100)}%`))
+          await uploadMedia(path, shrunk.blob, 'video/mp4', (fraction) => report(`sending a video, ${Math.round(fraction * 100)}%`))
           uploaded.push(path)
           row = { kind: 'video', duration_seconds: Math.round(shrunk.duration * 10) / 10, width: shrunk.width, height: shrunk.height, bytes: shrunk.blob.size }
           stored = shrunk.blob.size
@@ -273,20 +297,63 @@ export default function MarketingProjects({ userId }: { userId: string }) {
           .insert({ id, project_id: project.id, path, position, created_by: userId, ...row })
           .select(PHOTO_COLUMNS)
           .single()
+        // Already in from another tab or device. The file under this key is that row's, so it stays.
+        if (error?.code === '23505') return
         if (error || !data) throw new Error(error?.message ?? 'The upload was not saved.')
-        position += 1
         added += 1
         savedBytes += Math.max(0, original - stored)
-        setPhotos((prev) => [...prev, data as ProjectPhoto])
+        setPhotos((prev) => (prev.some((p) => p.id === id) ? prev : [...prev, data as ProjectPhoto]))
         void signPaths(pathsToSign([data as ProjectPhoto]))
       } catch (e) {
         // A file with no row pointing at it would only use up the storage budget.
         if (uploaded.length) await removeFiles(uploaded)
-        toast.error(`Skipped ${file.name}`, { description: e instanceof Error ? e.message : 'The upload failed.' })
+        failed.push({ name: file.name, reason: e instanceof Error ? e.message : 'The upload failed.' })
+      } finally {
+        done += 1
+        report()
       }
     }
-    onProgress(files.length, files.length)
-    if (added) toast.success(`${added} ${mediaNoun(files)}${added === 1 ? '' : 's'} added`, { description: savedBytes > 0 ? `Shrunk to save ${formatBytes(savedBytes)}.` : undefined })
+
+    // Photos first so the project fills in before the slow videos. Positions keep the order picked.
+    const photoJobs = jobs.filter((j) => !isVideoFile(j.file))
+    let next = 0
+    await Promise.all(
+      Array.from({ length: PHOTO_WORKERS }, async () => {
+        while (next < photoJobs.length) await uploadOne(photoJobs[next++])
+      }),
+    )
+    for (const job of jobs.filter((j) => isVideoFile(j.file))) await uploadOne(job)
+
+    const alreadyNote = already ? `${already} ${already === 1 ? 'was' : 'were'} already in.` : ''
+    if (added) {
+      const saved = savedBytes > 0 ? `Shrunk to save ${formatBytes(savedBytes)}.` : ''
+      toast.success(`${added} ${mediaNoun(files)}${added === 1 ? '' : 's'} added`, { description: [saved, alreadyNote].filter(Boolean).join(' ') || undefined })
+    } else if (already && !failed.length) {
+      toast.success(already === 1 ? 'That one is already in this project' : `All ${already} are already in this project`)
+    }
+    if (failed.length === 1) {
+      toast.error(`${failed[0].name} did not upload`, { description: `${failed[0].reason} Pick it again to retry.` })
+    } else if (failed.length > 1) {
+      const names = failed.slice(0, 4).map((f) => f.name).join(', ')
+      toast.error(`${failed.length} did not upload`, {
+        description: `${names}${failed.length > 4 ? ' and more' : ''}. Pick them all again to retry. The ones already in are skipped.`,
+      })
+    }
+  }
+
+  /** One batch at a time, with the screen kept on so a phone does not lock and stall it. */
+  const runUpload = async (project: MarketingProject, files: File[]) => {
+    if (upload || !files.length) return
+    const release = await keepScreenOn()
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    try {
+      await addPhotos(project, files)
+    } finally {
+      window.removeEventListener('beforeunload', warn)
+      release()
+      setUpload(null)
+    }
   }
 
   const saveCaption = async (photo: ProjectPhoto, caption: string): Promise<boolean> => {
@@ -328,14 +395,13 @@ export default function MarketingProjects({ userId }: { userId: string }) {
     setTargetId((id) => (projects.some((p) => p.id === id) ? id : (sorted[0]?.id ?? '')))
   }
 
-  const sendIncoming = async () => {
+  const sendIncoming = () => {
     const project = projects.find((p) => p.id === targetId)
-    if (!project || !incoming || sending) return
-    setSending({ done: 0, total: incoming.length })
-    await addPhotos(project, incoming, (done, total, note) => setSending({ done, total, note }))
-    setSending(null)
+    if (!project || !incoming || upload) return
+    const files = incoming
     setIncoming(null)
     setOpenId(project.id)
+    void runUpload(project, files)
   }
 
   if (loading) return <p className="text-muted-foreground py-16 text-center text-sm">Loading projects...</p>
@@ -343,6 +409,11 @@ export default function MarketingProjects({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-5">
+      {upload && (
+        <ActivityBanner>
+          Uploading to {upload.name}: {upload.done} of {upload.total} done{upload.note ? `, ${upload.note}` : ''}. Keep this page open.
+        </ActivityBanner>
+      )}
       {open ? (
         <ProjectDetail
           project={open}
@@ -353,7 +424,9 @@ export default function MarketingProjects({ userId }: { userId: string }) {
           onBack={() => setOpenId(null)}
           onEdit={() => setEditing(open.id)}
           onDelete={() => deleteProject(open)}
-          onAddPhotos={(files, progress) => addPhotos(open, files, progress)}
+          upload={upload?.projectId === open.id ? upload : null}
+          busy={!!upload}
+          onAddPhotos={(files) => void runUpload(open, files)}
           onCaption={saveCaption}
           onCover={makeCover}
           onRemove={removePhoto}
@@ -368,7 +441,7 @@ export default function MarketingProjects({ userId }: { userId: string }) {
               {sorted.length > 0 && (
                 <>
                   <input ref={quickInput} type="file" multiple accept={MEDIA_ACCEPT} className="sr-only" aria-label="Choose photos or videos to upload" onChange={(e) => pickForProject(e.target.files)} />
-                  <Button size="sm" variant="outline" onClick={() => quickInput.current?.click()} className="gap-1.5">
+                  <Button size="sm" variant="outline" disabled={!!upload} onClick={() => quickInput.current?.click()} className="gap-1.5">
                     <ImagePlus className="h-4 w-4" />
                     Upload photos or videos
                   </Button>
@@ -450,13 +523,13 @@ export default function MarketingProjects({ userId }: { userId: string }) {
         </>
       )}
 
-      <Dialog open={!!incoming} onOpenChange={(next) => !next && !sending && setIncoming(null)}>
+      <Dialog open={!!incoming} onOpenChange={(next) => !next && setIncoming(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               Add {incoming?.length ?? 0} {mediaNoun(incoming ?? [])}{incoming?.length === 1 ? '' : 's'} to a project
             </DialogTitle>
-            <DialogDescription>Pick the project. Each photo or video is shrunk and shows who uploaded it and when.</DialogDescription>
+            <DialogDescription>Pick the project. Each photo or video is shrunk and shows who uploaded it and when. Anything already in that project is skipped.</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label htmlFor="upload-project">Project</Label>
@@ -464,7 +537,6 @@ export default function MarketingProjects({ userId }: { userId: string }) {
               id="upload-project"
               value={targetId}
               onChange={(e) => setTargetId(e.target.value)}
-              disabled={!!sending}
               className="border-input bg-background h-10 w-full rounded-md border px-2 text-base sm:text-sm"
             >
               {sorted.map((p) => (
@@ -475,12 +547,11 @@ export default function MarketingProjects({ userId }: { userId: string }) {
             </select>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIncoming(null)} disabled={!!sending}>
+            <Button variant="outline" onClick={() => setIncoming(null)}>
               Cancel
             </Button>
-            <Button onClick={() => void sendIncoming()} disabled={!targetId || !!sending} className="gap-1.5">
-              {sending && <Loader2 className="h-4 w-4 animate-spin" />}
-              {sending ? `${sending.note ?? 'Uploading'} (${Math.min(sending.done + 1, sending.total)} of ${sending.total})` : 'Upload'}
+            <Button onClick={sendIncoming} disabled={!targetId || !!upload}>
+              Upload
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -600,6 +671,8 @@ function ProjectDetail({
   photos,
   people,
   urls,
+  upload,
+  busy,
   onBack,
   onEdit,
   onDelete,
@@ -616,13 +689,14 @@ function ProjectDetail({
   onBack: () => void
   onEdit: () => void
   onDelete: () => Promise<void>
-  onAddPhotos: (files: File[], onProgress: (done: number, total: number, note?: string) => void) => Promise<void>
+  upload: UploadJob | null
+  busy: boolean
+  onAddPhotos: (files: File[]) => void
   onCaption: (photo: ProjectPhoto, caption: string) => Promise<boolean>
   onCover: (photo: ProjectPhoto) => Promise<void>
   onRemove: (photo: ProjectPhoto) => Promise<void>
 }) {
   const input = useRef<HTMLInputElement>(null)
-  const [progress, setProgress] = useState<{ done: number; total: number; note?: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [viewing, setViewing] = useState<string | null>(null)
   const [range, setRange] = useState<DateRange>(NO_RANGE)
@@ -630,13 +704,10 @@ function ProjectDetail({
   const meta = [company?.name, project.area, dateLabel(project.completed_on)].filter(Boolean).join(' · ')
   const viewed = photos.find((p) => p.id === viewing) ?? null
 
-  const pick = async (list: FileList | null) => {
+  const pick = (list: FileList | null) => {
     const files = pickMedia(list)
     if (input.current) input.current.value = ''
-    if (!files.length) return
-    setProgress({ done: 0, total: files.length })
-    await onAddPhotos(files, (done, total, note) => setProgress({ done, total, note }))
-    setProgress(null)
+    if (files.length) onAddPhotos(files)
   }
 
   return (
@@ -686,12 +757,14 @@ function ProjectDetail({
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <h3 className="font-semibold">Photos</h3>
-          <input ref={input} type="file" multiple accept={MEDIA_ACCEPT} className="sr-only" aria-label="Add photos or videos" onChange={(e) => void pick(e.target.files)} />
-          <Button size="sm" variant="outline" disabled={!!progress} onClick={() => input.current?.click()} className="gap-1.5">
-            {progress ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-            {progress ? `${progress.note ?? 'Shrinking and uploading'} (${Math.min(progress.done + 1, progress.total)} of ${progress.total})` : 'Add photos or videos'}
+          <input ref={input} type="file" multiple accept={MEDIA_ACCEPT} className="sr-only" aria-label="Add photos or videos" onChange={(e) => pick(e.target.files)} />
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => input.current?.click()} className="gap-1.5">
+            {upload ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+            {upload ? `Uploading ${upload.done} of ${upload.total}` : 'Add photos or videos'}
           </Button>
-          <span className="text-muted-foreground text-xs">Pick as many as you like, videos up to 500 MB. Each one is shrunk before it uploads.</span>
+          <span className="text-muted-foreground text-xs">
+            Pick as many as you like, videos up to 500 MB. Keep this page open while they upload. Anything already in is skipped.
+          </span>
         </div>
 
         {photos.length > 0 && (
@@ -702,7 +775,7 @@ function ProjectDetail({
           <button
             type="button"
             onClick={() => input.current?.click()}
-            disabled={!!progress}
+            disabled={busy}
             className="text-muted-foreground hover:border-foreground/40 flex w-full flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-14 text-sm transition-colors"
           >
             <ImagePlus className="h-6 w-6" />
@@ -821,6 +894,15 @@ function CaptionField({ photo, onSave }: { photo: ProjectPhoto; onSave: (photo: 
         }}
       />
       {saved && <Check className="absolute top-2 right-2 h-4 w-4 text-emerald-600" aria-label="Saved" />}
+    </div>
+  )
+}
+
+function ActivityBanner({ children }: { children: ReactNode }) {
+  return (
+    <div role="status" className="bg-muted/60 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm">
+      <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+      <p>{children}</p>
     </div>
   )
 }

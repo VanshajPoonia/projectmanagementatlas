@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  contentMediaId,
   durationLabel,
   isImageFile,
   isVideoFile,
@@ -209,5 +210,24 @@ describe('where media lives', () => {
     expect(isR2Path('projects/a/b.jpg')).toBe(true)
     expect(isR2Path('a/b.jpg')).toBe(false)
     expect(splitPaths(['a/b.jpg', 'projects/a/b.mp4'])).toEqual({ supabase: ['a/b.jpg'], r2: ['projects/a/b.mp4'] })
+  })
+})
+
+describe('contentMediaId', () => {
+  const big = (fill: number, last: number) => {
+    const bytes = new Uint8Array(600 * 1024).fill(fill)
+    bytes[bytes.length - 1] = last
+    return new Blob([bytes])
+  }
+
+  it('gives the same file the same id in a project, and a UUID-shaped one', async () => {
+    const id = await contentMediaId('p1', new Blob(['photo']))
+    expect(id).toBe(await contentMediaId('p1', new Blob(['photo'])))
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
+
+  it('gives a different id in another project, or for a file that differs only at its end', async () => {
+    expect(await contentMediaId('p1', big(7, 1))).not.toBe(await contentMediaId('p2', big(7, 1)))
+    expect(await contentMediaId('p1', big(7, 1))).not.toBe(await contentMediaId('p1', big(7, 2)))
   })
 })

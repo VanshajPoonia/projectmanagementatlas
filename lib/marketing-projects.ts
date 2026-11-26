@@ -106,6 +106,19 @@ export function mediaKey(projectId: string, mediaId: string, ext: 'jpg' | 'mp4')
   return `${R2_PREFIX}${projectId}/${mediaId}.${ext}`
 }
 
+const FINGERPRINT_EDGE = 256 * 1024
+
+/**
+ * An id fixed by the project and the file's size, start and end. Picking the same files again, after
+ * a dropped upload or a reload, lands on ids already in the project, so only the missing ones go up.
+ */
+export async function contentMediaId(projectId: string, file: Blob): Promise<string> {
+  const tail = file.size > FINGERPRINT_EDGE ? file.slice(file.size - FINGERPRINT_EDGE) : new Blob()
+  const bytes = await new Blob([`${projectId}:${file.size}:`, file.slice(0, FINGERPRINT_EDGE), tail]).arrayBuffer()
+  const h = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) => b.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-${((parseInt(h[16], 16) & 3) | 8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`
+}
+
 export function isR2Path(path: string): boolean {
   return path.startsWith(R2_PREFIX)
 }
