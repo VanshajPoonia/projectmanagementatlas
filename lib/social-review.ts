@@ -70,9 +70,10 @@ export function countByStatus(posts: SocialPost[]): Record<SocialStatus, number>
 /**
  * True when the post changed after its latest decision, or after it was first uploaded if nobody
  * has decided yet. Deciding sets updated_at to the review's own time (138's trigger), so a fresh
- * approval clears it. Comments are not decisions and leave it alone.
+ * approval clears it. Comments are not decisions and leave it alone. A posted post is done and never asks again.
  */
-export function isUpdatedForReview(post: Pick<SocialPost, 'id' | 'created_at' | 'updated_at'>, reviews: SocialReview[]): boolean {
+export function isUpdatedForReview(post: Pick<SocialPost, 'id' | 'status' | 'created_at' | 'updated_at'>, reviews: SocialReview[]): boolean {
+  if (post.status === 'posted') return false
   let since = post.created_at
   for (const r of reviews) {
     if (r.post_id === post.id && r.decision !== 'comment' && Date.parse(r.created_at) > Date.parse(since)) since = r.created_at

@@ -113,6 +113,11 @@ describe('isUpdatedForReview', () => {
     const reviews = [review('a', 'comment', '2026-11-20T10:00:00Z'), review('b', 'approved', '2026-11-20T11:00:00Z')]
     expect(isUpdatedForReview(p, reviews)).toBe(true)
   })
+
+  it('is false once the post has gone out, even if it changed after the last decision', () => {
+    const p = post('a', { status: 'posted', updated_at: '2026-11-26T17:50:00Z' })
+    expect(isUpdatedForReview(p, [review('a', 'approved', '2026-11-26T17:31:00Z')])).toBe(false)
+  })
 })
 
 describe('review images', () => {
